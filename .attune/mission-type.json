@@ -1,0 +1,11 @@
+{
+  "mission_type": "full",
+  "phases": ["brainstorm", "specify", "plan", "execute"],
+  "auto_continue": true,
+  "research_mode": true,
+  "ultrathink_enabled": true,
+  "checkpoints": {
+    "between_phases": false,
+    "on_completion": true
+  }
+}
