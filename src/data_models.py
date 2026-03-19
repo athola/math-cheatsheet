@@ -103,14 +103,10 @@ class Magma:
             )
         for i, row in enumerate(self.operation):
             if len(row) != self.size:
-                raise ValueError(
-                    f"Row {i} must have {self.size} columns, got {len(row)}"
-                )
+                raise ValueError(f"Row {i} must have {self.size} columns, got {len(row)}")
             for j, val in enumerate(row):
                 if not (0 <= val < self.size):
-                    raise ValueError(
-                        f"Entry [{i}][{j}]={val} out of range [0, {self.size})"
-                    )
+                    raise ValueError(f"Entry [{i}][{j}]={val} out of range [0, {self.size})")
 
     def op(self, a: int, b: int) -> int:
         return self.operation[a][b]
@@ -149,9 +145,7 @@ class Magma:
     def to_dict_operation(self) -> dict[str, int]:
         """Convert Cayley table to dict representation for JSON serialization."""
         return {
-            f"{a},{b}": self.operation[a][b]
-            for a in range(self.size)
-            for b in range(self.size)
+            f"{a},{b}": self.operation[a][b] for a in range(self.size) for b in range(self.size)
         }
 
     @classmethod

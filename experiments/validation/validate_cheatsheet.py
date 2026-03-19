@@ -12,7 +12,6 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Set, Tuple
 
 
 @dataclass
@@ -21,7 +20,7 @@ class Implication:
 
     e1: str  # Equation 1 (hypothesis)
     e2: str  # Equation 2 (conclusion)
-    expected: Optional[bool] = None  # True=implies, False=doesn't imply, None=unknown
+    expected: bool | None = None  # True=implies, False=doesn't imply, None=unknown
 
 
 @dataclass
@@ -32,7 +31,7 @@ class ValidationResult:
     predicted: bool
     confidence: float
     reasoning: str
-    correct: Optional[bool] = None  # None if expected is None
+    correct: bool | None = None  # None if expected is None
 
 
 @dataclass
@@ -44,7 +43,7 @@ class ValidationReport:
     incorrect: int
     skipped: int
     accuracy: float
-    results: List[ValidationResult]
+    results: list[ValidationResult]
 
 
 class CheatsheetValidator:
@@ -82,7 +81,7 @@ class CheatsheetValidator:
         if self.cheatsheet_path.exists():
             self.cheatsheet_content = self.cheatsheet_path.read_text()
 
-    def _detect_property_type(self, equation: str) -> Set[str]:
+    def _detect_property_type(self, equation: str) -> set[str]:
         """
         Detect the property type(s) in an equation.
 
@@ -115,7 +114,7 @@ class CheatsheetValidator:
 
         return properties
 
-    def _check_red_flags(self, e1_props: Set[str], e2_props: Set[str]) -> Tuple[bool, List[str]]:
+    def _check_red_flags(self, e1_props: set[str], e2_props: set[str]) -> tuple[bool, list[str]]:
         """
         Check for red flags that suggest implication is false.
 
@@ -131,7 +130,7 @@ class CheatsheetValidator:
 
         return len(flags) > 0, flags
 
-    def _predict_implication(self, e1: str, e2: str) -> Tuple[bool, float, str]:
+    def _predict_implication(self, e1: str, e2: str) -> tuple[bool, float, str]:
         """
         Predict whether E1 implies E2 using cheatsheet heuristics.
 
@@ -161,7 +160,7 @@ class CheatsheetValidator:
         # Default: uncertain, suggest counterexample search
         return False, 0.5, "No clear implication pattern found"
 
-    def _normalize_prop(self, props: Set[str]) -> str:
+    def _normalize_prop(self, props: set[str]) -> str:
         """Normalize property set to a key string."""
         return "+".join(sorted(props)) if props else "unknown"
 
@@ -175,7 +174,7 @@ class CheatsheetValidator:
 
         return e1_vars == e2_vars and e1_ops == e2_ops
 
-    def validate_sample(self, sample: List[Implication]) -> ValidationReport:
+    def validate_sample(self, sample: list[Implication]) -> ValidationReport:
         """Validate a sample of implications."""
         results = []
         correct = 0
@@ -216,7 +215,7 @@ class CheatsheetValidator:
             results=results,
         )
 
-    def generate_test_sample(self) -> List[Implication]:
+    def generate_test_sample(self) -> list[Implication]:
         """Generate a sample of implications for testing."""
         return [
             # Known false implications

@@ -10,7 +10,6 @@ import json
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import List, Optional
 
 
 @dataclass
@@ -19,12 +18,12 @@ class FormalClaim:
 
     claim_type: str  # "true_implication", "false_implication", "property"
     equation_e1: str
-    equation_e2: Optional[str]
+    equation_e2: str | None
     confidence: float
     lean_verified: bool = False
     tla_verified: bool = False
-    proof_path: Optional[str] = None
-    counterexample_path: Optional[str] = None
+    proof_path: str | None = None
+    counterexample_path: str | None = None
 
 
 @dataclass
@@ -36,7 +35,7 @@ class FormalValidationReport:
     tla_verified: int
     both_verified: int
     not_verified: int
-    claims: List[FormalClaim]
+    claims: list[FormalClaim]
 
 
 class FormalValidator:
@@ -49,7 +48,7 @@ class FormalValidator:
         self.tla_dir = project_root / "tla"
         self.cheatsheet_path = project_root / "cheatsheet" / "v1.txt"
 
-    def scan_cheatsheet_claims(self) -> List[FormalClaim]:
+    def scan_cheatsheet_claims(self) -> list[FormalClaim]:
         """Scan the cheatsheet for formal verification claims."""
         claims = []
         content = self.cheatsheet_path.read_text()
@@ -92,7 +91,7 @@ class FormalValidator:
 
         return claims
 
-    def check_lean_proofs(self, claims: List[FormalClaim]) -> List[FormalClaim]:
+    def check_lean_proofs(self, claims: list[FormalClaim]) -> list[FormalClaim]:
         """Check which claims have Lean formal proofs."""
         lean_files = list(self.lean_dir.rglob("*.lean"))
 
@@ -112,7 +111,7 @@ class FormalValidator:
 
         return claims
 
-    def check_tla_specs(self, claims: List[FormalClaim]) -> List[FormalClaim]:
+    def check_tla_specs(self, claims: list[FormalClaim]) -> list[FormalClaim]:
         """Check which claims have TLA+ specifications."""
         tla_files = list(self.tla_dir.rglob("*.tla"))
 
@@ -128,7 +127,7 @@ class FormalValidator:
 
         return claims
 
-    def _extract_keywords(self, text: str) -> List[str]:
+    def _extract_keywords(self, text: str) -> list[str]:
         """Extract searchable keywords from an equation."""
         keywords = []
         text = text.lower()
@@ -142,7 +141,7 @@ class FormalValidator:
             keywords.append("idempotent")
         return keywords
 
-    def generate_report(self, claims: List[FormalClaim]) -> FormalValidationReport:
+    def generate_report(self, claims: list[FormalClaim]) -> FormalValidationReport:
         """Generate formal validation report."""
         lean_verified = sum(1 for c in claims if c.lean_verified)
         tla_verified = sum(1 for c in claims if c.tla_verified)

@@ -24,9 +24,7 @@ try:
     import magma_core as _rust  # type: ignore[import-not-found]
 except ImportError:
     _rust = None
-    _logger.warning(
-        "magma_core Rust extension not available; falling back to pure Python"
-    )
+    _logger.warning("magma_core Rust extension not available; falling back to pure Python")
 
 
 def analyze_magmas(size: int) -> dict:
@@ -120,13 +118,9 @@ def find_implication_counterexamples(
 
     valid_properties = set(property_checks.keys())
     if premise not in property_checks:
-        raise ValueError(
-            f"Unknown property '{premise}'. Valid properties: {valid_properties}"
-        )
+        raise ValueError(f"Unknown property '{premise}'. Valid properties: {valid_properties}")
     if conclusion not in property_checks:
-        raise ValueError(
-            f"Unknown property '{conclusion}'. Valid properties: {valid_properties}"
-        )
+        raise ValueError(f"Unknown property '{conclusion}'. Valid properties: {valid_properties}")
 
     check_premise = property_checks[premise]
     check_conclusion = property_checks[conclusion]

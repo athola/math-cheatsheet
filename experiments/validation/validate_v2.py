@@ -10,7 +10,6 @@ Tests v2 improvements:
 
 import sys
 from dataclasses import dataclass
-from typing import Dict, Tuple
 
 
 @dataclass
@@ -56,7 +55,7 @@ class V2Validator:
             TestImplication("x*y = y*x", "y*x = x*y", True, "Reflexive (reversed)"),
         ]
 
-    def predict_v2(self, e1: str, e2: str) -> Tuple[bool, float, str]:
+    def predict_v2(self, e1: str, e2: str) -> tuple[bool, float, str]:
         """Predict using v2 rules."""
         # Rule 1: Two-sided identity ⇒ unilateral
         if "AND" in e1 and "e*x = x" in e1 and "x*e = x" in e1:
@@ -136,7 +135,7 @@ class V2Validator:
             )
         return False
 
-    def run_validation(self) -> Dict:
+    def run_validation(self) -> dict:
         """Run v2 validation tests."""
         results = []
         correct = 0

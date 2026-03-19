@@ -57,6 +57,7 @@ def _parse_equations_json(path: Path) -> list[Equation]:
                 properties.append(Property(prop_str))
             except ValueError:
                 import logging
+
                 logging.getLogger(__name__).debug("Unknown property value: %s", prop_str)
 
         equation = Equation(
@@ -109,6 +110,7 @@ def _parse_equations_txt(path: Path) -> list[Equation]:
                                 properties.append(Property(prop_str))
                             except ValueError:
                                 import logging
+
                                 logging.getLogger(__name__).debug(
                                     "Unknown property value: %s", prop_str
                                 )
@@ -120,6 +122,7 @@ def _parse_equations_txt(path: Path) -> list[Equation]:
 
             except (ValueError, IndexError) as exc:
                 import logging
+
                 logging.getLogger(__name__).debug("Skipping malformed line %d: %s", line_num, exc)
                 continue
 

@@ -21,6 +21,8 @@ help: ## Show this help
 setup: ## Set up venv and install dependencies
 	python3 -m venv venv
 	$(PYTHON) -m pip install --quiet -e ".[dev]"
+	$(PYTHON) -m pip install --quiet pre-commit
+	$(PYTHON) -m pre_commit install
 
 .PHONY: build-rust
 build-rust: ## Build Rust PyO3 extension (magma_core)
@@ -74,6 +76,14 @@ typecheck: ## Run mypy type checking
 
 .PHONY: check
 check: lint typecheck test test-rust ## Run all quality gates (lint + typecheck + test + rust)
+
+.PHONY: pre-commit
+pre-commit: ## Run pre-commit hooks on all files
+	$(PYTHON) -m pre_commit run --all-files
+
+.PHONY: pre-commit-install
+pre-commit-install: ## Install pre-commit git hooks
+	$(PYTHON) -m pre_commit install
 
 # ── Data ────────────────────────────────────────────────────────
 

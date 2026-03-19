@@ -136,6 +136,7 @@ class TestAccuracyFormula:
         """If every non-skipped result is correct, accuracy = 1.0."""
         # Build modified copies instead of mutating (Hypothesis anti-pattern)
         from dataclasses import replace
+
         results = [
             replace(r, actual_answer=r.predicted_answer, correct=True)
             if r.predicted_answer is not None
@@ -198,6 +199,7 @@ class TestResponseTime:
         """avg_response_time_ms ≥ 0 for any result set."""
         # Ensure all times are non-negative
         from dataclasses import replace
+
         results = [replace(r, response_time_ms=abs(r.response_time_ms)) for r in results]
 
         evaluator = Evaluator(model="test")
