@@ -77,6 +77,10 @@ typecheck: ## Run mypy type checking
 .PHONY: check
 check: lint typecheck test test-rust ## Run all quality gates (lint + typecheck + test + rust)
 
+.PHONY: evaluate-v4
+evaluate-v4: ## Evaluate v4 cheatsheet decision procedure (requires implications.csv)
+	$(PYTHONPATH) $(PYTHON) src/evaluate_v4.py
+
 .PHONY: pre-commit
 pre-commit: ## Run pre-commit hooks on all files
 	$(PYTHON) -m pre_commit run --all-files
