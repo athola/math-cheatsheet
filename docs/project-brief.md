@@ -1,141 +1,164 @@
-# Math Cheatsheet Competition - Project Brief
+# SAIR Math Distillation Challenge - Project Brief v2
 
-**Date**: 2026-03-17
-**Status**: Draft
-**Mission**: Create a 10KB cheatsheet to help lower-cost LLMs solve equational implication problems
-
----
+**Date**: 2026-03-19
+**Status**: Active
+**Deadline**: April 20, 2026 (Stage 1)
 
 ## Problem Statement
 
-**Who**: Lower-cost LLMs (Llama, Gemini Flash, OpenAI OSS) evaluating mathematical implication questions
+The SAIR Foundation Math Distillation Challenge asks participants to create a
+<=10KB plain text cheatsheet that maximizes an LLM's accuracy on equational
+implication problems. Given two equations over magmas (sets with a binary
+operation), the model must determine: does Equation 1 imply Equation 2?
 
-**What**: Inability to reliably determine whether Equation 1 implies Equation 2 for magmas (binary algebraic structures with a single binary operation)
+The problem space is the Equational Theories Project (ETP) by Terence Tao et al:
+4694 equational laws yielding 22,028,942 ordered implication pairs.
 
-**Where**: SAIR Foundation competition no-tools evaluation environment
+## Data Analysis (Key Findings)
 
-**When**: Stage 1 deadline April 20, 2026; 1200 training problems available now
+### Implication Matrix (export_raw_implications_3_19_2026.csv)
+- 4694 equations, 22M pairs
+- Encoding: 3=proven TRUE, -3=proven FALSE, 4=conj TRUE, -4=conj FALSE
+- Overall: 37.1% TRUE, 60.2% FALSE, 2.7% unresolved
 
-**Why**: Current models lack deep equational logic reasoning; 10KB reference must compensate for this gap
+### Structural Decomposition
+| Category | Equations | % | Implies N others |
+|----------|-----------|---|-----------------|
+| Collapse (force \|M\|=1) | 1,496 | 31.9% | All 4694 |
+| Weak (almost nothing) | 614 | 13.1% | <=5 |
+| Mid-range | 898 | 19.1% | 100-1000 |
+| Strong non-collapse | ~1,086 | 23.1% | 1000-4600 |
+| Tautology (x=x) | 1 | 0.02% | 1 (itself) |
 
-**Current State**:
-- 4694 equational laws available but unstructured
-- No proven methodology for cheatsheet optimization
-- Limited understanding of how LLMs utilize mathematical reference material
+### The 86% Rule
+85.9% of all TRUE implications originate from the 1,496 collapse equations.
+Among non-collapse pairs, only 7.7% are TRUE (92.3% FALSE).
 
----
+### Accuracy Projections
+| Strategy | Expected Accuracy |
+|----------|------------------|
+| Always FALSE | 62.9% |
+| Collapse detection + default FALSE | ~90% |
+| + variable analysis | ~93% |
+| + substitution + counterexamples | ~96%+ |
 
 ## Goals
 
-1. **Primary**: Create a ≤10KB cheatsheet that measurably improves LLM performance on equational implication tasks
-2. **Secondary**: Develop reusable methodology for mathematical knowledge distillation
-3. **Tertiary**: Contribute insights to mathematical reasoning research community
+1. **Primary**: Maximize Stage 1 accuracy (TRUE/FALSE correctness)
+2. **Secondary**: Build evaluation harness to measure accuracy on real data
+3. **Tertiary**: Prepare for Stage 2 (counterexamples, proofs, confidence)
 
----
+## Success Criteria
+
+- [ ] Cheatsheet <= 10,240 bytes
+- [ ] Accuracy > 90% on competition problems (1200 selected from 22M)
+- [ ] Evaluation harness tests against real implication matrix
+- [ ] Decision procedure handles all 4694 equations
 
 ## Constraints
 
-### Technical
-- **10KB hard limit** (~1500-2000 words compressed)
-- **Text-only format**: No diagrams, images, or structured data
-- **Self-contained**: Must work in no-tools evaluation setting
-
-### Resources
-- **Timeline**: ~34 days until deadline (March 17 → April 20)
-- **Data**: 1200 training problems, 4694 equations
-- **Compute**: Local resources only
-
-### Integration
-- Must work with multiple model types (Llama, Gemini Flash, OpenAI OSS)
-- Must parse standard equation format from competition
-- Must validate against training problems
-
-### Success Criteria
-- [ ] Cheatsheet ≤ 10KB
-- [ ] Measurable improvement over baseline on training set
-- [ ] Validated on at least 2 model types
-- [ ] Documented methodology
-- [ ] Submitted before April 20, 2026
-
----
+- **Size**: 10KB plain text (no code, no binary)
+- **Format**: Injected into Jinja2 prompt as `{{ cheatsheet }}`
+- **Evaluation**: LLM reads cheatsheet + equation pair, outputs TRUE/FALSE
+- **Time**: ~30 days to deadline
+- **Data**: Full 22M implication matrix available for training/validation
 
 ## Approach Comparison
 
-| Approach | Description | Pros | Cons | Risk |
-|----------|-------------|------|------|------|
-| **Taxonomic** | Organize by mathematical property | Pedagogical, easy to navigate | May miss implications | Low |
-| **Graph Hubs** | Focus on high out-degree equations | Data-driven, dense info | Needs computation | High |
-| **Proof Strategies** | Teach reasoning techniques | Generalizable | Abstract for LLMs | Medium |
-| **Frequency** | Optimize by occurrence | Test-set aligned | Overfitting risk | Medium |
-| **Hybrid** | Combine elements | Robust, multi-angle | Complex | Medium |
+### Approach 1: Rule-Based Decision Tree (SELECTED)
+Encode a decision tree the LLM can follow step-by-step:
+1. Classify equation structure (collapse, tautology, variable count, depth)
+2. Apply structural rules (variable analysis, substitution)
+3. Consult a compact counterexample table for common FALSE cases
+4. Default to FALSE for unresolved cases
 
-Scoring: 🟢 = Good, 🟡 = Acceptable, 🔴 = Concern
+**Pros**: Interpretable, fits 10KB, LLM can follow, leverages data analysis
+**Cons**: Can't encode all 22M implications, misses edge cases
+**Risk**: Medium — depends on LLM's ability to execute algebraic reasoning
 
----
+### Approach 2: Compressed Lookup Table
+Encode key implication facts directly (e.g., equivalence classes, key pairs).
+Use the 10KB to store the most frequently tested implications.
 
-## War Room Decision
+**Pros**: Direct answers for known problems, no reasoning required
+**Cons**: Can only store ~500-1000 facts in 10KB, fragile to new problems
+**Risk**: High — if competition problems aren't in the table, accuracy drops
 
-**Session**: war-room-20260317-cheatsheet-strategy
-**RS**: 0.44 (Type 1B) | **Mode**: Lightweight with Full Analysis
+### Approach 3: Hybrid (Rules + Selective Lookup)
+Combine structural rules (5KB) with a compact lookup table of the hardest
+non-collapse TRUE implications (5KB). Rules handle the easy 90%, lookup
+handles the hard 10%.
 
-### Selected Approach: Adaptive Hybrid Strategy (Phased)
+**Pros**: Best of both, data-driven optimization of lookup portion
+**Cons**: More complex cheatsheet, harder to debug
+**Risk**: Low-medium — two layers of defense
 
-Rather than committing to a single structure, we use a **two-phase approach**:
+### Selection: Approach 3 (Hybrid)
 
-**Phase 1: Data-Agnostic Foundation** (Immediate)
-- Core definitions: magma, equational logic, implication
-- Basic properties: associativity, commutativity, identity, inverse
-- Simple proof patterns: direct proof, counterexample basics
+**Rationale**: The data shows a clear structural decomposition:
+- Collapse detection + variable analysis handles ~93% (rules portion)
+- The remaining 7% of TRUE cases in non-collapse pairs need specific
+  algebraic knowledge (lookup portion)
+- 10KB splits naturally: ~5KB rules + ~5KB curated facts
 
-**Phase 2: Data-Driven Optimization** (After data acquisition)
-- Frequency analysis: Which equations appear most?
-- Graph analysis: Are there hub equations?
-- Allocate remaining space to proven high-impact content
+## Architecture
 
-This is **staged commitment, not avoidance** — we start with safe foundation, then optimize based on evidence.
+```
+Input: (Equation 1, Equation 2)
+  │
+  ├─ Phase 0: Parse equations (structural features)
+  ├─ Phase 1: Instant decisions
+  │   ├─ Self-implication (identical) → TRUE
+  │   ├─ Tautology target (x=x) → TRUE
+  │   ├─ Collapse hypothesis → TRUE
+  │   └─ Tautology hypothesis + non-tautology target → FALSE
+  ├─ Phase 2: Variable analysis
+  │   └─ New variable in target → FALSE
+  ├─ Phase 3: Substitution detection
+  │   └─ Target is specialization of hypothesis → TRUE
+  ├─ Phase 4: Structural pattern matching
+  │   ├─ Absorption/projection detection → determined operation
+  │   └─ Counterexample magma table → FALSE
+  ├─ Phase 5: Equivalence class lookup
+  │   └─ Known equivalence classes → same answer
+  └─ Default: FALSE
+```
 
-### Reversal Plan
+## Out of Scope (for Stage 1)
 
-- If graph shows no hubs → Fall back to frequency optimization
-- If frequency is uniform → Fall back to taxonomic approach
-- If LLM shows no improvement → Pivot to proof strategy focus
+- Lean proof generation
+- Confidence calibration
+- Full 22M implication encoding
+- Stage 2 counterexample format
 
-### Intelligence Gaps
+## Implementation Plan
 
-1. equations.txt format: How are 4694 equations structured?
-2. train_problems.json format: How are implication problems posed?
-3. Evaluation model: Which specific lower-cost LLMs?
-4. Implication data: Pre-computed or must we compute?
+### Phase 1: Data Integration (Days 1-3)
+- Import full 4694-equation list with ETP numbering
+- Parse and index the 22M implication matrix
+- Build accuracy evaluation against real data
 
----
+### Phase 2: Cheatsheet Optimization (Days 4-10)
+- Implement rule-based decision tree
+- Identify optimal counterexample magmas (data-driven)
+- Optimize lookup table for hardest TRUE cases
+- Iterative: generate cheatsheet → evaluate → refine
 
-## Next Steps
+### Phase 3: Evaluation & Hardening (Days 11-15)
+- Test against normal.jsonl (1000 problems) and hard.jsonl (200 problems)
+- A/B test cheatsheet variants
+- Size optimization (fit within 10KB)
 
-1. **RESEARCH-001** (Current): Draft taxonomic foundation
-   - Write core definitions and concepts
-   - Document basic property taxonomy
-   - Describe foundational proof techniques
+### Phase 4: Competition Submission (Days 16-30)
+- Final cheatsheet polishing
+- Stage 2 preparation (counterexample format)
+- Documentation
 
-2. **RESEARCH-002**: Acquire and analyze competition data
-   - Download equations.txt and train_problems.json
-   - Analyze equation formats and structures
-   - Perform frequency analysis
+## Key Files
 
-3. **RESEARCH-003**: Research state-of-the-art in mathematical reasoning
-   - Study Honda, Murakami, Zhang (2025) findings
-   - Investigate few-shot learning for math
-   - Review prompt engineering techniques
-
-4. **SPEC-001**: Create cheatsheet specification
-   - Define detailed structure based on research
-   - Establish size budgets per section
-   - Set validation criteria
-
-5. **PLAN-001**: Design experimentation strategy
-   - Plan data pipeline and analysis
-   - Design evaluation methodology
-   - Establish iteration framework
-
----
-
-*This project brief will evolve as research progresses and data is acquired.*
+- `research/data/etp/` — Full ETP equation list and implication matrix
+- `src/etp_parser.py` — Parse ETP equations into structured format
+- `src/implication_oracle.py` — Query the 22M implication matrix
+- `src/cheatsheet_optimizer.py` — Generate and evaluate cheatsheets
+- `src/evaluator.py` — Score cheatsheet against competition problems
+- `cheatsheet/v4.txt` — Competition cheatsheet (<=10KB)

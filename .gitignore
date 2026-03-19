@@ -65,6 +65,9 @@ lean/.lake/
 rust/target/
 rust/Cargo.lock
 
+# Large data files (download via make download-etp)
+research/data/etp/implications.csv
+
 # Large generated files
 *.png
 *.jpg
