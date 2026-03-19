@@ -1,8 +1,12 @@
 EQUATIONAL IMPLICATION DECISION PROCEDURE
 
-You must determine: does Equation 1 (E1) imply Equation 2 (E2) over ALL magmas?
-A magma is a set with a binary operation ◇. E1 implies E2 means: every magma
-satisfying E1 also satisfies E2.
+QUICK SUMMARY: ~63% of implications are FALSE. ~32% of equations are
+"collapse" (LHS is a variable, forces magma size 1) — if E1 is collapse,
+answer TRUE. Otherwise check variables, substitutions, counterexamples.
+
+You must determine: does Equation 1 (E1) imply Equation 2 (E2) over ALL
+magmas? A magma is a set with a binary operation ◇. E1 implies E2 means:
+every magma satisfying E1 also satisfies E2.
 
 Follow these steps IN ORDER. Stop at the first matching rule.
 
