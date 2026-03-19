@@ -1,0 +1,138 @@
+EQUATIONAL IMPLICATION DECISION PROCEDURE
+
+You must determine: does Equation 1 (E1) imply Equation 2 (E2) over ALL magmas?
+A magma is a set with a binary operation ◇. E1 implies E2 means: every magma
+satisfying E1 also satisfies E2.
+
+Follow these steps IN ORDER. Stop at the first matching rule.
+
+═══════════════════════════════════════════════════════════════════════
+STEP 1: IDENTICAL EQUATIONS
+═══════════════════════════════════════════════════════════════════════
+If E1 and E2 are the same equation (possibly with variables renamed),
+VERDICT: TRUE.
+
+═══════════════════════════════════════════════════════════════════════
+STEP 2: TAUTOLOGY TARGET
+═══════════════════════════════════════════════════════════════════════
+If E2 is a tautology (LHS = RHS structurally, e.g., x=x, x◇y=x◇y),
+VERDICT: TRUE. Reason: tautologies hold in every magma.
+
+═══════════════════════════════════════════════════════════════════════
+STEP 3: COLLAPSE HYPOTHESIS (forces |M|=1)
+═══════════════════════════════════════════════════════════════════════
+If E1 forces the magma to have exactly one element, then E1 implies
+EVERY equation. VERDICT: TRUE.
+
+An equation forces |M|=1 ("collapse") if satisfying it in a magma with
+2+ elements leads to a contradiction. Key patterns:
+
+TYPE A: x = y (directly equates two different variables)
+TYPE B: x = (term involving y but not x on the "output" side)
+  Examples: x = y◇y, x = y◇z, x = y◇(z◇w), x = (y◇z)◇w
+  Rule: If LHS is a single variable x, and RHS contains a variable y≠x
+  that appears ONLY in the RHS (not in LHS), AND either:
+    - RHS has no occurrence of x at all, OR
+    - x appears only inside a ◇ with a "free" variable
+  then it's likely collapse.
+TYPE C: Nested collapse: x = y◇(x◇z), x = (y◇x)◇z, etc.
+  where a new variable y is applied to a term containing x.
+
+IMPORTANT: ~32% of all equations are collapse. When in doubt about E1
+being collapse, check if E1's variables include one that's "free" (only
+appears on one side as an argument to ◇ with another free variable).
+
+═══════════════════════════════════════════════════════════════════════
+STEP 4: TAUTOLOGY HYPOTHESIS
+═══════════════════════════════════════════════════════════════════════
+If E1 is a tautology (x=x), it holds in every magma and constrains nothing.
+VERDICT: FALSE (unless E2 is also a tautology, caught by Step 1).
+
+═══════════════════════════════════════════════════════════════════════
+STEP 5: CONSTANT OPERATION HYPOTHESIS
+═══════════════════════════════════════════════════════════════════════
+If E1 forces all products to be equal (constant operation: a◇b = c for
+all a,b,c), then E1 implies any equation that holds in constant magmas.
+
+Equations forcing constant operation have the form where BOTH sides are
+◇-terms and the two sides share NO variables. Examples:
+  x◇y = z◇w, x◇x = y◇z, x◇y = y◇z, x◇y = z◇y (sometimes)
+
+Also: many 3+ variable equations with ◇ on both sides force either
+constant operation or come very close. These "strong" equations imply
+~1500+ other equations.
+
+If E1 forces constant operation, check if E2 holds when x◇y = c:
+  - Any equation with ◇ on both sides: TRUE (both sides = c)
+  - x = x◇x: TRUE (x = c, but all elements are c, so x = c◇c = c)
+  - x◇y = y◇x (commutativity): TRUE (c = c)
+  - x = x◇y: might be TRUE or FALSE depending on E2 structure
+If unsure: VERDICT: TRUE (high probability for constant-operation E1)
+
+═══════════════════════════════════════════════════════════════════════
+STEP 6: PROJECTION HYPOTHESIS
+═══════════════════════════════════════════════════════════════════════
+If E1 forces a projection operation (x◇y = x for all x,y, called "left
+projection", or x◇y = y, "right projection"):
+
+Patterns: x = x◇y (left proj), x = y◇x (right proj), and deeper
+variants: x = x◇(y◇z), x = (y◇z)◇x, x = x◇(y◇(z◇w)), etc.
+These all force x◇y = x or x◇y = y.
+
+Projection magmas satisfy: associativity, idempotence (x◇x=x), but
+NOT commutativity (unless |M|=1).
+
+If E1 is a projection equation, E1 implies E2 when E2 holds in
+both left-projection and right-projection magmas.
+
+═══════════════════════════════════════════════════════════════════════
+STEP 7: VARIABLE ANALYSIS
+═══════════════════════════════════════════════════════════════════════
+If E2 contains a variable not present in E1:
+  VERDICT: FALSE (usually)
+
+Reason: The new variable is unconstrained. You can assign it
+independently, which typically breaks E2.
+
+EXCEPTION: If E1 is very strong (forces the operation to be constant
+or a projection), new variables don't matter since the operation is
+fully determined. This case is caught by Steps 5-6.
+
+═══════════════════════════════════════════════════════════════════════
+STEP 8: SUBSTITUTION (SPECIALIZATION)
+═══════════════════════════════════════════════════════════════════════
+If E2 can be obtained from E1 by replacing some variables with others
+(setting y:=x, or z:=y, etc.), then E1 implies E2.
+VERDICT: TRUE.
+
+Example: x◇(y◇z) = (x◇y)◇z implies x◇(x◇z) = (x◇x)◇z (set y:=x).
+
+═══════════════════════════════════════════════════════════════════════
+STEP 9: COUNTEREXAMPLE TESTING
+═══════════════════════════════════════════════════════════════════════
+Test these 6 canonical 2-element magmas ({0,1} with ◇ given by table):
+
+LP: 0◇0=0, 0◇1=0, 1◇0=1, 1◇1=1 (left projection, x◇y=x)
+RP: 0◇0=0, 0◇1=1, 1◇0=0, 1◇1=1 (right projection, x◇y=y)
+C0: 0◇0=0, 0◇1=0, 1◇0=0, 1◇1=0 (constant zero)
+XR: 0◇0=0, 0◇1=1, 1◇0=1, 1◇1=0 (XOR/Z2 addition)
+CM: 0◇0=1, 0◇1=1, 1◇0=1, 1◇1=0 (commutative, not associative)
+N1: 0◇0=0, 0◇1=0, 1◇0=1, 1◇1=0 (non-comm, non-assoc)
+
+If any magma satisfies E1 but NOT E2: VERDICT: FALSE.
+The counterexample IS that magma.
+
+═══════════════════════════════════════════════════════════════════════
+STEP 10: DEFAULT
+═══════════════════════════════════════════════════════════════════════
+If no rule above matched: VERDICT: FALSE.
+Reason: The base rate is ~63% FALSE. Without a positive reason to
+believe the implication holds, default to FALSE.
+
+═══════════════════════════════════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════════════════════════════════
+VERDICT: TRUE or FALSE
+REASONING: which step matched and why
+PROOF: if TRUE, explain which structural rule applies
+COUNTEREXAMPLE: if FALSE, give a magma where E1 holds but E2 fails
