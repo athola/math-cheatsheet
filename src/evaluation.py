@@ -11,7 +11,6 @@ import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from data_models import Problem
 
@@ -23,15 +22,15 @@ class EvaluationResult:
     problem_id: int
     equation_1_id: int
     equation_2_id: int
-    predicted_answer: Optional[bool]
-    actual_answer: Optional[bool]
+    predicted_answer: bool | None
+    actual_answer: bool | None
     correct: bool
     response_time_ms: float
     model: str
     prompt_tokens: int = 0
     completion_tokens: int = 0
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return asdict(self)
 
 
@@ -49,14 +48,14 @@ class EvaluationSummary:
     avg_response_time_ms: float
     timestamp: str
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return asdict(self)
 
 
 class Evaluator:
     """Evaluates LLM performance on implication problems."""
 
-    def __init__(self, model: str = "gpt-3.5-turbo", api_key: Optional[str] = None):
+    def __init__(self, model: str = "gpt-3.5-turbo", api_key: str | None = None):
         """Initialize evaluator.
 
         Args:
@@ -65,11 +64,12 @@ class Evaluator:
         """
         self.model = model
         self.api_key = api_key
-        self.results: List[EvaluationResult] = []
+        self.results: list[EvaluationResult] = []
         self._last_version_label: str = ""
+        self._rng = random.Random(42)
 
     def _evaluate_problems(
-        self, problems: List[Problem], use_cheatsheet: bool, max_problems: Optional[int] = None
+        self, problems: list[Problem], use_cheatsheet: bool, max_problems: int | None = None
     ) -> None:
         """Shared evaluation loop for baseline and cheatsheet modes."""
         if max_problems:
@@ -84,7 +84,7 @@ class Evaluator:
         print()
 
     def evaluate_baseline(
-        self, problems: List[Problem], max_problems: Optional[int] = None
+        self, problems: list[Problem], max_problems: int | None = None
     ) -> EvaluationSummary:
         """Evaluate performance WITHOUT cheatsheet (baseline)."""
         print(f"Running baseline evaluation on {len(problems)} problems...")
@@ -93,11 +93,11 @@ class Evaluator:
         return self._compute_summary("baseline")
 
     def evaluate_with_cheatsheet(
-        self, problems: List[Problem], cheatsheet_path: str, max_problems: Optional[int] = None
+        self, problems: list[Problem], cheatsheet_path: str, max_problems: int | None = None
     ) -> EvaluationSummary:
         """Evaluate performance WITH cheatsheet."""
         print(f"Running evaluation with cheatsheet on {len(problems)} problems...")
-        with open(cheatsheet_path, "r") as f:
+        with open(cheatsheet_path, encoding="utf-8") as f:
             cheatsheet = f.read()
         print(f"Cheatsheet size: {len(cheatsheet)} bytes")
         self._evaluate_problems(problems, use_cheatsheet=True, max_problems=max_problems)
@@ -115,7 +115,7 @@ class Evaluator:
                 accuracy = 0.75  # Higher accuracy with cheatsheet
             else:
                 accuracy = 0.6  # 60% accuracy baseline
-            if random.random() < accuracy:
+            if self._rng.random() < accuracy:
                 predicted = problem.answer
             else:
                 predicted = not problem.answer
@@ -164,13 +164,13 @@ class Evaluator:
 
         # Save individual results
         results_file = Path(output_dir) / "evaluation_results.json"
-        with open(results_file, "w") as f:
+        with open(results_file, "w", encoding="utf-8") as f:
             json.dump([r.to_dict() for r in self.results], f, indent=2)
 
         # Save summary
         summary = self._compute_summary(self._last_version_label or "current")
         summary_file = Path(output_dir) / "evaluation_summary.json"
-        with open(summary_file, "w") as f:
+        with open(summary_file, "w", encoding="utf-8") as f:
             json.dump(summary.to_dict(), f, indent=2)
 
         print("\nResults saved to:")
@@ -178,7 +178,7 @@ class Evaluator:
         print(f"  - {summary_file}")
 
 
-def compare_evaluations(baseline_file: str, cheatsheet_file: str) -> Dict:
+def compare_evaluations(baseline_file: str, cheatsheet_file: str) -> dict:
     """Compare baseline and cheatsheet evaluation results.
 
     Args:
@@ -188,10 +188,10 @@ def compare_evaluations(baseline_file: str, cheatsheet_file: str) -> Dict:
     Returns:
         Dictionary with comparison metrics
     """
-    with open(baseline_file, "r") as f:
+    with open(baseline_file, encoding="utf-8") as f:
         baseline = json.load(f)
 
-    with open(cheatsheet_file, "r") as f:
+    with open(cheatsheet_file, encoding="utf-8") as f:
         cheatsheet = json.load(f)
 
     baseline_acc = baseline["accuracy"]

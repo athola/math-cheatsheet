@@ -61,6 +61,7 @@ lean/.lake/
 
 # Rust build artifacts
 rust/target/
+rust/Cargo.lock
 
 # Large generated files
 *.png

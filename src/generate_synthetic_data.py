@@ -7,18 +7,17 @@ representative synthetic equations and implication problems.
 
 import json
 import random
-from typing import List, Tuple
 
 from data_models import SYNTHETIC_EQUATIONS, Equation, Problem, Property
 
 
-def generate_extended_equations(count: int = 100) -> List[Equation]:
+def generate_extended_equations(count: int = 100) -> list[Equation]:
     """Generate a larger set of synthetic equations.
 
     In production, this would be replaced with the actual 4694 equations.
     For now, we generate representative examples.
     """
-    equations: List[Equation] = list(SYNTHETIC_EQUATIONS)
+    equations: list[Equation] = list(SYNTHETIC_EQUATIONS)
 
     # Generate variations and combinations
     for i in range(len(SYNTHETIC_EQUATIONS), count):
@@ -47,7 +46,7 @@ def generate_extended_equations(count: int = 100) -> List[Equation]:
     return equations
 
 
-def generate_implication_knowledge() -> List[Tuple[int, int, bool]]:
+def generate_implication_knowledge() -> list[tuple[int, int, bool]]:
     """Generate known implication relationships.
 
     Returns list of (eq1_id, eq2_id, implies) tuples.
@@ -76,7 +75,7 @@ def generate_implication_knowledge() -> List[Tuple[int, int, bool]]:
 
 def generate_synthetic_problems(
     num_problems: int = 1200, num_equations: int = 100
-) -> List[Problem]:
+) -> list[Problem]:
     """Generate synthetic implication problems.
 
     Args:

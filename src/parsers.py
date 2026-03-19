@@ -6,7 +6,7 @@ Parses equations.txt and train_problems.json into structured data.
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from data_models import Equation, Problem, Property
 
@@ -17,7 +17,7 @@ class ParseError(Exception):
     pass
 
 
-def parse_equations(filepath: str) -> List[Equation]:
+def parse_equations(filepath: str) -> list[Equation]:
     """Parse equations from file.
 
     Args:
@@ -43,9 +43,9 @@ def parse_equations(filepath: str) -> List[Equation]:
         raise ParseError(f"Unsupported file format: {path.suffix}")
 
 
-def _parse_equations_json(path: Path) -> List[Equation]:
+def _parse_equations_json(path: Path) -> list[Equation]:
     """Parse equations from JSON format."""
-    with open(path, "r") as f:
+    with open(path, encoding="utf-8") as f:
         data = json.load(f)
 
     equations = []
@@ -56,8 +56,8 @@ def _parse_equations_json(path: Path) -> List[Equation]:
             try:
                 properties.append(Property(prop_str))
             except ValueError:
-                # Skip unknown properties
-                pass
+                import logging
+                logging.getLogger(__name__).debug("Unknown property value: %s", prop_str)
 
         equation = Equation(
             id=eq_data["id"],
@@ -71,7 +71,7 @@ def _parse_equations_json(path: Path) -> List[Equation]:
     return equations
 
 
-def _parse_equations_txt(path: Path) -> List[Equation]:
+def _parse_equations_txt(path: Path) -> list[Equation]:
     """Parse equations from text format.
 
     Expected format:
@@ -79,7 +79,7 @@ def _parse_equations_txt(path: Path) -> List[Equation]:
     """
     equations = []
 
-    with open(path, "r") as f:
+    with open(path, encoding="utf-8") as f:
         for line_num, line in enumerate(f, 1):
             line = line.strip()
 
@@ -108,20 +108,25 @@ def _parse_equations_txt(path: Path) -> List[Equation]:
                             try:
                                 properties.append(Property(prop_str))
                             except ValueError:
-                                pass
+                                import logging
+                                logging.getLogger(__name__).debug(
+                                    "Unknown property value: %s", prop_str
+                                )
 
                 equation = Equation(
                     id=eq_id, latex=latex, name=name, properties=properties, description=""
                 )
                 equations.append(equation)
 
-            except (ValueError, IndexError):
+            except (ValueError, IndexError) as exc:
+                import logging
+                logging.getLogger(__name__).debug("Skipping malformed line %d: %s", line_num, exc)
                 continue
 
     return equations
 
 
-def parse_problems(filepath: str) -> List[Problem]:
+def parse_problems(filepath: str) -> list[Problem]:
     """Parse problems from JSON file.
 
     Args:
@@ -138,7 +143,7 @@ def parse_problems(filepath: str) -> List[Problem]:
     if not path.exists():
         raise ParseError(f"File not found: {filepath}")
 
-    with open(path, "r") as f:
+    with open(path, encoding="utf-8") as f:
         data = json.load(f)
 
     problems = []
@@ -155,15 +160,15 @@ def parse_problems(filepath: str) -> List[Problem]:
     return problems
 
 
-def validate_equations(equations: List[Equation]) -> Dict[str, Any]:
+def validate_equations(equations: list[Equation]) -> dict[str, Any]:
     """Validate equation data.
 
     Returns:
         Dictionary with validation results
     """
-    errors: List[str] = []
-    warnings: List[str] = []
-    by_property: Dict[str, int] = {}
+    errors: list[str] = []
+    warnings: list[str] = []
+    by_property: dict[str, int] = {}
 
     ids = set()
     for eq in equations:
@@ -184,7 +189,7 @@ def validate_equations(equations: List[Equation]) -> Dict[str, Any]:
     }
 
 
-def validate_problems(problems: List[Problem], max_equation_id: int) -> Dict[str, Any]:
+def validate_problems(problems: list[Problem], max_equation_id: int) -> dict[str, Any]:
     """Validate problem data.
 
     Args:
@@ -194,9 +199,9 @@ def validate_problems(problems: List[Problem], max_equation_id: int) -> Dict[str
     Returns:
         Dictionary with validation results
     """
-    errors: List[str] = []
-    warnings: List[str] = []
-    by_difficulty: Dict[str, int] = {"regular": 0, "hard": 0}
+    errors: list[str] = []
+    warnings: list[str] = []
+    by_difficulty: dict[str, int] = {"regular": 0, "hard": 0}
     with_answer = 0
 
     ids = set()

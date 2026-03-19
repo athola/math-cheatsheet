@@ -134,11 +134,14 @@ class TestAccuracyFormula:
     @given(results=result_lists(min_size=1))
     def test_all_correct_means_full_accuracy(self, results):
         """If every non-skipped result is correct, accuracy = 1.0."""
-        # Filter to make all results correct
-        for r in results:
-            if r.predicted_answer is not None:
-                r.actual_answer = r.predicted_answer
-                r.correct = True
+        # Build modified copies instead of mutating (Hypothesis anti-pattern)
+        from dataclasses import replace
+        results = [
+            replace(r, actual_answer=r.predicted_answer, correct=True)
+            if r.predicted_answer is not None
+            else r
+            for r in results
+        ]
 
         evaluator = Evaluator(model="test")
         evaluator.results = results
@@ -194,8 +197,8 @@ class TestResponseTime:
     def test_avg_response_time_non_negative(self, results):
         """avg_response_time_ms ≥ 0 for any result set."""
         # Ensure all times are non-negative
-        for r in results:
-            r.response_time_ms = abs(r.response_time_ms)
+        from dataclasses import replace
+        results = [replace(r, response_time_ms=abs(r.response_time_ms)) for r in results]
 
         evaluator = Evaluator(model="test")
         evaluator.results = results

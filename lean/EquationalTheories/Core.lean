@@ -130,6 +130,8 @@ namespace StdEqn
   def leftSemimedial : Equation :=
     ⟨Term.app (Term.app (Term.var 0) (Term.var 1)) (Term.app (Term.var 0) (Term.var 2)),
      Term.app (Term.var 0) (Term.app (Term.var 1) (Term.var 2))⟩
+  -- Note: leftSemimedial is the same law as leftDistributivity with sides swapped.
+  -- Both are retained for clarity in referencing different naming conventions.
 
   -- Left absorption: x * (x * y) = x * y
   def leftAbsorption : Equation :=

@@ -135,20 +135,20 @@ theorem bool_and_idempotent :
 
 /-! ## Feature: Non-implication witnesses
 
-These are compile-time witnesses that certain implications do NOT hold.
-Each provides a concrete magma where the premise holds but the conclusion fails. -/
+To prove that commutativity does NOT imply associativity (or vice versa),
+one must construct a concrete magma where the premise holds but the conclusion
+fails. Full `¬ implies` proofs require explicit countermodels on a finite
+carrier (e.g., Fin 3 or Fin 4).
 
-/-- Witness: Commutativity does NOT imply associativity.
-    The magma (Bool, x ∨ (y ∧ ¬x)) is commutative but not associative,
-    but we use a simpler approach: provide any comm ∧ ¬assoc magma. -/
--- Note: Full non-implication proofs require constructing explicit countermodels.
--- We state the shape here; filling requires picking a suitable finite carrier.
+The self-implications below demonstrate the reflexivity infrastructure;
+actual non-implication witnesses are a future work item tracked in the
+project backlog. -/
 
-/-- Self-implication: Commutativity implies commutativity. -/
+/-- Self-implication: Commutativity implies commutativity (reflexivity). -/
 theorem comm_implies_comm : implies StdEqn.commutativity StdEqn.commutativity :=
   implication_reflexivity _
 
-/-- Self-implication: Associativity implies associativity. -/
+/-- Self-implication: Associativity implies associativity (reflexivity). -/
 theorem assoc_implies_assoc : implies StdEqn.associativity StdEqn.associativity :=
   implication_reflexivity _
 

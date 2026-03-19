@@ -12,17 +12,24 @@ and property checks run 20-60x faster. Falls back to pure Python otherwise.
 from __future__ import annotations
 
 import functools
+import logging
 import os
 import tempfile
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 # Requires PYTHONPATH=src:tla/python (set by Makefile)
 from data_models import Counterexample, Magma
+
+_logger = logging.getLogger(__name__)
 
 try:
     from magma_core import generate_all_magmas as _rust_generate  # type: ignore[import-not-found]
 except ImportError:
     _rust_generate = None
+    _logger.warning(
+        "magma_core Rust extension not available; falling back to pure Python "
+        "(20-60x slower). Build with: cd rust && maturin develop --release"
+    )
 
 
 @functools.lru_cache(maxsize=8)
@@ -74,8 +81,8 @@ def to_python_magma(magma) -> Magma:
 
 
 def search_counterexample(
-    equations_holding: List[int], equation_to_test: int, max_size: int = 4
-) -> Optional[Counterexample]:
+    equations_holding: list[int], equation_to_test: int, max_size: int = 4
+) -> Counterexample | None:
     """
     Search for a magma where all `equations_holding` are true
     but `equation_to_test` is false.
@@ -86,7 +93,7 @@ def search_counterexample(
     )
 
 
-def evaluate_equation(magma: Magma, equation: str, assignment: Dict[str, int]) -> bool:
+def evaluate_equation(magma: Magma, equation: str, assignment: dict[str, int]) -> bool:
     """
     Evaluate an equation in a magma given variable assignment.
     """
@@ -104,8 +111,8 @@ class TLAModelChecker:
         self.tla_modules = ["Magma", "EquationChecking", "MagmaModel"]
 
     def check_property(
-        self, module: str, property_name: str, constants: Dict[str, Any]
-    ) -> Tuple[bool, Optional[str]]:
+        self, module: str, property_name: str, constants: dict[str, Any]
+    ) -> tuple[bool, str | None]:
         """
         Run TLC model checker to verify a property.
 
@@ -125,7 +132,7 @@ class TLAModelChecker:
         finally:
             os.unlink(config_path)
 
-    def _generate_config(self, constants: Dict[str, Any]) -> str:
+    def _generate_config(self, constants: dict[str, Any]) -> str:
         lines = ["------- MODULE MagmaModelConf -------"]
         for name, value in constants.items():
             lines.append(f"{name} == {self._format_tla_value(value)}")
@@ -146,10 +153,10 @@ class TLAModelChecker:
 
 
 # Predefined counterexamples for common non-implications
-COUNTEREXAMPLES: Dict[Tuple[int, int], Magma] = {}
+COUNTEREXAMPLES: dict[tuple[int, int], Magma] = {}
 
 
-def get_counterexample(premise_id: int, conclusion_id: int) -> Optional[Magma]:
+def get_counterexample(premise_id: int, conclusion_id: int) -> Magma | None:
     """Get known counterexample for implication premise_id => conclusion_id."""
     return COUNTEREXAMPLES.get((premise_id, conclusion_id))
 

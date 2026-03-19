@@ -116,13 +116,18 @@ class TestMagma:
 
     def test_to_dict_operation(self, xor_magma):
         d = xor_magma.to_dict_operation()
-        assert d[(0, 0)] == 0
-        assert d[(0, 1)] == 1
-        assert d[(1, 0)] == 1
-        assert d[(1, 1)] == 0
+        assert d["0,0"] == 0
+        assert d["0,1"] == 1
+        assert d["1,0"] == 1
+        assert d["1,1"] == 0
 
     def test_from_dict_operation_roundtrip(self, xor_magma):
-        d = xor_magma.to_dict_operation()
+        # from_dict_operation expects tuple keys (counterexample_db format)
+        d = {
+            (a, b): xor_magma.operation[a][b]
+            for a in range(xor_magma.size)
+            for b in range(xor_magma.size)
+        }
         rebuilt = Magma.from_dict_operation(xor_magma.elements, d)
         assert rebuilt.operation == xor_magma.operation
         assert rebuilt.size == xor_magma.size

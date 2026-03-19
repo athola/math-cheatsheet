@@ -104,6 +104,40 @@ class TestTermParsing:
         assert eq.variables() == {"x", "y"}
 
 
+class TestParserErrorPaths:
+    """
+    Feature: Parser produces clear errors on malformed input.
+
+    As a developer
+    I want parse errors to be caught and reported
+    So that malformed competition data doesn't cause silent failures.
+    """
+
+    @pytest.mark.unit
+    def test_no_equals_sign(self):
+        """Equation string without '=' should raise ValueError."""
+        with pytest.raises(ValueError, match="No '=' found"):
+            parse_equation("x * y")
+
+    @pytest.mark.unit
+    def test_empty_string(self):
+        """Empty string should raise ValueError."""
+        with pytest.raises(ValueError):
+            parse_equation("")
+
+    @pytest.mark.unit
+    def test_unmatched_parenthesis(self):
+        """Unmatched parenthesis should raise ValueError."""
+        with pytest.raises(ValueError, match="Expected '\\)'"):
+            parse_equation("(x * y = z")
+
+    @pytest.mark.unit
+    def test_unexpected_token(self):
+        """Unexpected token in expression should raise ValueError."""
+        with pytest.raises(ValueError, match="Unexpected"):
+            parse_equation("* = x")
+
+
 class TestTermProperties:
     """
     Feature: Compute structural properties of terms and equations.
@@ -375,10 +409,10 @@ class TestImplicationAnalysis:
         h = parse_equation("x = x * y")
         t = parse_equation("x * x = x")
         result = analyze_implication(h, t)
-        # This should be TRUE - LP satisfies both
-        # But our simple analyzer might not catch this via substitution
-        # It should at least not return FALSE (no counterexample exists)
-        assert result.verdict != ImplicationVerdict.FALSE or result.phase == "Phase 2"
+        assert result.verdict == ImplicationVerdict.TRUE, (
+            f"Expected TRUE for left-absorption => idempotency, "
+            f"got {result.verdict} at {result.phase}: {result.reason}"
+        )
 
     @pytest.mark.unit
     def test_collapse_target_false(self):

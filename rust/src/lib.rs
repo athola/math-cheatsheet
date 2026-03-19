@@ -49,8 +49,13 @@ impl Magma {
     }
 
     /// Get op(a, b).
-    fn op(&self, a: u8, b: u8) -> u8 {
-        self.table[a as usize * self.size as usize + b as usize]
+    fn op(&self, a: u8, b: u8) -> PyResult<u8> {
+        if a >= self.size || b >= self.size {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                format!("Indices ({}, {}) out of range for magma of size {}", a, b, self.size)
+            ));
+        }
+        Ok(self.table[a as usize * self.size as usize + b as usize])
     }
 
     /// Check associativity: (a*b)*c == a*(b*c) for all a,b,c.
@@ -184,8 +189,8 @@ impl Magma {
 
 /// Generate all magmas of a given size.
 ///
-/// Returns a list of Magma objects. Size is capped at 4 (4^16 = 4B magmas).
-/// For size <= 3 this is fast; size 4 requires ~17GB and is typically filtered.
+/// Returns a list of Magma objects. Size is capped at 3 (3^9 = 19683 magmas).
+/// For size 4+, use `count_properties` or `count_properties_parallel` instead.
 #[pyfunction]
 fn generate_all_magmas(size: u8) -> PyResult<Vec<Magma>> {
     if size == 0 {
@@ -429,8 +434,8 @@ impl PropertyCounts {
 
 /// Like count_properties but uses all CPU cores via Rayon.
 ///
-/// For size 3 this is ~4x faster; for size 4 this is the only
-/// feasible approach (4.3 billion magmas).
+/// Speedup scales with available CPU cores. For size 4 this is the
+/// only feasible approach (4.3 billion magmas).
 #[pyfunction]
 fn count_properties_parallel(py: Python<'_>, size: u8) -> PyResult<PropertyCounts> {
     if size == 0 {

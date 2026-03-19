@@ -154,6 +154,9 @@ class TestPropertyIndependence:
         # The key invariant: these are NOT the same predicate
         # (there exist magmas where one holds but not the other)
         note(f"assoc={assoc}, comm={comm}")
+        # Verify that properties return booleans (type invariant)
+        assert isinstance(assoc, bool), f"is_associative() returned {type(assoc)}"
+        assert isinstance(comm, bool), f"is_commutative() returned {type(comm)}"
 
 
 # ── Feature: Serialization roundtrip ────────────────────────────
@@ -167,8 +170,8 @@ class TestSerializationRoundtrip:
 
     @given(m=magmas())
     def test_dict_roundtrip_preserves_table(self, m: Magma):
-        """to_dict_operation → from_dict_operation roundtrip is identity."""
-        op_dict = m.to_dict_operation()
+        """from_dict_operation roundtrip with tuple keys is identity."""
+        op_dict = {(a, b): m.operation[a][b] for a in range(m.size) for b in range(m.size)}
         reconstructed = Magma.from_dict_operation(m.elements, op_dict)
 
         assert reconstructed.size == m.size
@@ -176,9 +179,17 @@ class TestSerializationRoundtrip:
         assert reconstructed.operation == m.operation
 
     @given(m=magmas())
+    def test_to_dict_operation_json_serializable(self, m: Magma):
+        """to_dict_operation returns string keys suitable for JSON."""
+        d = m.to_dict_operation()
+        for key in d:
+            assert isinstance(key, str)
+        assert len(d) == m.size * m.size
+
+    @given(m=magmas())
     def test_dict_roundtrip_preserves_properties(self, m: Magma):
         """Algebraic properties survive serialization roundtrip."""
-        op_dict = m.to_dict_operation()
+        op_dict = {(a, b): m.operation[a][b] for a in range(m.size) for b in range(m.size)}
         r = Magma.from_dict_operation(m.elements, op_dict)
 
         assert r.is_associative() == m.is_associative()

@@ -578,12 +578,12 @@ class TestMainCli:
 
     @pytest.mark.unit
     def test_main_json_output(self, capsys):
-        """main() with --json writes JSON to stderr."""
+        """main() with --json writes JSON to stdout."""
         main(["compliance", str(FINAL_PATH), "--json"])
         captured = capsys.readouterr()
         assert "COMPLIANCE" in captured.out
-        # JSON output goes to stderr
-        assert "compliance" in captured.err
+        # JSON output goes to stdout for piping
+        assert "compliance" in captured.out
 
     @pytest.mark.unit
     def test_main_default_args(self):

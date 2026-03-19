@@ -7,7 +7,6 @@ used across the Python codebase (src/, tla/python/, experiments/).
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Set, Tuple
 
 
 class Property(Enum):
@@ -33,13 +32,13 @@ class Equation:
     id: int
     latex: str
     name: str
-    properties: List[Property]
+    properties: list[Property]
     description: str = ""
 
     def __str__(self) -> str:
         return f"E{self.id}: {self.name}"
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "id": self.id,
             "latex": self.latex,
@@ -56,13 +55,13 @@ class Problem:
     id: int
     equation_1_id: int
     equation_2_id: int
-    answer: Optional[bool]  # True if E1 implies E2, False otherwise
+    answer: bool | None  # True if E1 implies E2, False otherwise
     difficulty: str  # "regular" or "hard"
 
     def __str__(self) -> str:
         return f"P{self.id}: Does E{self.equation_1_id} imply E{self.equation_2_id}?"
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "id": self.id,
             "equation_1": self.equation_1_id,
@@ -92,8 +91,26 @@ class Magma:
     """
 
     size: int
-    elements: List[int]
-    operation: List[List[int]]
+    elements: list[int]
+    operation: list[list[int]]
+
+    def __post_init__(self):
+        if self.size < 1:
+            raise ValueError(f"Magma size must be at least 1, got {self.size}")
+        if len(self.operation) != self.size:
+            raise ValueError(
+                f"Operation table must have {self.size} rows, got {len(self.operation)}"
+            )
+        for i, row in enumerate(self.operation):
+            if len(row) != self.size:
+                raise ValueError(
+                    f"Row {i} must have {self.size} columns, got {len(row)}"
+                )
+            for j, val in enumerate(row):
+                if not (0 <= val < self.size):
+                    raise ValueError(
+                        f"Entry [{i}][{j}]={val} out of range [0, {self.size})"
+                    )
 
     def op(self, a: int, b: int) -> int:
         return self.operation[a][b]
@@ -113,7 +130,7 @@ class Magma:
                     return False
         return True
 
-    def has_identity(self) -> Optional[int]:
+    def has_identity(self) -> int | None:
         for e in range(self.size):
             if all(self.op(e, a) == a and self.op(a, e) == a for a in range(self.size)):
                 return e
@@ -129,13 +146,17 @@ class Magma:
             result += f"{i}| " + " ".join(f"{self.op(i, j)}" for j in range(self.size)) + "\n"
         return result
 
-    def to_dict_operation(self) -> Dict[Tuple[int, int], int]:
-        """Convert Cayley table to dict representation for serialization."""
-        return {(a, b): self.operation[a][b] for a in range(self.size) for b in range(self.size)}
+    def to_dict_operation(self) -> dict[str, int]:
+        """Convert Cayley table to dict representation for JSON serialization."""
+        return {
+            f"{a},{b}": self.operation[a][b]
+            for a in range(self.size)
+            for b in range(self.size)
+        }
 
     @classmethod
     def from_dict_operation(
-        cls, carrier: List[int], op_dict: Dict[Tuple[int, int], int]
+        cls, carrier: list[int], op_dict: dict[tuple[int, int], int]
     ) -> "Magma":
         """Create from dict-based operation (counterexample_db format)."""
         size = len(carrier)
@@ -165,8 +186,8 @@ class Counterexample:
     premise_id: int
     conclusion_id: int
     magma: Magma
-    red_flags: Set[str] = field(default_factory=set)
-    assignment: Dict[str, int] = field(default_factory=dict)
+    red_flags: set[str] = field(default_factory=set)
+    assignment: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {

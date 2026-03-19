@@ -20,9 +20,8 @@ import json
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Optional
 
-from equation_analyzer import (
+from src.equation_analyzer import (
     ImplicationVerdict,
     analyze_implication,
     parse_equation,
@@ -156,11 +155,11 @@ class CompetitionResult:
 class HarnessReport:
     """Aggregate report across all validation angles."""
 
-    compliance: Optional[ComplianceResult] = None
-    structure: Optional[StructureResult] = None
-    accuracy: Optional[AccuracyResult] = None
-    regression: Optional[RegressionResult] = None
-    competition: Optional[CompetitionResult] = None
+    compliance: ComplianceResult | None = None
+    structure: StructureResult | None = None
+    accuracy: AccuracyResult | None = None
+    regression: RegressionResult | None = None
+    competition: CompetitionResult | None = None
     all_passed: bool = False
 
 
@@ -219,13 +218,14 @@ _KEY_TERMS = {
 }
 
 # Canonical magma short names and their descriptive aliases
-_MAGMA_NAMES = ["LP", "RP", "C0", "XR", "CM", "Z3"]
+_MAGMA_NAMES = ["LP", "RP", "C0", "XR", "CM", "N1", "Z3"]
 _MAGMA_ALIASES = {
     "LP": ["left projection", "left-projection", "x*y = x", "x*y=x"],
     "RP": ["right projection", "right-projection", "x*y = y", "x*y=y"],
     "C0": ["constant zero", "constant-zero", "x*y = 0", "constant operation"],
     "XR": ["xor", "z2 addition", "addition mod 2"],
     "CM": ["commutative non-associative", "non-associative"],
+    "N1": ["non-commutative non-associative", "non-comm"],
     "Z3": ["z/3z", "addition mod 3", "mod 3"],
 }
 
@@ -329,7 +329,7 @@ def validate_structure(cheatsheet_path: Path) -> StructureResult:
 
 
 def validate_accuracy(
-    problems: Optional[list[tuple[str, str, bool, str]]] = None,
+    problems: list[tuple[str, str, bool, str]] | None = None,
 ) -> AccuracyResult:
     """Test the decision procedure against known-answer problems."""
     if problems is None:
@@ -374,7 +374,7 @@ def validate_accuracy(
             else:
                 result.by_phase[phase]["incorrect"] += 1
 
-        except Exception as e:
+        except (ValueError, KeyError) as e:
             result.errors += 1
             result.failures.append(
                 ProblemResult(
@@ -401,7 +401,7 @@ def validate_accuracy(
 
 
 def validate_regression(
-    cheatsheet_dir: Optional[Path] = None,
+    cheatsheet_dir: Path | None = None,
 ) -> RegressionResult:
     """Compare accuracy across all cheatsheet versions.
 
@@ -509,7 +509,7 @@ def validate_competition(
 
 def run_harness(
     cheatsheet_path: Path,
-    angles: Optional[list[str]] = None,
+    angles: list[str] | None = None,
 ) -> HarnessReport:
     """Run the full validation harness or selected angles."""
     all_angles = {"compliance", "structure", "accuracy", "regression", "competition"}
@@ -652,7 +652,7 @@ def print_report(report: HarnessReport) -> None:
     print(f"{'=' * 60}")
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
     args = argv if argv is not None else sys.argv[1:]
 
@@ -676,7 +676,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 return {k: v for k, v in obj.__dict__.items() if not k.startswith("_")}
             return str(obj)
 
-        json.dump(asdict(report), sys.stderr, indent=2, default=_ser)
+        json.dump(asdict(report), sys.stdout, indent=2, default=_ser)
 
     return 0 if report.all_passed else 1
 

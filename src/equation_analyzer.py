@@ -1,10 +1,14 @@
 """Equation structure analyzer for equational implication problems.
 
-Implements the key heuristics from the v3 cheatsheet as computable functions:
-- Variable analysis (Phase 2)
-- Substitution detection (Phase 3)
-- Counterexample testing (Phase 4)
-- Structural comparison (Phase 7)
+Implements the v3 cheatsheet decision procedure as computable functions:
+- Phase 1: Instant decisions (tautology, collapse, identity)
+- Phase 2: Variable analysis (new variables in target)
+- Phase 3: Substitution detection (variable merging)
+- Phase 4: Counterexample testing (canonical + exhaustive magmas)
+- Phase 4b: Exhaustive 2-element search
+- Phase 5: Determined operation detection (absorption, constant law)
+- Phase 7: Structural heuristics (depth comparison)
+- Phase 8: Default (inconclusive → FALSE)
 
 Based on techniques from the Equational Theories Project (Tao et al., 2024-2025)
 and Birkhoff's completeness theorem for equational logic.
@@ -15,7 +19,6 @@ from __future__ import annotations
 import itertools
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Optional
 
 
 class NodeType(Enum):
@@ -29,32 +32,36 @@ class Term:
 
     node_type: NodeType
     name: str = ""  # variable name if VAR
-    left: Optional["Term"] = None  # left child if OP
-    right: Optional["Term"] = None  # right child if OP
+    left: Term | None = None  # left child if OP
+    right: Term | None = None  # right child if OP
 
     def variables(self) -> set[str]:
         if self.node_type == NodeType.VAR:
             return {self.name}
-        assert self.left is not None and self.right is not None
+        if self.left is None or self.right is None:
+            raise ValueError("OP node must have left and right children")
         return self.left.variables() | self.right.variables()
 
     def depth(self) -> int:
         if self.node_type == NodeType.VAR:
             return 0
-        assert self.left is not None and self.right is not None
+        if self.left is None or self.right is None:
+            raise ValueError("OP node must have left and right children")
         return 1 + max(self.left.depth(), self.right.depth())
 
     def size(self) -> int:
         """Count the number of * operations."""
         if self.node_type == NodeType.VAR:
             return 0
-        assert self.left is not None and self.right is not None
+        if self.left is None or self.right is None:
+            raise ValueError("OP node must have left and right children")
         return 1 + self.left.size() + self.right.size()
 
-    def substitute(self, mapping: dict[str, "Term"]) -> "Term":
+    def substitute(self, mapping: dict[str, Term]) -> Term:
         if self.node_type == NodeType.VAR:
             return mapping.get(self.name, self)
-        assert self.left is not None and self.right is not None
+        if self.left is None or self.right is None:
+            raise ValueError("OP node must have left and right children")
         return Term(
             NodeType.OP, left=self.left.substitute(mapping), right=self.right.substitute(mapping)
         )
@@ -63,7 +70,8 @@ class Term:
         """Evaluate this term in a finite magma given variable assignments."""
         if self.node_type == NodeType.VAR:
             return assignment[self.name]
-        assert self.left is not None and self.right is not None
+        if self.left is None or self.right is None:
+            raise ValueError("OP node must have left and right children")
         left_val = self.left.evaluate(table, assignment)
         right_val = self.right.evaluate(table, assignment)
         return table[left_val][right_val]
@@ -71,7 +79,8 @@ class Term:
     def __str__(self) -> str:
         if self.node_type == NodeType.VAR:
             return self.name
-        assert self.left is not None and self.right is not None
+        if self.left is None or self.right is None:
+            raise ValueError("OP node must have left and right children")
         return f"({self.left} * {self.right})"
 
 
@@ -91,7 +100,7 @@ class Equation:
     def total_ops(self) -> int:
         return self.lhs.size() + self.rhs.size()
 
-    def substitute(self, mapping: dict[str, Term]) -> "Equation":
+    def substitute(self, mapping: dict[str, Term]) -> Equation:
         return Equation(self.lhs.substitute(mapping), self.rhs.substitute(mapping))
 
     def holds_in(self, table: list[list[int]], n: int) -> bool:
@@ -259,14 +268,14 @@ class AnalysisResult:
     verdict: ImplicationVerdict
     phase: str
     reason: str
-    counterexample: Optional[CounterexampleMagma] = None
+    counterexample: CounterexampleMagma | None = None
 
 
 def analyze_implication(h: Equation, t: Equation) -> AnalysisResult:
     """Apply the v3 cheatsheet decision procedure programmatically."""
 
     # Phase 1: Instant decisions
-    if str(h) == str(t):
+    if h == t:
         return AnalysisResult(ImplicationVerdict.TRUE, "Phase 1a", "Identical equations")
 
     if _is_tautology(t):
@@ -345,17 +354,17 @@ def analyze_implication(h: Equation, t: Equation) -> AnalysisResult:
 
 def _is_tautology(eq: Equation) -> bool:
     """Check if both sides of the equation are structurally identical."""
-    return str(eq.lhs) == str(eq.rhs)
+    return eq.lhs == eq.rhs
 
 
 def _is_collapse(eq: Equation) -> bool:
-    """Check if the equation forces |M|=1 (e.g., x = y)."""
+    """Check if the equation is a variable equality (e.g., x = y), which forces |M|=1."""
     if eq.lhs.node_type == NodeType.VAR and eq.rhs.node_type == NodeType.VAR:
         return eq.lhs.name != eq.rhs.name
     return False
 
 
-def _check_simple_substitutions(h: Equation, t: Equation) -> Optional[AnalysisResult]:
+def _check_simple_substitutions(h: Equation, t: Equation) -> AnalysisResult | None:
     """Check if T can be obtained from H by setting variables equal."""
     h_vars = sorted(h.variables())
     if len(h_vars) < 2:
@@ -366,19 +375,24 @@ def _check_simple_substitutions(h: Equation, t: Equation) -> Optional[AnalysisRe
         for v2 in h_vars[i + 1 :]:
             mapping = {v2: Term(NodeType.VAR, name=v1)}
             specialized = h.substitute(mapping)
-            if str(specialized) == str(t):
+            if specialized == t:
                 return AnalysisResult(
                     ImplicationVerdict.TRUE, "Phase 3", f"T obtained from H by setting {v2}:={v1}"
                 )
     return None
 
 
-def _detect_determined_operation(eq: Equation) -> Optional[tuple[list[list[int]], str]]:
+def _detect_determined_operation(eq: Equation) -> tuple[list[list[int]], str] | None:
     """Detect if an equation completely determines the magma operation.
 
     Returns (table, name) if determined, None otherwise.
     Uses a 2-element magma for testing.
     """
+    # Note: "left absorption" here means x = x*y (forces left projection).
+    # This differs from Lean's StdEqn.leftAbsorption which is x*(x*y) = x*y
+    # (the standard absorption law). The naming difference is intentional:
+    # this function detects operation-determining equations.
+
     # Left absorption: x = x * y → forces left projection
     # Both children of OP must be vars, and the "other" var must differ.
     if (
@@ -438,13 +452,13 @@ def _detect_determined_operation(eq: Equation) -> Optional[tuple[list[list[int]]
         ):
             return [[0, 1], [0, 1]], "right projection (x*y=y)"
 
-    # Constant law: x * y = z * w (4 distinct vars, all in OP nodes)
+    # Constant law: x * y = z * w (3+ distinct vars, all in OP nodes)
     # This forces all products to be the same constant.
     if eq.lhs.node_type == NodeType.OP and eq.rhs.node_type == NodeType.OP:
         lhs_vars = eq.lhs.variables()
         rhs_vars = eq.rhs.variables()
         all_vars = lhs_vars | rhs_vars
-        # If all 4 leaf variables are distinct and both sides are single ops
+        # If leaf variables are distinct across sides (3+ total) and both sides are single ops
         if (
             eq.lhs.size() == 1
             and eq.rhs.size() == 1

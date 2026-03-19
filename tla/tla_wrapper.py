@@ -114,7 +114,7 @@ class TLCRunner:
 
         except subprocess.TimeoutExpired:
             return {"status": "timeout", "error": f"Model checking timed out after {timeout}s"}
-        except Exception as e:
+        except (FileNotFoundError, OSError) as e:
             return {"status": "error", "error": str(e)}
 
     def _parse_tlc_output(

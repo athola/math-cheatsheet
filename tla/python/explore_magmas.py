@@ -10,21 +10,26 @@ Uses the compiled Rust extension `magma_core` when available for
 """
 
 import json
+import logging
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 # Requires PYTHONPATH=src:tla/python (set by Makefile)
 from tla_bridge import generate_all_magmas, to_python_magma
 
 from data_models import Counterexample
 
+_logger = logging.getLogger(__name__)
+
 try:
     import magma_core as _rust  # type: ignore[import-not-found]
 except ImportError:
     _rust = None
+    _logger.warning(
+        "magma_core Rust extension not available; falling back to pure Python"
+    )
 
 
-def analyze_magmas(size: int) -> Dict:
+def analyze_magmas(size: int) -> dict:
     """Exhaustively analyze all magmas of given size.
 
     When the Rust extension is available, uses count_properties() to
@@ -72,7 +77,7 @@ def analyze_magmas(size: int) -> Dict:
     return results
 
 
-def find_property_correlations(size: int) -> List[Tuple[str, str, int, int]]:
+def find_property_correlations(size: int) -> list[tuple[str, str, int, int]]:
     """Find correlations between properties."""
     if _rust is not None:
         counts = _rust.count_properties(size)
@@ -85,7 +90,7 @@ def find_property_correlations(size: int) -> List[Tuple[str, str, int, int]]:
 
 def find_implication_counterexamples(
     premise: str, conclusion: str, max_size: int = 3
-) -> List[Counterexample]:
+) -> list[Counterexample]:
     """
     Find counterexamples to implication: premise => conclusion.
 
@@ -103,8 +108,8 @@ def find_implication_counterexamples(
                 )
                 for m in rust_magmas
             ]
-        except ValueError:
-            pass  # Unknown property, fall through to Python
+        except ValueError as exc:
+            _logger.info("Rust counterexample search failed (%s); using Python fallback", exc)
 
     property_checks = {
         "associative": lambda m: m.is_associative(),
@@ -113,8 +118,15 @@ def find_implication_counterexamples(
         "idempotent": lambda m: m.is_idempotent(),
     }
 
-    if premise not in property_checks or conclusion not in property_checks:
-        return []
+    valid_properties = set(property_checks.keys())
+    if premise not in property_checks:
+        raise ValueError(
+            f"Unknown property '{premise}'. Valid properties: {valid_properties}"
+        )
+    if conclusion not in property_checks:
+        raise ValueError(
+            f"Unknown property '{conclusion}'. Valid properties: {valid_properties}"
+        )
 
     check_premise = property_checks[premise]
     check_conclusion = property_checks[conclusion]
