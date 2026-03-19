@@ -206,14 +206,10 @@ def validate_problems(problems: List[Problem], max_equation_id: int) -> Dict[str
         ids.add(prob.id)
 
         if prob.equation_1_id < 1 or prob.equation_1_id > max_equation_id:
-            errors.append(
-                f"Problem {prob.id}: equation_1_id {prob.equation_1_id} out of range"
-            )
+            errors.append(f"Problem {prob.id}: equation_1_id {prob.equation_1_id} out of range")
 
         if prob.equation_2_id < 1 or prob.equation_2_id > max_equation_id:
-            errors.append(
-                f"Problem {prob.id}: equation_2_id {prob.equation_2_id} out of range"
-            )
+            errors.append(f"Problem {prob.id}: equation_2_id {prob.equation_2_id} out of range")
 
         if prob.difficulty in by_difficulty:
             by_difficulty[prob.difficulty] += 1

@@ -1,125 +1,132 @@
-# SAIR Math Cheatsheet Competition - Autonomous Research Mission
+# Math Cheatsheet — Equational Theories
 
-> **Mission**: Use autonomous AI agents (egregore + attune) to conduct deep research and build a winning cheatsheet for the SAIR Foundation mathematical reasoning competition.
+A formally verified 10KB reference for determining equational implication
+in magmas. Built for the
+[SAIR Mathematics Distillation Challenge][sair-challenge],
+using Lean 4, TLA+, Rust, and Python.
+
+## Competition Context
+
+The [SAIR Foundation][sair] (Tao & Davis, 2026) asks: given two
+equational laws over magmas, does Equation 1 imply Equation 2?
+Contestants produce a compact cheatsheet that a weak LLM reads at
+inference time — no internet, no calculator.
+
+| Constraint       | Value                           |
+|------------------|---------------------------------|
+| Cheatsheet limit | 10,240 bytes                    |
+| Training set     | 1,200 problems (1,000 + 200 hard) |
+| Stage 1 deadline | April 20, 2026                  |
+| Dataset origin   | [Equational Theories Project][etp] (22M+ implications) |
 
 ## Quick Start
 
 ```bash
-# 1. Initialize the repository
-git init
-git add .
-git commit -m "Initial commit: research mission setup"
-
-# 2. Summon the egregore (autonomous research orchestrator)
-/egregore:summon --bounded --window 14d
-
-# 3. Monitor progress (optional, runs automatically)
-/loop 10m /egregore:status
-
-# 4. Stop the egregore when complete
-/egregore:dismiss
+make setup            # create venv, install Python deps
+make test             # run Python test suite
+make test-rust        # run Rust proptest suite
+make lean-check       # check Lean 4 proofs
+make harness          # 5-angle cheatsheet validation
+make check            # all quality gates (lint + typecheck + test + rust)
 ```
 
-## What This Does
-
-The egregore will autonomously:
-
-1. **Research**: Deep dive into equational theories, magmas, and mathematical implication
-2. **Specify**: Define cheatsheet requirements based on competition rules
-3. **Plan**: Design experimentation strategy and validation framework
-4. **Execute**: Build, test, and iterate on the cheatsheet
-
-Each phase uses specialized skills and "ultrathink" methodology for comprehensive analysis.
+Run `make help` for the full target list.
 
 ## Architecture
 
-```
-/egregore:summon
-  └─> /attune:mission (runs through phases)
-       ├─> Brainstorm: Comprehensive domain research
-       ├─> Specify: Requirements and constraints
-       ├─> Plan: Experimentation strategy
-       └─> Execute: Build and validate cheatsheet
-```
+Four languages cover complementary verification angles:
 
-## Key Files
+| Layer          | Language    | Role                                              |
+|----------------|-------------|---------------------------------------------------|
+| Core pipeline  | Python 3.12 | Equation parsing, analysis, evaluation, harness   |
+| Fast search    | Rust (PyO3) | Exhaustive magma enumeration, counterexample search |
+| Formal proofs  | Lean 4      | Machine-checked implication proofs via mathlib     |
+| Model checking | TLA+        | State-space exploration of magma specifications    |
 
-- `docs/research-mission-plan.md` - Detailed mission architecture
-- `.egregore/manifest.json` - Work items for the egregore
-- `docs/project-brief.md` - Generated after brainstorm phase
-- `docs/specification.md` - Generated after specify phase
-- `docs/implementation-plan.md` - Generated after plan phase
-- `cheatsheet/final.txt` - Final output after execution
+## Verification Pipeline
 
-## Competition Context
+The cheatsheet harness validates from five independent angles
+(`make harness` or individual targets):
 
-**Task**: Determine if Equation 1 implies Equation 2 for magmas (algebraic structures with a binary operation).
+| Angle          | Target                  | What it checks                          |
+|----------------|-------------------------|-----------------------------------------|
+| Compliance     | `make harness-compliance`  | Size (<=10,240 B), encoding, format  |
+| Structure      | `make harness-structure`   | Content sections and decision procedure |
+| Accuracy       | `make harness-accuracy`    | Decision procedure vs. known problems   |
+| Regression     | `make harness-regression`  | Cross-version quality comparison        |
+| Competition    | `make harness-competition` | Simulated evaluation format             |
 
-**Constraints**:
-- Cheatsheet size: 10KB maximum
-- Evaluation: No-tools setting (no internet, calculators)
-- Training: 1200 problems (1000 regular + 200 hard)
-- Stage 1 deadline: April 20, 2026
+Current cheatsheet: `cheatsheet/final.txt` (9,911 bytes of 10,240 limit).
 
 ## Project Structure
 
 ```
 math-cheatsheet/
-├── .attune/              # Attune mission state
-├── .egregore/            # Egregore manifest and state
-├── docs/                 # Generated documentation
-├── research/
-│   ├── data/            # Competition data
-│   ├── notebooks/       # Jupyter research notebooks
-│   └── experiments/     # Experiment code
-├── experiments/          # Stand experiment scripts
-├── cheatsheet/          # Cheatsheet versions
-└── README.md            # This file
+├── src/                  # Python core: parsers, analyzers, evaluation
+├── rust/                 # Rust PyO3 extension (magma_core)
+├── lean/                 # Lean 4 formal proofs
+├── tla/                  # TLA+ specs and Python bridge
+├── tests/                # pytest suite (unit, property, cross-language)
+├── cheatsheet/           # Cheatsheet versions (v1 → v3 → final)
+├── experiments/          # Validation scripts and results
+├── scripts/              # CLI utilities (demos, evaluation, data)
+├── docs/                 # Specification, plans, analysis
+├── research/             # Domain research notes
+└── Makefile              # Build, test, and validate targets
 ```
 
-## Monitoring Progress
+## Development
 
-While the egregore runs, you can check status at any time:
+### Testing
 
 ```bash
-/egregore:status
+make test                 # full Python suite
+make test-property        # property-based tests (Hypothesis)
+make test-cross-language  # Python/Rust consistency checks
+make test-rust            # Rust proptest invariants
+make test-invariants      # all invariant tests combined
 ```
 
-This shows:
-- Current work item being processed
-- Completed items
-- Failed items (if any)
-- Overall progress
-
-## Self-Recovery
-
-The egregore includes automatic recovery for:
-- Session crashes
-- Rate limit errors
-- Context exhaustion
-- Network interruptions
-
-For enhanced recovery, install the watchdog:
+### Quality gates
 
 ```bash
-/egregore:install-watchdog
+make lint                 # ruff linting
+make typecheck            # mypy type checking
+make format               # auto-format with ruff
+make check                # lint + typecheck + test + rust
+```
+
+### Demos
+
+```bash
+make demo                 # run all demos
+make demo-magmas          # generate and inspect size-2 magmas
+make demo-properties      # magma property census (size 2-3)
+make demo-counterexamples # find counterexamples to non-implications
+make demo-cheatsheet      # show cheatsheet stats and byte count
 ```
 
 ## Documentation
 
-See `docs/research-mission-plan.md` for:
-- Detailed phase descriptions
-- Skills invoked at each stage
-- Success criteria
-- Risk mitigations
-- Timeline estimates
+- [Specification](docs/specification.md) — cheatsheet requirements
+  and acceptance criteria
+- [Implementation plan](docs/implementation-plan.md) — build strategy
+  and phases
+- [Competition rules analysis](docs/competition-rules-analysis.md) —
+  constraint deep-dive
+- [Formal verification summary](docs/formal-verification-summary.md) —
+  Lean/TLA+ results
+- [Research index](research/INDEX.md) — domain research notes
 
-## Competition Links
+## Links
 
-- [SAIR Foundation](https://sair.foundation/)
-- [Zulip Community](https://zulip.sair.foundation/)
-- [Equational Theories Project](https://www.equational-theories.org/)
+- [SAIR Foundation][sair]
+- [SAIR Competition Portal][sair-challenge]
+- [Equational Theories Project][etp]
+  (Tao et al. — the upstream Lean 4 dataset)
+- [Zulip Community][zulip]
 
----
-
-*This is an autonomous research mission. Once summoned, the egregore will work independently through all phases. Check progress periodically with `/egregore:status`.*
+[sair]: https://sair.foundation/
+[sair-challenge]: https://competition.sair.foundation/competitions/mathematics-distillation-challenge-equational-theories-stage1/overview
+[etp]: https://github.com/teorth/equational_theories
+[zulip]: https://zulip.sair.foundation/

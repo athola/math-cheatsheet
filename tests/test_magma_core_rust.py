@@ -213,10 +213,15 @@ class TestCheckEquation:
         return magma_core.Magma(3, [[0, 2, 1], [2, 1, 0], [1, 0, 2]])
 
     def test_associativity_true(self, xor):
-        assert magma_core.check_equation(xor, self.ASSOC_LHS, self.ASSOC_RHS, ["x", "y", "z"]) is True
+        assert (
+            magma_core.check_equation(xor, self.ASSOC_LHS, self.ASSOC_RHS, ["x", "y", "z"]) is True
+        )
 
     def test_associativity_false(self, non_assoc):
-        assert magma_core.check_equation(non_assoc, self.ASSOC_LHS, self.ASSOC_RHS, ["x", "y", "z"]) is False
+        assert (
+            magma_core.check_equation(non_assoc, self.ASSOC_LHS, self.ASSOC_RHS, ["x", "y", "z"])
+            is False
+        )
 
     def test_commutativity(self, xor):
         assert magma_core.check_equation(xor, self.COMM_LHS, self.COMM_RHS, ["x", "y"]) is True
@@ -252,8 +257,12 @@ class TestSearchEquationCounterexample:
 
     def test_assoc_not_implies_comm(self):
         ce = magma_core.search_equation_counterexample(
-            self.ASSOC_LHS, self.ASSOC_RHS, ["x", "y", "z"],
-            self.COMM_LHS, self.COMM_RHS, ["x", "y"],
+            self.ASSOC_LHS,
+            self.ASSOC_RHS,
+            ["x", "y", "z"],
+            self.COMM_LHS,
+            self.COMM_RHS,
+            ["x", "y"],
             max_size=3,
         )
         assert ce is not None
@@ -262,8 +271,12 @@ class TestSearchEquationCounterexample:
 
     def test_comm_not_implies_assoc(self):
         ce = magma_core.search_equation_counterexample(
-            self.COMM_LHS, self.COMM_RHS, ["x", "y"],
-            self.ASSOC_LHS, self.ASSOC_RHS, ["x", "y", "z"],
+            self.COMM_LHS,
+            self.COMM_RHS,
+            ["x", "y"],
+            self.ASSOC_LHS,
+            self.ASSOC_RHS,
+            ["x", "y", "z"],
             max_size=3,
         )
         assert ce is not None
@@ -273,8 +286,12 @@ class TestSearchEquationCounterexample:
     def test_reflexive_returns_none(self):
         """An equation always implies itself — no counterexample."""
         ce = magma_core.search_equation_counterexample(
-            self.COMM_LHS, self.COMM_RHS, ["x", "y"],
-            self.COMM_LHS, self.COMM_RHS, ["x", "y"],
+            self.COMM_LHS,
+            self.COMM_RHS,
+            ["x", "y"],
+            self.COMM_LHS,
+            self.COMM_RHS,
+            ["x", "y"],
             max_size=3,
         )
         assert ce is None

@@ -98,8 +98,11 @@ def problems(draw, max_eq_id: int = 100):
     answer = draw(st.one_of(st.none(), st.booleans()))
     difficulty = draw(st.sampled_from(["regular", "hard"]))
     return Problem(
-        id=prob_id, equation_1_id=eq1, equation_2_id=eq2,
-        answer=answer, difficulty=difficulty,
+        id=prob_id,
+        equation_1_id=eq1,
+        equation_2_id=eq2,
+        answer=answer,
+        difficulty=difficulty,
     )
 
 

@@ -29,9 +29,7 @@ class TestClosureInvariant:
         for a in range(m.size):
             for b in range(m.size):
                 result = m.op(a, b)
-                assert 0 <= result < m.size, (
-                    f"op({a}, {b}) = {result} not in [0, {m.size})"
-                )
+                assert 0 <= result < m.size, f"op({a}, {b}) = {result} not in [0, {m.size})"
 
     @given(m=magmas())
     def test_elements_match_size(self, m: Magma):
@@ -61,15 +59,11 @@ class TestIdentityUniqueness:
         """A magma has at most one two-sided identity element."""
         identities = []
         for e in range(m.size):
-            is_identity = all(
-                m.op(e, a) == a and m.op(a, e) == a for a in range(m.size)
-            )
+            is_identity = all(m.op(e, a) == a and m.op(a, e) == a for a in range(m.size))
             if is_identity:
                 identities.append(e)
 
-        assert len(identities) <= 1, (
-            f"Multiple identities found: {identities}"
-        )
+        assert len(identities) <= 1, f"Multiple identities found: {identities}"
 
     @given(m=magmas())
     def test_has_identity_returns_unique_element(self, m: Magma):
@@ -95,9 +89,7 @@ class TestCommutativitySymmetry:
     def test_commutative_iff_symmetric_table(self, m: Magma):
         """is_commutative() ↔ ∀a,b: op(a,b) = op(b,a)."""
         is_symmetric = all(
-            m.operation[a][b] == m.operation[b][a]
-            for a in range(m.size)
-            for b in range(m.size)
+            m.operation[a][b] == m.operation[b][a] for a in range(m.size) for b in range(m.size)
         )
         assert m.is_commutative() == is_symmetric
 
@@ -114,9 +106,7 @@ class TestIdempotenceDiagonal:
     @given(m=magmas())
     def test_idempotent_iff_diagonal_identity(self, m: Magma):
         """is_idempotent() ↔ ∀a: op(a,a) = a."""
-        diagonal_is_identity = all(
-            m.operation[a][a] == a for a in range(m.size)
-        )
+        diagonal_is_identity = all(m.operation[a][a] == a for a in range(m.size))
         assert m.is_idempotent() == diagonal_is_identity
 
 

@@ -15,6 +15,9 @@ import pytest
 from src.cheatsheet_harness import (
     KNOWN_PROBLEMS,
     MAX_CHEATSHEET_BYTES,
+    HarnessReport,
+    main,
+    print_report,
     run_harness,
     validate_accuracy,
     validate_competition,
@@ -480,3 +483,141 @@ class TestHarnessIntegration:
             report.competition.passed,
         ]
         assert report.all_passed == all(individual)
+
+
+class TestStructureHeadingFallback:
+    """Cover the markdown ## heading fallback path in validate_structure."""
+
+    @pytest.mark.unit
+    def test_section_headings_used_when_few_phases(self, tmp_path):
+        """When fewer than 4 PHASE markers exist but >=4 ## headings, count headings."""
+        content = (
+            "## OVERVIEW\ntext\n## METHOD\ntext\n"
+            "## EXAMPLES\ntext\n## REFERENCE\ntext\n"
+            "## APPENDIX\ntext\n"
+            "counterexample substitution tautology variable magma implication true false\n"
+            "LP RP C0 XR CM Z3 example\n"
+        )
+        cs = tmp_path / "headings.txt"
+        cs.write_text(content, encoding="utf-8")
+        result = validate_structure(cs)
+        assert len(result.phases_found) >= 4
+
+    @pytest.mark.unit
+    def test_non_utf8_compliance_fails(self, tmp_path):
+        """Non-UTF-8 encoded file fails compliance."""
+        bad = tmp_path / "bad_encoding.txt"
+        bad.write_bytes(b"\x80\x81\x82" * 100)
+        result = validate_compliance(bad)
+        assert not result.is_utf8
+        assert not result.passed
+
+
+class TestPrintFunctions:
+    """Cover CLI print/report functions (lines 555-685)."""
+
+    @pytest.mark.unit
+    def test_print_report_all_angles(self, capsys):
+        """print_report handles a fully populated HarnessReport."""
+        report = run_harness(FINAL_PATH)
+        print_report(report)
+        captured = capsys.readouterr()
+        assert "COMPLIANCE" in captured.out
+        assert "STRUCTURE" in captured.out
+        assert "ACCURACY" in captured.out
+        assert "REGRESSION" in captured.out
+        assert "COMPETITION" in captured.out
+        assert "OVERALL" in captured.out
+
+    @pytest.mark.unit
+    def test_print_report_partial(self, capsys):
+        """print_report handles a report with only some angles."""
+        report = run_harness(FINAL_PATH, angles=["compliance"])
+        print_report(report)
+        captured = capsys.readouterr()
+        assert "COMPLIANCE" in captured.out
+        # Should still show overall
+        assert "OVERALL" in captured.out
+
+    @pytest.mark.unit
+    def test_print_report_empty(self, capsys):
+        """print_report handles an empty report without errors."""
+        report = HarnessReport()
+        print_report(report)
+        captured = capsys.readouterr()
+        assert "OVERALL" in captured.out
+
+    @pytest.mark.unit
+    def test_print_report_with_failures(self, capsys):
+        """print_report shows failure details from accuracy."""
+        # Use a custom problem set that will produce failures
+        bad_problems = [
+            ("x = x", "x * y = y * x", True, "should-fail"),  # tautology-H => FALSE
+        ]
+        result = validate_accuracy(bad_problems)
+        report = HarnessReport(accuracy=result)
+        print_report(report)
+        captured = capsys.readouterr()
+        assert "ACCURACY" in captured.out
+
+
+class TestMainCli:
+    """Cover the main() CLI entry point."""
+
+    @pytest.mark.unit
+    def test_main_all_returns_zero_on_pass(self):
+        """main() returns 0 when all angles pass."""
+        ret = main(["all", str(FINAL_PATH)])
+        assert ret == 0
+
+    @pytest.mark.unit
+    def test_main_single_angle(self):
+        """main() with a single angle."""
+        ret = main(["compliance", str(FINAL_PATH)])
+        assert ret == 0
+
+    @pytest.mark.unit
+    def test_main_json_output(self, capsys):
+        """main() with --json writes JSON to stderr."""
+        main(["compliance", str(FINAL_PATH), "--json"])
+        captured = capsys.readouterr()
+        assert "COMPLIANCE" in captured.out
+        # JSON output goes to stderr
+        assert "compliance" in captured.err
+
+    @pytest.mark.unit
+    def test_main_default_args(self):
+        """main() with no args uses defaults."""
+        ret = main([])
+        assert ret in (0, 1)
+
+    @pytest.mark.unit
+    def test_main_missing_cheatsheet(self, tmp_path):
+        """main() returns 1 for missing cheatsheet."""
+        ret = main(["compliance", str(tmp_path / "nope.txt")])
+        assert ret == 1
+
+
+class TestRegressionEdgeCases:
+    """Edge cases for regression validation."""
+
+    @pytest.mark.unit
+    def test_empty_cheatsheet_dir(self, tmp_path):
+        """Regression with empty dir produces no versions and fails."""
+        result = validate_regression(cheatsheet_dir=tmp_path)
+        assert len(result.versions) == 0
+        assert result.best_version == ""
+
+    @pytest.mark.unit
+    def test_single_version_no_regression(self, tmp_path):
+        """A single version cannot regress against itself."""
+        cs = tmp_path / "v1.txt"
+        cs.write_text(
+            "PHASE 1\nPHASE 2\nPHASE 3\nPHASE 4\n"
+            "PHASE 5\nPHASE 6\nPHASE 7\nPHASE 8\n"
+            "counterexample substitution tautology variable magma implication true false\n"
+            "LP RP C0 XR CM Z3 example QUICK REFERENCE\n",
+            encoding="utf-8",
+        )
+        result = validate_regression(cheatsheet_dir=tmp_path)
+        assert len(result.regressions) == 0

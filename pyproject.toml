@@ -39,6 +39,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "property: property-based invariant tests",
     "cross_language: cross-language consistency tests",
+    "unit: unit tests for isolated function behavior",
 ]
 
 [tool.ruff]

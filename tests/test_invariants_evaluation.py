@@ -49,9 +49,7 @@ def evaluation_results(draw, model: str = "test"):
 @st.composite
 def result_lists(draw, min_size: int = 0, max_size: int = 50):
     """Generate a list of evaluation results."""
-    return draw(
-        st.lists(evaluation_results(), min_size=min_size, max_size=max_size)
-    )
+    return draw(st.lists(evaluation_results(), min_size=min_size, max_size=max_size))
 
 
 # ── Feature: Counting invariant ─────────────────────────────────

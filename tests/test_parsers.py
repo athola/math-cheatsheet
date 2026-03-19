@@ -156,3 +156,109 @@ class TestValidateProblems:
         result = validate_problems(problems, max_equation_id=10)
         assert len(result["errors"]) == 1
         assert "out of range" in result["errors"][0]
+
+    def test_duplicate_problem_ids(self):
+        problems = [
+            Problem(id=1, equation_1_id=1, equation_2_id=2, answer=True, difficulty="regular"),
+            Problem(id=1, equation_1_id=3, equation_2_id=4, answer=False, difficulty="regular"),
+        ]
+        result = validate_problems(problems, max_equation_id=10)
+        assert any("Duplicate" in e for e in result["errors"])
+
+    def test_difficulty_counts(self):
+        problems = [
+            Problem(id=1, equation_1_id=1, equation_2_id=2, answer=True, difficulty="regular"),
+            Problem(id=2, equation_1_id=1, equation_2_id=3, answer=False, difficulty="hard"),
+            Problem(id=3, equation_1_id=1, equation_2_id=4, answer=True, difficulty="hard"),
+        ]
+        result = validate_problems(problems, max_equation_id=10)
+        assert result["stats"]["by_difficulty"]["regular"] == 1
+        assert result["stats"]["by_difficulty"]["hard"] == 2
+
+    def test_with_answer_count(self):
+        problems = [
+            Problem(id=1, equation_1_id=1, equation_2_id=2, answer=True, difficulty="regular"),
+            Problem(id=2, equation_1_id=1, equation_2_id=3, answer=None, difficulty="regular"),
+            Problem(id=3, equation_1_id=1, equation_2_id=4, answer=False, difficulty="regular"),
+        ]
+        result = validate_problems(problems, max_equation_id=10)
+        assert result["stats"]["with_answer"] == 2
+
+    def test_eq2_out_of_range(self):
+        problems = [
+            Problem(id=1, equation_1_id=1, equation_2_id=99, answer=True, difficulty="regular"),
+        ]
+        result = validate_problems(problems, max_equation_id=10)
+        assert len(result["errors"]) == 1
+        assert "equation_2_id" in result["errors"][0]
+
+
+class TestParseTxtEdgeCases:
+    """Edge cases for the _parse_equations_txt path."""
+
+    def test_malformed_lines_skipped(self, tmp_path):
+        content = """# header
+1 | Good | x*y | [associative]
+bad line without pipes
+2 | Also Good | x*z | [commutative]
+"""
+        p = tmp_path / "eq.txt"
+        p.write_text(content)
+        equations = parse_equations(str(p))
+        assert len(equations) == 2
+
+    def test_non_numeric_id_skipped(self, tmp_path):
+        content = "abc | Bad | x | [associative]\n1 | Good | x | [commutative]\n"
+        p = tmp_path / "eq.txt"
+        p.write_text(content)
+        equations = parse_equations(str(p))
+        assert len(equations) == 1
+        assert equations[0].id == 1
+
+    def test_unknown_property_in_txt_skipped(self, tmp_path):
+        content = "1 | Test | x | [associative,totally_fake_property]\n"
+        p = tmp_path / "eq.txt"
+        p.write_text(content)
+        equations = parse_equations(str(p))
+        assert len(equations) == 1
+        assert len(equations[0].properties) == 1
+
+    def test_empty_properties_bracket(self, tmp_path):
+        content = "1 | Test | x | []\n"
+        p = tmp_path / "eq.txt"
+        p.write_text(content)
+        equations = parse_equations(str(p))
+        assert len(equations) == 1
+        assert len(equations[0].properties) == 0
+
+    def test_empty_file(self, tmp_path):
+        p = tmp_path / "empty.txt"
+        p.write_text("")
+        equations = parse_equations(str(p))
+        assert len(equations) == 0
+
+    def test_problem_without_answer(self, tmp_path):
+        data = {
+            "problems": [
+                {"id": 1, "equation_1": 1, "equation_2": 2},
+            ]
+        }
+        p = tmp_path / "probs.json"
+        p.write_text(json.dumps(data))
+        problems = parse_problems(str(p))
+        assert problems[0].answer is None
+        assert problems[0].difficulty == "regular"
+
+
+class TestValidateEquationsStats:
+    def test_property_count_stats(self):
+        equations = [
+            Equation(id=1, latex="", name="A", properties=[Property.ASSOCIATIVE]),
+            Equation(
+                id=2, latex="", name="B", properties=[Property.ASSOCIATIVE, Property.COMMUTATIVE]
+            ),
+        ]
+        result = validate_equations(equations)
+        assert result["stats"]["by_property"]["associative"] == 2
+        assert result["stats"]["by_property"]["commutative"] == 1
+        assert result["stats"]["total"] == 2
