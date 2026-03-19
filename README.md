@@ -5,12 +5,17 @@ in magmas. Built for the
 [SAIR Mathematics Distillation Challenge][sair-challenge],
 using Lean 4, TLA+, Rust, and Python.
 
+**98.01% accuracy** on the full 22M implication matrix
+(4,694 equations, 22,028,942 pairs) | 9,911 bytes of 10,240 limit
+
 ## Competition Context
 
 The [SAIR Foundation][sair] (Tao & Davis, 2026) asks: given two
 equational laws over magmas, does Equation 1 imply Equation 2?
 Contestants produce a compact cheatsheet that a weak LLM reads at
-inference time — no internet, no calculator.
+inference time — no internet, no calculator. Top 1,000 entries
+advance to Stage 2, which requires formal proofs or valid
+counterexamples.
 
 | Constraint       | Value                           |
 |------------------|---------------------------------|
@@ -18,6 +23,16 @@ inference time — no internet, no calculator.
 | Training set     | 1,200 problems (1,000 + 200 hard) |
 | Stage 1 deadline | April 20, 2026                  |
 | Dataset origin   | [Equational Theories Project][etp] (22M+ implications) |
+
+## Status
+
+| Metric                  | Value         |
+|-------------------------|---------------|
+| Decision procedure accuracy | 98.01% (22M pairs) |
+| Cheatsheet size         | 9,911 / 10,240 bytes |
+| Competition submission  | 9,851 bytes (`competition-v1.txt`) |
+| Equations covered       | 4,694         |
+| Cheatsheet versions     | v1 → v2 → v3 → final |
 
 ## Quick Start
 
@@ -27,6 +42,7 @@ make test             # run Python test suite
 make test-rust        # run Rust proptest suite
 make lean-check       # check Lean 4 proofs
 make harness          # 5-angle cheatsheet validation
+make evaluate-v4      # evaluate v4 decision procedure (requires implications.csv)
 make check            # all quality gates (lint + typecheck + test + rust)
 ```
 
@@ -57,6 +73,7 @@ The cheatsheet harness validates from five independent angles
 | Competition    | `make harness-competition` | Simulated evaluation format             |
 
 Current cheatsheet: `cheatsheet/final.txt` (9,911 bytes of 10,240 limit).
+Competition submission: `cheatsheet/competition.txt` → `competition-v1.txt` (9,851 bytes).
 
 ## Project Structure
 
@@ -67,11 +84,12 @@ math-cheatsheet/
 ├── lean/                 # Lean 4 formal proofs
 ├── tla/                  # TLA+ specs and Python bridge
 ├── tests/                # pytest suite (unit, property, cross-language)
-├── cheatsheet/           # Cheatsheet versions (v1 → v3 → final)
+├── cheatsheet/           # Cheatsheet versions (v1 → v3 → final, competition)
 ├── experiments/          # Validation scripts and results
 ├── scripts/              # CLI utilities (demos, evaluation, data)
 ├── docs/                 # Specification, plans, analysis
 ├── research/             # Domain research notes
+├── .claude/commands/     # Claude Code slash commands (evaluate, status)
 └── Makefile              # Build, test, and validate targets
 ```
 
@@ -116,6 +134,8 @@ make demo-cheatsheet      # show cheatsheet stats and byte count
   constraint deep-dive
 - [Formal verification summary](docs/formal-verification-summary.md) —
   Lean/TLA+ results
+- [State-of-the-art research](docs/sota-research.md) — prior work
+  and techniques survey
 - [Research index](research/INDEX.md) — domain research notes
 
 ## Links

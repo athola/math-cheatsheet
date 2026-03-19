@@ -11,7 +11,7 @@ Math Distillation Challenge. The cheatsheet guides an LLM to correctly
 answer "Does Equation 1 imply Equation 2?" for equational laws of magmas.
 
 **Input**: 4694 equations from the Equational Theories Project, 22M implication pairs
-**Output**: cheatsheet/v4.txt (<=10,240 bytes) maximizing TRUE/FALSE accuracy
+**Output**: cheatsheet/final.txt (<=10,240 bytes) maximizing TRUE/FALSE accuracy
 
 ## Functional Requirements
 
@@ -128,14 +128,13 @@ answer "Does Equation 1 imply Equation 2?" for equational laws of magmas.
 
 ## Out of Scope (Stage 1)
 
-- LLM-in-the-loop evaluation (no API calls to test cheatsheet with real LLM)
 - Lean proof generation
 - Stage 2 counterexample format
 - Confidence calibration
 
 ## Success Criteria
 
-- [ ] cheatsheet/v4.txt <= 10,240 bytes
+- [ ] cheatsheet/final.txt <= 10,240 bytes
 - [ ] Decision procedure accuracy >= 93% on competition problems
 - [ ] All 4694 equations handled correctly
 - [ ] Evaluation harness runs against real implication matrix
