@@ -53,8 +53,10 @@ Thumbs.db
 .env.*.local
 
 # Egregore ephemeral state
-.egregore/budget.json
-.egregore/session_summary.md
+.egregore/
+
+# Ephemeral planning docs
+docs/plans/
 
 # Lean 4 / Lake build artifacts
 lean/.lake/
