@@ -27,20 +27,22 @@ EVERY equation. VERDICT: TRUE.
 An equation forces |M|=1 ("collapse") if satisfying it in a magma with
 2+ elements leads to a contradiction. Key patterns:
 
-TYPE A: x = y (directly equates two different variables)
-TYPE B: x = (term involving y but not x on the "output" side)
-  Examples: x = y◇y, x = y◇z, x = y◇(z◇w), x = (y◇z)◇w
-  Rule: If LHS is a single variable x, and RHS contains a variable y≠x
-  that appears ONLY in the RHS (not in LHS), AND either:
-    - RHS has no occurrence of x at all, OR
-    - x appears only inside a ◇ with a "free" variable
-  then it's likely collapse.
-TYPE C: Nested collapse: x = y◇(x◇z), x = (y◇x)◇z, etc.
-  where a new variable y is applied to a term containing x.
+DEFINITE COLLAPSE (100% reliable):
+  If LHS is a single variable x and x does NOT appear anywhere in RHS.
+  Examples: x = y◇y, x = y◇z, x = y◇(z◇w), x = (y◇z)◇w,
+    x = y◇(z◇(w◇u)), x = ((y◇z)◇w)◇u
+  Why: setting x=0, x=1 in a 2-element magma forces 0 = RHS(y,z,...)
+  and 1 = RHS(y,z,...) for all y,z, which is contradictory.
+  Also: x = y (two distinct variables equated).
 
-IMPORTANT: ~32% of all equations are collapse. When in doubt about E1
-being collapse, check if E1's variables include one that's "free" (only
-appears on one side as an argument to ◇ with another free variable).
+LIKELY COLLAPSE (high probability):
+  LHS is variable x, RHS contains x but also has "free" variables
+  appearing only on RHS side, applied via ◇ with other free variables.
+  Examples: x = y◇(x◇z), x = (y◇x)◇z, x = y◇(y◇z)
+  These often force |M|=1 but some are merely "strong" (not collapse).
+
+~32% of all 4694 equations are collapse. When in doubt, lean toward
+collapse=TRUE if LHS is a variable with extra variables on RHS.
 
 ═══════════════════════════════════════════════════════════════════════
 STEP 4: TAUTOLOGY HYPOTHESIS
