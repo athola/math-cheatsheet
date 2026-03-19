@@ -1,0 +1,143 @@
+{
+  "summary": {
+    "total_claims": 13,
+    "lean_verified": 7,
+    "tla_verified": 4,
+    "both_verified": 4,
+    "not_verified": 6,
+    "lean_coverage": 0.5384615384615384,
+    "tla_coverage": 0.3076923076923077
+  },
+  "claims": [
+    {
+      "claim_type": "true_implication",
+      "equation_e1": "When evaluating E\u2081",
+      "equation_e2": "E\u2082, watch for these structural red flags",
+      "confidence": 0.9,
+      "lean_verified": false,
+      "tla_verified": false,
+      "proof_path": null,
+      "counterexample_path": null
+    },
+    {
+      "claim_type": "true_implication",
+      "equation_e1": "| Non-commutative operation | E\u2081",
+      "equation_e2": "commutativity likely FALSE | 95% |",
+      "confidence": 0.95,
+      "lean_verified": true,
+      "tla_verified": false,
+      "proof_path": "lean/EquationalTheories/Implication.lean",
+      "counterexample_path": null
+    },
+    {
+      "claim_type": "true_implication",
+      "equation_e1": "| Non-associative operation | E\u2081",
+      "equation_e2": "associativity likely FALSE | 87% |",
+      "confidence": 0.87,
+      "lean_verified": true,
+      "tla_verified": false,
+      "proof_path": "lean/EquationalTheories/Implication.lean",
+      "counterexample_path": null
+    },
+    {
+      "claim_type": "false_implication",
+      "equation_e1": "### Associativity",
+      "equation_e2": "Commutativity",
+      "confidence": 0.9,
+      "lean_verified": true,
+      "tla_verified": true,
+      "proof_path": "lean/EquationalTheories/Implication.lean",
+      "counterexample_path": "tla/Counterexamples/CounterexampleExplorer.tla"
+    },
+    {
+      "claim_type": "false_implication",
+      "equation_e1": "### Commutativity",
+      "equation_e2": "Associativity",
+      "confidence": 0.9,
+      "lean_verified": true,
+      "tla_verified": true,
+      "proof_path": "lean/EquationalTheories/Implication.lean",
+      "counterexample_path": "tla/Counterexamples/CounterexampleExplorer.tla"
+    },
+    {
+      "claim_type": "false_implication",
+      "equation_e1": "### Idempotence",
+      "equation_e2": "Commutativity",
+      "confidence": 0.9,
+      "lean_verified": true,
+      "tla_verified": true,
+      "proof_path": "lean/EquationalTheories/Implication.lean",
+      "counterexample_path": "tla/Counterexamples/CounterexampleExplorer.tla"
+    },
+    {
+      "claim_type": "false_implication",
+      "equation_e1": "### Left Identity",
+      "equation_e2": "Right Identity",
+      "confidence": 0.9,
+      "lean_verified": true,
+      "tla_verified": true,
+      "proof_path": "lean/EquationalTheories/Implication.lean",
+      "counterexample_path": "tla/Counterexamples/CounterexampleExplorer.tla"
+    },
+    {
+      "claim_type": "true_implication",
+      "equation_e1": "### Left Identity + Right Identity",
+      "equation_e2": "Identity",
+      "confidence": 0.9,
+      "lean_verified": true,
+      "tla_verified": false,
+      "proof_path": "lean/EquationalTheories/Implication.lean",
+      "counterexample_path": null
+    },
+    {
+      "claim_type": "true_implication",
+      "equation_e1": "### Medial",
+      "equation_e2": "Specific Symmetries",
+      "confidence": 0.9,
+      "lean_verified": false,
+      "tla_verified": false,
+      "proof_path": null,
+      "counterexample_path": null
+    },
+    {
+      "claim_type": "true_implication",
+      "equation_e1": "**Example**",
+      "equation_e2": "anything about itself",
+      "confidence": 0.9,
+      "lean_verified": false,
+      "tla_verified": false,
+      "proof_path": null,
+      "counterexample_path": null
+    },
+    {
+      "claim_type": "true_implication",
+      "equation_e1": "**Example**",
+      "equation_e2": "(a\u00b7b)\u00b7c = a\u00b7(b\u00b7c) [same equation, different vars]",
+      "confidence": 0.9,
+      "lean_verified": false,
+      "tla_verified": false,
+      "proof_path": null,
+      "counterexample_path": null
+    },
+    {
+      "claim_type": "true_implication",
+      "equation_e1": "START",
+      "equation_e2": "E\u2082",
+      "confidence": 0.9,
+      "lean_verified": false,
+      "tla_verified": false,
+      "proof_path": null,
+      "counterexample_path": null
+    },
+    {
+      "claim_type": "true_implication",
+      "equation_e1": "TRUE",
+      "equation_e2": "Id(100%)",
+      "confidence": 0.9,
+      "lean_verified": false,
+      "tla_verified": false,
+      "proof_path": null,
+      "counterexample_path": null
+    }
+  ]
+}

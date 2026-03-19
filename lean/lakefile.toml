@@ -1,0 +1,15 @@
+name = "EquationalTheories"
+version = "0.1.0"
+defaultTargets = ["equationaltheories"]
+
+[[lean_lib]]
+name = "EquationalTheories"
+
+[[lean_exe]]
+name = "equationaltheories"
+root = "Main"
+
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4"
+rev = "v4.28.0"

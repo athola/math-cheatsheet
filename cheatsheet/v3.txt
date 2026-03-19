@@ -1,0 +1,242 @@
+EQUATIONAL IMPLICATION SOLVER
+==============================
+TASK: Given hypothesis H and target T (universally quantified equations
+about binary operation * on set M), decide: does H imply T?
+H implies T = EVERY magma satisfying H must also satisfy T.
+
+CRITICAL: ~63% of implications are FALSE. Default FALSE when unsure.
+TRUE: derive T from H via substitution/rewriting.
+FALSE: find ONE magma satisfying H but not T.
+
+================================================================
+PHASE 1: INSTANT DECISIONS
+================================================================
+
+Answer TRUE immediately if:
+(a) H and T are the same equation (up to variable renaming).
+    x*(y*z)=(x*y)*z is the same as a*(b*c)=(a*b)*c.
+(b) T is a tautology — both sides are syntactically identical.
+    Example target: x*y = x*y, or x = x. Every magma satisfies these.
+(c) H forces |M|=1 (the singleton/collapse law):
+    H is "x = y" or equivalent — forces all elements equal.
+    A 1-element magma satisfies every equation. TRUE for any T.
+
+Answer FALSE immediately if:
+(d) T forces |M|=1 (like x=y) but H allows larger magmas.
+(e) H is a tautology (x=x) and T is not — H constrains nothing.
+
+================================================================
+PHASE 2: VARIABLE ANALYSIS (very powerful)
+================================================================
+
+Let vars(H) = set of distinct variables in H.
+Let vars(T) = set of distinct variables in T.
+
+RULE: If T contains a variable NOT in H → almost always FALSE.
+(Only exception: H is a collapse law forcing |M|=1.)
+
+Why: H constrains relationships among its own variables only.
+A variable absent from H represents an unconstrained element.
+Non-trivial magmas will have elements violating T's extra claims.
+
+Example: H: x*(x*x)=x [1 variable], T: x*y=y*x [2 variables]
+Variable y is not in H. H says nothing about distinct elements → FALSE.
+
+GUIDELINE: If |vars(T)| > |vars(H)| → strongly lean FALSE.
+If |vars(T)| <= |vars(H)| → proceed to Phase 3.
+
+================================================================
+PHASE 3: SUBSTITUTION TEST
+================================================================
+
+T follows from H if you can obtain T by replacing variables in H
+with specific terms. This is guaranteed by Birkhoff's completeness
+theorem: H implies T iff T is derivable by substitution rewrites.
+
+Substitutions to try:
+  (i)   Set two variables equal (y:=x, z:=y, w:=x, etc.)
+  (ii)  Replace variable with compound: z:=x*y, w:=y*z, etc.
+  (iii) Replace variable with self-product: y:=x*x
+
+If any substitution transforms H into T → TRUE.
+
+EXAMPLE (TRUE):
+  H: x*(y*z) = (x*y)*z     T: x*(x*z) = (x*x)*z
+  Set y:=x in H → x*(x*z) = (x*x)*z → matches T exactly. TRUE.
+
+EXAMPLE (TRUE - chained):
+  H: x*(y*z) = (x*y)*z     T: (a*b)*(c*d) = a*(b*(c*d))
+  Apply H to right side: a*(b*(c*d)) = a*((b*c)*d) = (a*(b*c))*d
+  Apply H: = ((a*b)*c)*d. Apply H to left: (a*b)*(c*d) = ((a*b)*c)*d.
+  Both sides equal → TRUE.
+
+================================================================
+PHASE 4: COUNTEREXAMPLE TESTING
+================================================================
+
+Test these canonical magmas. If any satisfies H but violates T → FALSE.
+
+How to test on {0,1}: enumerate all variable assignments.
+  2 variables → 4 cases: (0,0),(0,1),(1,0),(1,1)
+  3 variables → 8 cases
+  4 variables → 16 cases
+Compute each side using the multiplication table. If all assignments
+satisfy H, then check T the same way.
+
+--- MAGMA LP (Left Projection): x*y = x ---
+  0*0=0  0*1=0  |  1*0=1  1*1=1
+  Key properties: associative, idempotent (x*x=x), NOT commutative
+  Satisfies many equations involving x on the left side of products.
+  USE TO REFUTE: any T requiring commutativity or right-side effects.
+  Quick test: In LP, any nested expression evaluates to its leftmost
+  variable. So x*(y*z) = x, (x*y)*z = x, x*(y*(z*w)) = x, etc.
+
+--- MAGMA RP (Right Projection): x*y = y ---
+  0*0=0  0*1=1  |  1*0=0  1*1=1
+  Key properties: associative, idempotent, NOT commutative
+  Any nested expression evaluates to its rightmost variable.
+  USE TO REFUTE: commutativity targets, left-side claims.
+
+--- MAGMA C0 (Constant Zero): x*y = 0 for all x,y ---
+  0*0=0  0*1=0  |  1*0=0  1*1=0
+  Key properties: associative, commutative, NOT idempotent (1*1=0!=1)
+  All products equal 0. x*(y*z) = 0, (x*y)*z = 0. Always equal.
+  USE TO REFUTE: idempotency targets, identity element existence.
+
+--- MAGMA XR (XOR / addition mod 2): x*y = x+y mod 2 ---
+  0*0=0  0*1=1  |  1*0=1  1*1=0
+  Key properties: commutative, associative, identity=0, x*x=0
+  USE TO REFUTE: idempotency (1*1=0!=1), equations needing x*x=x.
+
+--- MAGMA CM (Commutative but Non-Associative) ---
+  0*0=1  0*1=1  |  1*0=1  1*1=0
+  Key properties: commutative, NOT associative
+  Check: (0*0)*1 = 1*1 = 0, but 0*(0*1) = 0*1 = 1. Not equal.
+  USE TO REFUTE: associativity targets when H needs commutativity.
+
+--- MAGMA Z3 (addition mod 3) on {0,1,2} ---
+  0*0=0  0*1=1  0*2=2 | 1*0=1  1*1=2  1*2=0 | 2*0=2  2*1=0  2*2=1
+  Key: commutative, associative, identity=0, NOT idempotent (1*1=2)
+  USE TO REFUTE: harder cases needing 3 elements. Many equations hold
+  in all 2-element magmas but fail here.
+
+================================================================
+PHASE 5: ABSORPTION AND DETERMINATION
+================================================================
+
+Some hypotheses COMPLETELY DETERMINE the operation:
+
+If H says x = x*y → forces LEFT PROJECTION: x*y = x for all x,y.
+If H says x = y*x → forces RIGHT PROJECTION: x*y = y for all x,y.
+If H says x*y = z*w (4 distinct vars) → forces CONSTANT: x*y = c.
+
+Once the operation is determined, DIRECTLY EVALUATE T:
+
+Example: H: x = x*y → operation is LP. Check T: x*y = y*x?
+  0*1 = 0, 1*0 = 1. Not equal → FALSE.
+
+Example: H: x = x*y → LP. Check T: (x*y)*z = x*(y*z)?
+  LP: (x*y)*z = x*z = x. And x*(y*z) = x*y = x. Both = x → TRUE.
+
+Example: H: x*y = z*w → constant c. Check T: x*y = y*x?
+  c = c → TRUE (all products are the same constant).
+
+================================================================
+PHASE 6: REWRITE ANALYSIS
+================================================================
+
+Use H as a rewrite rule: replace LHS(H) with RHS(H) in expressions.
+
+1. Orient H as rewrite: LHS(H) → RHS(H) (or try reverse)
+2. Find a subexpression of T's LHS matching H's LHS pattern
+3. Replace with H's RHS
+4. Repeat until T's LHS equals T's RHS → TRUE
+5. If stuck after 3 steps → likely FALSE
+
+Also try rewriting T's RHS toward T's LHS.
+Also try reverse orientation: RHS(H) → LHS(H).
+
+================================================================
+PHASE 7: STRUCTURAL HEURISTICS
+================================================================
+
+DEPTH: Count max nesting of *.
+  depth(x) = 0, depth(a*b) = 1 + max(depth(a), depth(b))
+  If depth(T) > depth(H): T is more complex → lean FALSE.
+  If depth(T) < depth(H): T is simpler → check more carefully.
+
+OPERATION COUNT: Count number of * symbols.
+  More * in H = stronger constraint (more likely to imply simpler T).
+  More * in T = harder to derive → lean FALSE.
+
+INDEPENDENCE: These property pairs are MUTUALLY INDEPENDENT:
+  Associativity <-/-> Commutativity
+  Associativity <-/-> Idempotency
+  Commutativity <-/-> Idempotency
+  Left identity <-/-> Right identity
+  If H is "about" property P and T is "about" independent Q → FALSE.
+
+DUALITY: Swapping all left/right arguments gives the "dual" equation.
+  E.g., dual of x*(y*z) is (z*y)*x. If H implies T, then dual(H)
+  implies dual(T). Use this to halve your checking work.
+
+================================================================
+PHASE 8: ADVANCED COUNTEREXAMPLE TECHNIQUES
+================================================================
+
+LINEAR MODELS: Try x*y = a*x + b*y over integers mod n.
+  Subtraction (a=1,b=-1): x*y = x-y. NOT commutative, NOT associative.
+  If H holds under subtraction but T does not → FALSE.
+
+SELECTIVE TESTING: When LP/RP/C0/XR all violate H,
+  try all 16 possible 2-element magma tables on {0,1}
+  (2^4 = 16 choices for 0*0, 0*1, 1*0, 1*1). Check each against H.
+
+================================================================
+QUICK REFERENCE PATTERNS
+================================================================
+
+ALWAYS TRUE:
+  Same equation (rename vars) → TRUE
+  Tautology target (x=x) → TRUE
+  Collapse hypothesis (x=y) → TRUE for any T
+  Valid substitution of H gives T → TRUE
+
+ALMOST ALWAYS FALSE:
+  New variable in T not in H → FALSE
+  1-var H, 2+ var T → FALSE
+  Independent properties → FALSE
+  Commutativity target + LP satisfies H → FALSE
+  Idempotency target + C0 satisfies H → FALSE
+  Associativity target + CM satisfies H → FALSE
+  More complex T than H → FALSE
+
+DEFAULT: If all phases are inconclusive → FALSE (63% base rate).
+
+================================================================
+COMPLETE WORKED EXAMPLES
+================================================================
+
+Q: x*(y*z)=(x*y)*z for all x,y,z. Must x*y=y*x for all x,y?
+H=associativity, T=commutativity. Independent properties.
+LP satisfies H (all expressions = leftmost var). LP violates T: 0*1=0!=1=1*0.
+Answer: FALSE.
+
+Q: x*(y*z)=(x*y)*z for all x,y,z. Must x*(x*y)=(x*x)*y for all x,y?
+Set y:=x in H: x*(x*z)=(x*x)*z. Rename z to y: x*(x*y)=(x*x)*y = T.
+Answer: TRUE (by substitution).
+
+Q: x*y=y*x for all x,y. Must (x*y)*z=x*(y*z) for all x,y,z?
+H=commutativity, T=associativity. Independent properties.
+CM satisfies H (commutative). CM violates T: (0*0)*1=1*1=0, 0*(0*1)=0*1=1.
+Answer: FALSE.
+
+Q: x*y=z*w for all x,y,z,w. Must x*y=y*x for all x,y?
+H forces constant operation (all products equal). So x*y=c=y*x.
+Answer: TRUE.
+
+Q: x=x*y for all x,y. Must x*x=x for all x?
+H forces LP: x*y=x. Then x*x=x. TRUE.
+
+Q: x*(x*x)=x for all x. Must x*y=y*x for all x,y?
+H has {x}, T has {x,y}. New variable y → FALSE.

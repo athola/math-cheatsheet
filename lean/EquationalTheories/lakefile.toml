@@ -1,0 +1,10 @@
+name = "EquationalTheories"
+version = "0.1.0"
+defaultTargets = ["equationaltheories"]
+
+[[lean_lib]]
+name = "EquationalTheories"
+
+[[lean_exe]]
+name = "equationaltheories"
+root = "Main"

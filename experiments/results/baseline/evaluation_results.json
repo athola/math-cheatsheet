@@ -1,0 +1,122 @@
+[
+  {
+    "problem_id": 1,
+    "equation_1_id": 13,
+    "equation_2_id": 5,
+    "predicted_answer": true,
+    "actual_answer": true,
+    "correct": true,
+    "response_time_ms": 0.000476837158203125,
+    "model": "simulated",
+    "prompt_tokens": 0,
+    "completion_tokens": 0
+  },
+  {
+    "problem_id": 2,
+    "equation_1_id": 16,
+    "equation_2_id": 13,
+    "predicted_answer": true,
+    "actual_answer": true,
+    "correct": true,
+    "response_time_ms": 0.0002384185791015625,
+    "model": "simulated",
+    "prompt_tokens": 0,
+    "completion_tokens": 0
+  },
+  {
+    "problem_id": 3,
+    "equation_1_id": 1,
+    "equation_2_id": 2,
+    "predicted_answer": true,
+    "actual_answer": false,
+    "correct": false,
+    "response_time_ms": 0.0,
+    "model": "simulated",
+    "prompt_tokens": 0,
+    "completion_tokens": 0
+  },
+  {
+    "problem_id": 4,
+    "equation_1_id": 13,
+    "equation_2_id": 1,
+    "predicted_answer": true,
+    "actual_answer": true,
+    "correct": true,
+    "response_time_ms": 0.0,
+    "model": "simulated",
+    "prompt_tokens": 0,
+    "completion_tokens": 0
+  },
+  {
+    "problem_id": 5,
+    "equation_1_id": 2,
+    "equation_2_id": 1,
+    "predicted_answer": false,
+    "actual_answer": false,
+    "correct": true,
+    "response_time_ms": 0.0002384185791015625,
+    "model": "simulated",
+    "prompt_tokens": 0,
+    "completion_tokens": 0
+  },
+  {
+    "problem_id": 6,
+    "equation_1_id": 2,
+    "equation_2_id": 5,
+    "predicted_answer": false,
+    "actual_answer": false,
+    "correct": true,
+    "response_time_ms": 0.0,
+    "model": "simulated",
+    "prompt_tokens": 0,
+    "completion_tokens": 0
+  },
+  {
+    "problem_id": 7,
+    "equation_1_id": 15,
+    "equation_2_id": 5,
+    "predicted_answer": true,
+    "actual_answer": true,
+    "correct": true,
+    "response_time_ms": 0.0002384185791015625,
+    "model": "simulated",
+    "prompt_tokens": 0,
+    "completion_tokens": 0
+  },
+  {
+    "problem_id": 8,
+    "equation_1_id": 5,
+    "equation_2_id": 8,
+    "predicted_answer": true,
+    "actual_answer": false,
+    "correct": false,
+    "response_time_ms": 0.0,
+    "model": "simulated",
+    "prompt_tokens": 0,
+    "completion_tokens": 0
+  },
+  {
+    "problem_id": 9,
+    "equation_1_id": 15,
+    "equation_2_id": 1,
+    "predicted_answer": true,
+    "actual_answer": true,
+    "correct": true,
+    "response_time_ms": 0.0,
+    "model": "simulated",
+    "prompt_tokens": 0,
+    "completion_tokens": 0
+  },
+  {
+    "problem_id": 10,
+    "equation_1_id": 13,
+    "equation_2_id": 8,
+    "predicted_answer": true,
+    "actual_answer": true,
+    "correct": true,
+    "response_time_ms": 0.0002384185791015625,
+    "model": "simulated",
+    "prompt_tokens": 0,
+    "completion_tokens": 0
+  }
+]

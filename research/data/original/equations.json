@@ -1,0 +1,942 @@
+{
+  "count": 100,
+  "source": "synthetic",
+  "note": "Real competition data unavailable - using synthetic examples",
+  "equations": [
+    {
+      "id": 1,
+      "latex": "(x * y) * z = x * (y * z)",
+      "name": "Associativity",
+      "properties": [
+        "associative"
+      ],
+      "description": "Associative property"
+    },
+    {
+      "id": 2,
+      "latex": "x * y = y * x",
+      "name": "Commutativity",
+      "properties": [
+        "commutative"
+      ],
+      "description": "Commutative property"
+    },
+    {
+      "id": 3,
+      "latex": "\\exists e \\forall x: e * x = x",
+      "name": "Left Identity",
+      "properties": [
+        "left_identity"
+      ],
+      "description": "Left identity element exists"
+    },
+    {
+      "id": 4,
+      "latex": "\\exists e \\forall x: x * e = x",
+      "name": "Right Identity",
+      "properties": [
+        "right_identity"
+      ],
+      "description": "Right identity element exists"
+    },
+    {
+      "id": 5,
+      "latex": "\\exists e \\forall x: e * x = x * e = x",
+      "name": "Two-sided Identity",
+      "properties": [
+        "bidentity"
+      ],
+      "description": "Two-sided identity element"
+    },
+    {
+      "id": 6,
+      "latex": "\\exists e \\forall x \\exists x^{-1}: x^{-1} * x = e",
+      "name": "Left Inverse",
+      "properties": [
+        "left_inverse",
+        "bidentity"
+      ],
+      "description": "Left inverse exists"
+    },
+    {
+      "id": 7,
+      "latex": "\\exists e \\forall x \\exists x^{-1}: x * x^{-1} = e",
+      "name": "Right Inverse",
+      "properties": [
+        "right_inverse",
+        "bidentity"
+      ],
+      "description": "Right inverse exists"
+    },
+    {
+      "id": 8,
+      "latex": "\\forall x \\exists x^{-1}: x * x^{-1} = x^{-1} * x = e",
+      "name": "Two-sided Inverse",
+      "properties": [
+        "inverse",
+        "bidentity"
+      ],
+      "description": "Two-sided inverse"
+    },
+    {
+      "id": 9,
+      "latex": "x * x = x",
+      "name": "Idempotence",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Idempotent property"
+    },
+    {
+      "id": 10,
+      "latex": "\\exists 0 \\forall x: 0 * x = 0",
+      "name": "Left Zero",
+      "properties": [
+        "zero"
+      ],
+      "description": "Left zero element"
+    },
+    {
+      "id": 11,
+      "latex": "x * (y * z) = (x * y) * (x * z)",
+      "name": "Left Self-Distributive",
+      "properties": [
+        "distributive"
+      ],
+      "description": "Left self-distributive property"
+    },
+    {
+      "id": 12,
+      "latex": "(x * y) * z = (x * z) * (y * z)",
+      "name": "Right Self-Distributive",
+      "properties": [
+        "distributive"
+      ],
+      "description": "Right self-distributive property"
+    },
+    {
+      "id": 13,
+      "latex": "Associative + Two-sided Identity + Two-sided Inverse",
+      "name": "Group Axioms",
+      "properties": [
+        "associative",
+        "bidentity",
+        "inverse"
+      ],
+      "description": "Full group structure"
+    },
+    {
+      "id": 14,
+      "latex": "Associative operation only",
+      "name": "Semigroup",
+      "properties": [
+        "associative"
+      ],
+      "description": "Semigroup structure"
+    },
+    {
+      "id": 15,
+      "latex": "Associative + Two-sided Identity",
+      "name": "Monoid",
+      "properties": [
+        "associative",
+        "bidentity"
+      ],
+      "description": "Monoid structure"
+    },
+    {
+      "id": 16,
+      "latex": "Group + Commutative",
+      "name": "Abelian Group",
+      "properties": [
+        "associative",
+        "bidentity",
+        "inverse",
+        "commutative"
+      ],
+      "description": "Abelian group structure"
+    },
+    {
+      "id": 17,
+      "latex": "Equation_17_latex",
+      "name": "Synthetic Equation 17",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 18,
+      "latex": "Equation_18_latex",
+      "name": "Synthetic Equation 18",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 19,
+      "latex": "Equation_19_latex",
+      "name": "Synthetic Equation 19",
+      "properties": [
+        "associative",
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['associative', 'commutative']"
+    },
+    {
+      "id": 20,
+      "latex": "Equation_20_latex",
+      "name": "Synthetic Equation 20",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 21,
+      "latex": "Equation_21_latex",
+      "name": "Synthetic Equation 21",
+      "properties": [
+        "associative",
+        "bidentity"
+      ],
+      "description": "Generated equation with properties: ['associative', 'bidentity']"
+    },
+    {
+      "id": 22,
+      "latex": "Equation_22_latex",
+      "name": "Synthetic Equation 22",
+      "properties": [
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['commutative']"
+    },
+    {
+      "id": 23,
+      "latex": "Equation_23_latex",
+      "name": "Synthetic Equation 23",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 24,
+      "latex": "Equation_24_latex",
+      "name": "Synthetic Equation 24",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 25,
+      "latex": "Equation_25_latex",
+      "name": "Synthetic Equation 25",
+      "properties": [
+        "associative",
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['associative', 'commutative']"
+    },
+    {
+      "id": 26,
+      "latex": "Equation_26_latex",
+      "name": "Synthetic Equation 26",
+      "properties": [
+        "bidentity"
+      ],
+      "description": "Generated equation with properties: ['bidentity']"
+    },
+    {
+      "id": 27,
+      "latex": "Equation_27_latex",
+      "name": "Synthetic Equation 27",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 28,
+      "latex": "Equation_28_latex",
+      "name": "Synthetic Equation 28",
+      "properties": [
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['commutative']"
+    },
+    {
+      "id": 29,
+      "latex": "Equation_29_latex",
+      "name": "Synthetic Equation 29",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 30,
+      "latex": "Equation_30_latex",
+      "name": "Synthetic Equation 30",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 31,
+      "latex": "Equation_31_latex",
+      "name": "Synthetic Equation 31",
+      "properties": [
+        "associative",
+        "commutative",
+        "bidentity"
+      ],
+      "description": "Generated equation with properties: ['associative', 'commutative', 'bidentity']"
+    },
+    {
+      "id": 32,
+      "latex": "Equation_32_latex",
+      "name": "Synthetic Equation 32",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 33,
+      "latex": "Equation_33_latex",
+      "name": "Synthetic Equation 33",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 34,
+      "latex": "Equation_34_latex",
+      "name": "Synthetic Equation 34",
+      "properties": [
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['commutative']"
+    },
+    {
+      "id": 35,
+      "latex": "Equation_35_latex",
+      "name": "Synthetic Equation 35",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 36,
+      "latex": "Equation_36_latex",
+      "name": "Synthetic Equation 36",
+      "properties": [
+        "bidentity",
+        "inverse"
+      ],
+      "description": "Generated equation with properties: ['bidentity', 'inverse']"
+    },
+    {
+      "id": 37,
+      "latex": "Equation_37_latex",
+      "name": "Synthetic Equation 37",
+      "properties": [
+        "associative",
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['associative', 'commutative']"
+    },
+    {
+      "id": 38,
+      "latex": "Equation_38_latex",
+      "name": "Synthetic Equation 38",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 39,
+      "latex": "Equation_39_latex",
+      "name": "Synthetic Equation 39",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 40,
+      "latex": "Equation_40_latex",
+      "name": "Synthetic Equation 40",
+      "properties": [
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['commutative']"
+    },
+    {
+      "id": 41,
+      "latex": "Equation_41_latex",
+      "name": "Synthetic Equation 41",
+      "properties": [
+        "associative",
+        "bidentity"
+      ],
+      "description": "Generated equation with properties: ['associative', 'bidentity']"
+    },
+    {
+      "id": 42,
+      "latex": "Equation_42_latex",
+      "name": "Synthetic Equation 42",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 43,
+      "latex": "Equation_43_latex",
+      "name": "Synthetic Equation 43",
+      "properties": [
+        "associative",
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['associative', 'commutative']"
+    },
+    {
+      "id": 44,
+      "latex": "Equation_44_latex",
+      "name": "Synthetic Equation 44",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 45,
+      "latex": "Equation_45_latex",
+      "name": "Synthetic Equation 45",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 46,
+      "latex": "Equation_46_latex",
+      "name": "Synthetic Equation 46",
+      "properties": [
+        "commutative",
+        "bidentity"
+      ],
+      "description": "Generated equation with properties: ['commutative', 'bidentity']"
+    },
+    {
+      "id": 47,
+      "latex": "Equation_47_latex",
+      "name": "Synthetic Equation 47",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 48,
+      "latex": "Equation_48_latex",
+      "name": "Synthetic Equation 48",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 49,
+      "latex": "Equation_49_latex",
+      "name": "Synthetic Equation 49",
+      "properties": [
+        "associative",
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['associative', 'commutative']"
+    },
+    {
+      "id": 50,
+      "latex": "Equation_50_latex",
+      "name": "Synthetic Equation 50",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 51,
+      "latex": "Equation_51_latex",
+      "name": "Synthetic Equation 51",
+      "properties": [
+        "associative",
+        "bidentity"
+      ],
+      "description": "Generated equation with properties: ['associative', 'bidentity']"
+    },
+    {
+      "id": 52,
+      "latex": "Equation_52_latex",
+      "name": "Synthetic Equation 52",
+      "properties": [
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['commutative']"
+    },
+    {
+      "id": 53,
+      "latex": "Equation_53_latex",
+      "name": "Synthetic Equation 53",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 54,
+      "latex": "Equation_54_latex",
+      "name": "Synthetic Equation 54",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 55,
+      "latex": "Equation_55_latex",
+      "name": "Synthetic Equation 55",
+      "properties": [
+        "associative",
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['associative', 'commutative']"
+    },
+    {
+      "id": 56,
+      "latex": "Equation_56_latex",
+      "name": "Synthetic Equation 56",
+      "properties": [
+        "bidentity"
+      ],
+      "description": "Generated equation with properties: ['bidentity']"
+    },
+    {
+      "id": 57,
+      "latex": "Equation_57_latex",
+      "name": "Synthetic Equation 57",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 58,
+      "latex": "Equation_58_latex",
+      "name": "Synthetic Equation 58",
+      "properties": [
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['commutative']"
+    },
+    {
+      "id": 59,
+      "latex": "Equation_59_latex",
+      "name": "Synthetic Equation 59",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 60,
+      "latex": "Equation_60_latex",
+      "name": "Synthetic Equation 60",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 61,
+      "latex": "Equation_61_latex",
+      "name": "Synthetic Equation 61",
+      "properties": [
+        "associative",
+        "commutative",
+        "bidentity"
+      ],
+      "description": "Generated equation with properties: ['associative', 'commutative', 'bidentity']"
+    },
+    {
+      "id": 62,
+      "latex": "Equation_62_latex",
+      "name": "Synthetic Equation 62",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 63,
+      "latex": "Equation_63_latex",
+      "name": "Synthetic Equation 63",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 64,
+      "latex": "Equation_64_latex",
+      "name": "Synthetic Equation 64",
+      "properties": [
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['commutative']"
+    },
+    {
+      "id": 65,
+      "latex": "Equation_65_latex",
+      "name": "Synthetic Equation 65",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 66,
+      "latex": "Equation_66_latex",
+      "name": "Synthetic Equation 66",
+      "properties": [
+        "bidentity"
+      ],
+      "description": "Generated equation with properties: ['bidentity']"
+    },
+    {
+      "id": 67,
+      "latex": "Equation_67_latex",
+      "name": "Synthetic Equation 67",
+      "properties": [
+        "associative",
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['associative', 'commutative']"
+    },
+    {
+      "id": 68,
+      "latex": "Equation_68_latex",
+      "name": "Synthetic Equation 68",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 69,
+      "latex": "Equation_69_latex",
+      "name": "Synthetic Equation 69",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 70,
+      "latex": "Equation_70_latex",
+      "name": "Synthetic Equation 70",
+      "properties": [
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['commutative']"
+    },
+    {
+      "id": 71,
+      "latex": "Equation_71_latex",
+      "name": "Synthetic Equation 71",
+      "properties": [
+        "associative",
+        "bidentity",
+        "inverse"
+      ],
+      "description": "Generated equation with properties: ['associative', 'bidentity', 'inverse']"
+    },
+    {
+      "id": 72,
+      "latex": "Equation_72_latex",
+      "name": "Synthetic Equation 72",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 73,
+      "latex": "Equation_73_latex",
+      "name": "Synthetic Equation 73",
+      "properties": [
+        "associative",
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['associative', 'commutative']"
+    },
+    {
+      "id": 74,
+      "latex": "Equation_74_latex",
+      "name": "Synthetic Equation 74",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 75,
+      "latex": "Equation_75_latex",
+      "name": "Synthetic Equation 75",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 76,
+      "latex": "Equation_76_latex",
+      "name": "Synthetic Equation 76",
+      "properties": [
+        "commutative",
+        "bidentity"
+      ],
+      "description": "Generated equation with properties: ['commutative', 'bidentity']"
+    },
+    {
+      "id": 77,
+      "latex": "Equation_77_latex",
+      "name": "Synthetic Equation 77",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 78,
+      "latex": "Equation_78_latex",
+      "name": "Synthetic Equation 78",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 79,
+      "latex": "Equation_79_latex",
+      "name": "Synthetic Equation 79",
+      "properties": [
+        "associative",
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['associative', 'commutative']"
+    },
+    {
+      "id": 80,
+      "latex": "Equation_80_latex",
+      "name": "Synthetic Equation 80",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 81,
+      "latex": "Equation_81_latex",
+      "name": "Synthetic Equation 81",
+      "properties": [
+        "associative",
+        "bidentity"
+      ],
+      "description": "Generated equation with properties: ['associative', 'bidentity']"
+    },
+    {
+      "id": 82,
+      "latex": "Equation_82_latex",
+      "name": "Synthetic Equation 82",
+      "properties": [
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['commutative']"
+    },
+    {
+      "id": 83,
+      "latex": "Equation_83_latex",
+      "name": "Synthetic Equation 83",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 84,
+      "latex": "Equation_84_latex",
+      "name": "Synthetic Equation 84",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 85,
+      "latex": "Equation_85_latex",
+      "name": "Synthetic Equation 85",
+      "properties": [
+        "associative",
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['associative', 'commutative']"
+    },
+    {
+      "id": 86,
+      "latex": "Equation_86_latex",
+      "name": "Synthetic Equation 86",
+      "properties": [
+        "bidentity"
+      ],
+      "description": "Generated equation with properties: ['bidentity']"
+    },
+    {
+      "id": 87,
+      "latex": "Equation_87_latex",
+      "name": "Synthetic Equation 87",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 88,
+      "latex": "Equation_88_latex",
+      "name": "Synthetic Equation 88",
+      "properties": [
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['commutative']"
+    },
+    {
+      "id": 89,
+      "latex": "Equation_89_latex",
+      "name": "Synthetic Equation 89",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 90,
+      "latex": "Equation_90_latex",
+      "name": "Synthetic Equation 90",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 91,
+      "latex": "Equation_91_latex",
+      "name": "Synthetic Equation 91",
+      "properties": [
+        "associative",
+        "commutative",
+        "bidentity"
+      ],
+      "description": "Generated equation with properties: ['associative', 'commutative', 'bidentity']"
+    },
+    {
+      "id": 92,
+      "latex": "Equation_92_latex",
+      "name": "Synthetic Equation 92",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 93,
+      "latex": "Equation_93_latex",
+      "name": "Synthetic Equation 93",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 94,
+      "latex": "Equation_94_latex",
+      "name": "Synthetic Equation 94",
+      "properties": [
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['commutative']"
+    },
+    {
+      "id": 95,
+      "latex": "Equation_95_latex",
+      "name": "Synthetic Equation 95",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 96,
+      "latex": "Equation_96_latex",
+      "name": "Synthetic Equation 96",
+      "properties": [
+        "bidentity"
+      ],
+      "description": "Generated equation with properties: ['bidentity']"
+    },
+    {
+      "id": 97,
+      "latex": "Equation_97_latex",
+      "name": "Synthetic Equation 97",
+      "properties": [
+        "associative",
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['associative', 'commutative']"
+    },
+    {
+      "id": 98,
+      "latex": "Equation_98_latex",
+      "name": "Synthetic Equation 98",
+      "properties": [
+        "idempotent"
+      ],
+      "description": "Generated equation with properties: ['idempotent']"
+    },
+    {
+      "id": 99,
+      "latex": "Equation_99_latex",
+      "name": "Synthetic Equation 99",
+      "properties": [
+        "associative"
+      ],
+      "description": "Generated equation with properties: ['associative']"
+    },
+    {
+      "id": 100,
+      "latex": "Equation_100_latex",
+      "name": "Synthetic Equation 100",
+      "properties": [
+        "commutative"
+      ],
+      "description": "Generated equation with properties: ['commutative']"
+    }
+  ]
+}
