@@ -204,8 +204,9 @@ fn generate_all_magmas(size: u8) -> PyResult<Vec<Magma>> {
         )));
     }
     let n = size as usize;
+    let n64 = n as u64;
     let cells = n * n;
-    let total: u64 = (n as u64).pow(cells as u32);
+    let total: u64 = n64.pow(cells as u32);
 
     let mut magmas = Vec::with_capacity(total as usize);
 
@@ -213,8 +214,8 @@ fn generate_all_magmas(size: u8) -> PyResult<Vec<Magma>> {
         let mut table = vec![0u8; cells];
         let mut temp = i;
         for cell in 0..cells {
-            table[cell] = (temp % n as u64) as u8;
-            temp /= n as u64;
+            table[cell] = (temp % n64) as u8;
+            temp /= n64;
         }
         magmas.push(Magma { size, table });
     }
@@ -239,8 +240,9 @@ fn count_properties(size: u8) -> PyResult<PropertyCounts> {
         )));
     }
     let n = size as usize;
+    let n64 = n as u64;
     let cells = n * n;
-    let total: u64 = (n as u64).pow(cells as u32);
+    let total: u64 = n64.pow(cells as u32);
 
     let mut counts = PropertyCounts {
         total,
@@ -257,8 +259,8 @@ fn count_properties(size: u8) -> PyResult<PropertyCounts> {
     for i in 0..total {
         let mut temp = i;
         for cell in 0..cells {
-            table[cell] = (temp % n as u64) as u8;
-            temp /= n as u64;
+            table[cell] = (temp % n64) as u8;
+            temp /= n64;
         }
 
         let assoc = is_assoc_raw(&table, n);
@@ -312,8 +314,9 @@ fn find_counterexamples(
             break;
         }
         let n = size as usize;
+        let n64 = n as u64;
         let cells = n * n;
-        let total: u64 = (n as u64).pow(cells as u32);
+        let total: u64 = n64.pow(cells as u32);
 
         let mut table = vec![0u8; cells];
         for i in 0..total {
@@ -323,8 +326,8 @@ fn find_counterexamples(
 
             let mut temp = i;
             for cell in 0..cells {
-                table[cell] = (temp % n as u64) as u8;
-                temp /= n as u64;
+                table[cell] = (temp % n64) as u8;
+                temp /= n64;
             }
 
             if check_premise(&table, n) && !check_conclusion(&table, n) {
@@ -449,8 +452,9 @@ fn count_properties_parallel(py: Python<'_>, size: u8) -> PyResult<PropertyCount
         )));
     }
     let n = size as usize;
+    let n64 = n as u64;
     let cells = n * n;
-    let total: u64 = (n as u64).pow(cells as u32);
+    let total: u64 = n64.pow(cells as u32);
 
     let a_assoc = AtomicU64::new(0);
     let a_comm = AtomicU64::new(0);
@@ -465,8 +469,8 @@ fn count_properties_parallel(py: Python<'_>, size: u8) -> PyResult<PropertyCount
             |table, i| {
                 let mut temp = i;
                 for cell in 0..cells {
-                    table[cell] = (temp % n as u64) as u8;
-                    temp /= n as u64;
+                    table[cell] = (temp % n64) as u8;
+                    temp /= n64;
                 }
 
                 let assoc = is_assoc_raw(table, n);
@@ -661,8 +665,9 @@ fn search_equation_counterexample(
 
     for size in 2..=max_size.min(4) {
         let n = size as usize;
+        let n64 = n as u64;
         let cells = n * n;
-        let total: u64 = (n as u64).pow(cells as u32);
+        let total: u64 = n64.pow(cells as u32);
 
         let mut table = vec![0u8; cells];
         for i in 0..total {
@@ -673,8 +678,8 @@ fn search_equation_counterexample(
 
             let mut temp = i;
             for cell in 0..cells {
-                table[cell] = (temp % n as u64) as u8;
-                temp /= n as u64;
+                table[cell] = (temp % n64) as u8;
+                temp /= n64;
             }
 
             let premise_holds =
@@ -720,8 +725,9 @@ fn filter_magmas(
 
     for size in 2..=max_size.min(4) {
         let n = size as usize;
+        let n64 = n as u64;
         let cells = n * n;
-        let total: u64 = (n as u64).pow(cells as u32);
+        let total: u64 = n64.pow(cells as u32);
 
         let mut table = vec![0u8; cells];
         for i in 0..total {
@@ -731,8 +737,8 @@ fn filter_magmas(
 
             let mut temp = i;
             for cell in 0..cells {
-                table[cell] = (temp % n as u64) as u8;
-                temp /= n as u64;
+                table[cell] = (temp % n64) as u8;
+                temp /= n64;
             }
 
             let all_req = req_checks.iter().all(|check| check(&table, n));

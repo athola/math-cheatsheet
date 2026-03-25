@@ -77,10 +77,6 @@ typecheck: ## Run mypy type checking
 .PHONY: check
 check: lint typecheck test test-rust ## Run all quality gates (lint + typecheck + test + rust)
 
-.PHONY: evaluate-v4
-evaluate-v4: ## Evaluate v4 cheatsheet decision procedure (requires implications.csv)
-	$(PYTHONPATH) $(PYTHON) src/evaluate_v4.py
-
 .PHONY: pre-commit
 pre-commit: ## Run pre-commit hooks on all files
 	$(PYTHON) -m pre_commit run --all-files
@@ -155,10 +151,6 @@ validate-all: harness validate-cheatsheet validate-v2 validate-formal ## Run all
 .PHONY: evaluate-baseline
 evaluate-baseline: ## Run baseline LLM evaluation (LIVE, simulated)
 	$(PYTHONPATH) $(PYTHON) src/evaluation.py
-
-.PHONY: evaluate-v3
-evaluate-v3: ## Evaluate v3 decision procedure on known problems (LIVE)
-	$(PYTHONPATH) $(PYTHON) -m scripts.evaluate_v3
 
 .PHONY: download-etp
 download-etp: ## Download ETP equation data from GitHub

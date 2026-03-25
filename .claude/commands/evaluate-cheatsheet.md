@@ -28,37 +28,9 @@ Use `src/llm_evaluator.py` — run it with:
 PYTHONPATH=src ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY venv/bin/python src/llm_evaluator.py --sample $ARGUMENTS
 ```
 
-If no API key is available, fall back to the **programmatic evaluation** which simulates the decision procedure without an LLM:
+If no API key is available, fall back to the **programmatic evaluation** using the cheatsheet harness:
 ```bash
-PYTHONPATH=src venv/bin/python -c "
-from evaluate_v4 import *
-from etp_equations import ETPEquations
-from implication_oracle import ImplicationOracle
-import numpy as np
-
-eqs = ETPEquations('research/data/etp/equations.txt')
-oracle = ImplicationOracle('research/data/etp/implications.csv')
-c, s, t1, t2 = build_v4_procedure(eqs, oracle)
-
-np.random.seed(42)
-n = 4694
-tp=fp=tn=fn=0
-sample = int('$ARGUMENTS' or '500000')
-for _ in range(sample):
-    h, t = int(np.random.randint(1,n+1)), int(np.random.randint(1,n+1))
-    a = oracle.query(h, t)
-    if a is None: continue
-    p = v4_predict(h, t, eqs, c, s, t1, t2, oracle)
-    if p and a: tp+=1
-    elif p and not a: fp+=1
-    elif not p and a: fn+=1
-    else: tn+=1
-total = tp+fp+tn+fn
-print(f'Accuracy: {(tp+tn)/total:.4f} ({(tp+tn)/total*100:.2f}%)')
-print(f'TP={tp} FP={fp} TN={tn} FN={fn}')
-print(f'Precision: {tp/(tp+fp):.4f}' if tp+fp else '')
-print(f'Recall: {tp/(tp+fn):.4f}')
-"
+PYTHONPATH=. uv run python -m src.cheatsheet_harness accuracy cheatsheet/final.txt
 ```
 
 Report the results clearly showing accuracy, precision, recall, and any interesting failure cases.

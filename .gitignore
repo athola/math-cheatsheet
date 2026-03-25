@@ -68,6 +68,9 @@ rust/Cargo.lock
 # Large data files (download via make download-etp)
 research/data/etp/implications.csv
 
+# TLA+ generated outputs
+tla/MagmaSpecifications/exploration_results.json
+
 # Large generated files
 *.png
 *.jpg
