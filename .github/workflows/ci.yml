@@ -45,5 +45,5 @@ jobs:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@stable
       - run: pip install -e ".[dev]" maturin
-      - run: cd rust && maturin develop --release
+      - run: cd rust && maturin build --release && pip install target/wheels/*.whl
       - run: PYTHONPATH=src:tla/python pytest tests/ -v -m cross_language
