@@ -1,0 +1,283 @@
+"""Parse and analyze all 4694 ETP equations.
+
+Each equation is a universally quantified identity over magmas (sets with
+a binary operation ◇). Line N of equations.txt is Equation N.
+
+Structural features extracted:
+- Variable set and count
+- Term depth and operation count
+- Collapse detection (forces |M|=1)
+- Tautology detection (LHS == RHS)
+- Whether LHS is a single variable
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+
+
+@dataclass(frozen=True)
+class Term:
+    """AST node: either Var(name) or Op(left, right)."""
+
+    is_var: bool
+    name: str = ""
+    left: Term | None = None
+    right: Term | None = None
+
+    def _lr(self) -> tuple[Term, Term]:
+        """Return (left, right) with type narrowing for mypy."""
+        assert self.left is not None and self.right is not None
+        return self.left, self.right
+
+    def variables(self) -> frozenset[str]:
+        if self.is_var:
+            return frozenset({self.name})
+        lt, rt = self._lr()
+        return lt.variables() | rt.variables()
+
+    def depth(self) -> int:
+        if self.is_var:
+            return 0
+        lt, rt = self._lr()
+        return 1 + max(lt.depth(), rt.depth())
+
+    def size(self) -> int:
+        """Number of ◇ operations."""
+        if self.is_var:
+            return 0
+        lt, rt = self._lr()
+        return 1 + lt.size() + rt.size()
+
+    def __str__(self) -> str:
+        if self.is_var:
+            return self.name
+        lt, rt = self._lr()
+        ls = str(lt) if lt.is_var else f"({lt})"
+        rs = str(rt) if rt.is_var else f"({rt})"
+        return f"{ls} ◇ {rs}"
+
+    def substitute(self, mapping: dict[str, Term]) -> Term:
+        if self.is_var:
+            return mapping.get(self.name, self)
+        lt, rt = self._lr()
+        return Term(False, left=lt.substitute(mapping), right=rt.substitute(mapping))
+
+
+def var(name: str) -> Term:
+    return Term(is_var=True, name=name)
+
+
+def op(left: Term, right: Term) -> Term:
+    return Term(is_var=False, left=left, right=right)
+
+
+@dataclass
+class Equation:
+    """A parsed equation with structural metadata."""
+
+    id: int
+    text: str
+    lhs: Term
+    rhs: Term
+
+    # Cached structural features
+    variables: frozenset[str] = field(default_factory=frozenset)
+    var_count: int = 0
+    max_depth: int = 0
+    total_ops: int = 0
+    lhs_is_var: bool = False
+    rhs_is_var: bool = False
+    is_tautology: bool = False
+
+    def __post_init__(self):
+        self.variables = self.lhs.variables() | self.rhs.variables()
+        self.var_count = len(self.variables)
+        self.max_depth = max(self.lhs.depth(), self.rhs.depth())
+        self.total_ops = self.lhs.size() + self.rhs.size()
+        self.lhs_is_var = self.lhs.is_var
+        self.rhs_is_var = self.rhs.is_var
+        self.is_tautology = self.lhs == self.rhs
+
+
+def _tokenize(s: str) -> list[str]:
+    """Tokenize an equation string with ◇ operator."""
+    tokens = []
+    i = 0
+    while i < len(s):
+        c = s[i]
+        if c.isspace():
+            i += 1
+        elif c in "()=":
+            tokens.append(c)
+            i += 1
+        elif c == "◇" or c == "⋄":
+            tokens.append("◇")
+            i += 1
+        elif c == "*":
+            tokens.append("◇")
+            i += 1
+        elif c.isalpha():
+            name = ""
+            while i < len(s) and s[i].isalpha():
+                name += s[i]
+                i += 1
+            tokens.append(name)
+        else:
+            i += 1
+    return tokens
+
+
+def _parse_expr(tokens: list[str], pos: int) -> tuple[Term, int]:
+    """Parse: primary (◇ primary)* with left-to-right associativity."""
+    if pos >= len(tokens):
+        raise ValueError("Unexpected end of expression")
+    left, pos = _parse_primary(tokens, pos)
+    while pos < len(tokens) and tokens[pos] == "◇":
+        right, pos = _parse_primary(tokens, pos + 1)
+        left = op(left, right)
+    return left, pos
+
+
+def _parse_primary(tokens: list[str], pos: int) -> tuple[Term, int]:
+    """Parse: variable or (expr)."""
+    if pos >= len(tokens):
+        raise ValueError("Unexpected end of expression")
+    if tokens[pos] == "(":
+        expr, pos = _parse_expr(tokens, pos + 1)
+        if pos >= len(tokens) or tokens[pos] != ")":
+            raise ValueError(f"Expected ')' at position {pos}")
+        return expr, pos + 1
+    elif tokens[pos].isalpha():
+        return var(tokens[pos]), pos + 1
+    else:
+        raise ValueError(f"Unexpected token '{tokens[pos]}' at position {pos}")
+
+
+def parse_equation(eq_id: int, text: str) -> Equation:
+    """Parse an equation string like 'x ◇ y = y ◇ x'."""
+    text = text.strip()
+    parts = text.split("=", 1)
+    if len(parts) != 2:
+        raise ValueError(f"No '=' in equation {eq_id}: {text}")
+
+    lhs_tokens = _tokenize(parts[0])
+    rhs_tokens = _tokenize(parts[1])
+
+    lhs, _ = _parse_expr(lhs_tokens, 0)
+    rhs, _ = _parse_expr(rhs_tokens, 0)
+
+    return Equation(id=eq_id, text=text, lhs=lhs, rhs=rhs)
+
+
+class ETPEquations:
+    """All 4694 ETP equations, parsed and indexed."""
+
+    def __init__(self, equations_path: str | Path):
+        self.equations: dict[int, Equation] = {}
+        self._load(Path(equations_path))
+
+    def _load(self, path: Path):
+        with open(path, encoding="utf-8") as f:
+            for i, line in enumerate(f, 1):
+                line = line.strip()
+                if line:
+                    self.equations[i] = parse_equation(i, line)
+
+    def __getitem__(self, eq_id: int) -> Equation:
+        return self.equations[eq_id]
+
+    def __len__(self) -> int:
+        return len(self.equations)
+
+    def __contains__(self, eq_id: int) -> bool:
+        return eq_id in self.equations
+
+    def ids(self) -> list[int]:
+        return sorted(self.equations.keys())
+
+    def is_collapse_structural(self, eq_id: int) -> bool:
+        """Detect collapse equations from structure alone.
+
+        A collapse equation forces |M|=1. Key patterns:
+        - x = y (distinct vars equated directly)
+        - x = y ◇ z (var equals op of two other vars)
+        - More complex: LHS is a variable, RHS contains variables not in LHS
+          and the equation forces all elements equal.
+
+        Conservative approach: if LHS is a single variable and RHS introduces
+        a new variable not in LHS, this MAY be collapse. But we need to be
+        more careful.
+
+        The definitive test: an equation is collapse iff it's satisfied only
+        by magmas of size 1. We check this against the oracle externally.
+        """
+        eq = self.equations[eq_id]
+
+        # x = y pattern: two distinct variables equated
+        if eq.lhs.is_var and eq.rhs.is_var and eq.lhs.name != eq.rhs.name:
+            return True
+
+        # x = y ◇ z where y,z are vars not equal to x
+        if eq.lhs.is_var and not eq.rhs.is_var:
+            lhs_vars = eq.lhs.variables()
+            rhs_vars = eq.rhs.variables()
+            new_vars = rhs_vars - lhs_vars
+            # If RHS has 2+ new vars AND it's a single operation, likely collapse
+            if len(new_vars) >= 2 and eq.rhs.size() == 1:
+                return True
+
+        # Symmetric: y ◇ z = x
+        if eq.rhs.is_var and not eq.lhs.is_var:
+            lhs_vars = eq.lhs.variables()
+            rhs_vars = eq.rhs.variables()
+            new_vars = lhs_vars - rhs_vars
+            if len(new_vars) >= 2 and eq.lhs.size() == 1:
+                return True
+
+        return False
+
+    def vars_in_target_not_in_hypothesis(self, h_id: int, t_id: int) -> frozenset[str]:
+        """Variables in target equation not present in hypothesis."""
+        h = self.equations[h_id]
+        t = self.equations[t_id]
+        return t.variables - h.variables
+
+    def is_substitution_instance(self, h_id: int, t_id: int) -> bool:
+        """Check if target can be obtained from hypothesis by variable merging."""
+        h = self.equations[h_id]
+        t = self.equations[t_id]
+
+        h_vars = sorted(h.variables)
+        if len(h_vars) < 2:
+            return False
+
+        # Try all pairwise variable merges
+        for i, v1 in enumerate(h_vars):
+            for v2 in h_vars[i + 1 :]:
+                mapping = {v2: var(v1)}
+                specialized = Equation(
+                    id=0,
+                    text="",
+                    lhs=h.lhs.substitute(mapping),
+                    rhs=h.rhs.substitute(mapping),
+                )
+                if specialized.lhs == t.lhs and specialized.rhs == t.rhs:
+                    return True
+        return False
+
+
+if __name__ == "__main__":
+    eqs = ETPEquations("research/data/etp/equations.txt")
+    print(f"Loaded {len(eqs)} equations")
+
+    # Show some examples
+    for i in [1, 2, 3, 4, 5, 6, 7, 43, 46, 4512]:
+        if i in eqs:
+            eq = eqs[i]
+            print(f"  E{i}: {eq.text}  (vars={eq.var_count} depth={eq.max_depth})")
+
+    # Count structural collapse detection
+    structural_collapse = sum(1 for i in eqs.ids() if eqs.is_collapse_structural(i))
+    print(f"\nStructural collapse detection: {structural_collapse}")

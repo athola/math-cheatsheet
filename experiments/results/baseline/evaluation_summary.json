@@ -1,0 +1,11 @@
+{
+  "cheatsheet_version": "current",
+  "model": "simulated",
+  "total_problems": 10,
+  "correct": 8,
+  "incorrect": 2,
+  "skipped": 0,
+  "accuracy": 0.8,
+  "avg_response_time_ms": 0.0001430511474609375,
+  "timestamp": "2026-03-17T21:33:57.030347"
+}

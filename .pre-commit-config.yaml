@@ -1,0 +1,62 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: [--maxkb=200]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: debug-statements
+      - id: check-toml
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.6
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^(src|tests|tla/python|experiments)/
+      - id: ruff-format
+        files: ^(src|tests|tla/python|experiments)/
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.18.2
+    hooks:
+      - id: mypy
+        args: [--ignore-missing-imports, --config-file=pyproject.toml, src/]
+        files: ^src/
+        pass_filenames: false
+        additional_dependencies: [pandas-stubs, numpy]
+
+  - repo: local
+    hooks:
+      - id: pytest-check
+        name: pytest (collect + fast suite)
+        entry: bash -c 'PYTHONPATH=src:tla/python venv/bin/python -m pytest tests/ -x -q --tb=short -m "not cross_language and not slow" 2>&1 | tail -5'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: rust-test
+        name: cargo test (Rust)
+        entry: bash -c 'cd rust && cargo test --release --quiet 2>&1 | tail -3'
+        language: system
+        pass_filenames: false
+        files: ^rust/
+        types: [rust]
+
+      - id: cheatsheet-size
+        name: cheatsheet size limit (10KB)
+        entry: bash scripts/check_cheatsheet_size.sh
+        language: system
+        pass_filenames: false
+        files: ^cheatsheet/
+
+      - id: no-ai-attribution
+        name: block AI co-authored-by
+        entry: bash scripts/check_no_ai_attribution.sh
+        language: system
+        stages: [commit-msg]
+        always_run: true

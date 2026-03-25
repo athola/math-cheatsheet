@@ -20,20 +20,21 @@ wheels/
 .installed.cfg
 *.egg
 
+# Testing
+.hypothesis/
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
 # Jupyter Notebook
 .ipynb_checkpoints
-*.ipynb
-
-# Data files
-research/data/*.json
-research/data/*.txt
-research/data/*.csv
 
 # Virtual environments
 venv/
 ENV/
 env/
-.venv
+.venv/
 
 # IDEs
 .vscode/
@@ -46,16 +47,33 @@ env/
 .DS_Store
 Thumbs.db
 
-# Claude / Egregore state (optional - comment out if you want to track)
-#.attune/
-#.egregore/
-
 # Secrets
-*.env
+.env
 .env.local
+.env.*.local
+
+# Egregore ephemeral state
+.egregore/
+
+# Ephemeral planning docs
+docs/plans/
+
+# Lean 4 / Lake build artifacts
+lean/.lake/
+
+# Rust build artifacts
+rust/target/
+rust/Cargo.lock
+
+# Large data files (download via make download-etp)
+research/data/etp/implications.csv
+
+# TLA+ generated outputs
+tla/MagmaSpecifications/exploration_results.json
 
 # Large generated files
 *.png
 *.jpg
 *.jpeg
 *.pdf
+research/data/etp/competition/
