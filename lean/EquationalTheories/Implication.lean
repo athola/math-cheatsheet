@@ -136,9 +136,9 @@ def computeStats : ImplicationStats :=
   let verifiedFalse := knownFalseImplications.length
 
   let totalConf := all.foldl (fun acc (entry : ImplicationEntry) => acc + entry.confidence) 0
-  let avgConf := if total = 0 then 0 else totalConf / total
+  let avgConf : Float := if total = 0 then 0.0 else totalConf.toFloat / total.toFloat
 
-  { total, verifiedTrue, verifiedFalse, avgConfidence := avgConf.toFloat }
+  { total, verifiedTrue, verifiedFalse, avgConfidence := avgConf }
 
 open StdEqn TrivialImplications
 

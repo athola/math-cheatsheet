@@ -1,9 +1,22 @@
 #!/usr/bin/env python3
-"""Demo: find counterexamples to classic non-implications."""
+"""Demo: find counterexamples to classic non-implications.
 
-# Run via: make demo-counterexamples (sets PYTHONPATH automatically)
+Run via ``make demo-counterexamples`` which sets PYTHONPATH automatically.
+The sys.path block below allows running the script standalone as well::
 
-from tla_bridge import generate_all_magmas
+    python scripts/demo_counterexamples.py
+"""
+
+import sys
+from pathlib import Path
+
+# Allow running standalone (make demo-* sets PYTHONPATH automatically)
+_root = Path(__file__).resolve().parent.parent
+for _p in [_root / "src", _root / "tla" / "python"]:
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
+
+from tla_bridge import generate_all_magmas  # noqa: E402
 
 ms = generate_all_magmas(3)
 

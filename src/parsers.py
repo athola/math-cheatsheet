@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from data_models import Equation, Problem, Property
+from data_models import Difficulty, EquationEntry, Problem, Property
 
 
 class ParseError(Exception):
@@ -17,14 +17,14 @@ class ParseError(Exception):
     pass
 
 
-def parse_equations(filepath: str) -> list[Equation]:
+def parse_equations(filepath: str) -> list[EquationEntry]:
     """Parse equations from file.
 
     Args:
         filepath: Path to equations file (txt or json)
 
     Returns:
-        List of Equation objects
+        List of EquationEntry objects
 
     Raises:
         ParseError: If file format is invalid
@@ -43,7 +43,7 @@ def parse_equations(filepath: str) -> list[Equation]:
         raise ParseError(f"Unsupported file format: {path.suffix}")
 
 
-def _parse_equations_json(path: Path) -> list[Equation]:
+def _parse_equations_json(path: Path) -> list[EquationEntry]:
     """Parse equations from JSON format."""
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
@@ -60,7 +60,7 @@ def _parse_equations_json(path: Path) -> list[Equation]:
 
                 logging.getLogger(__name__).debug("Unknown property value: %s", prop_str)
 
-        equation = Equation(
+        equation = EquationEntry(
             id=eq_data["id"],
             latex=eq_data["latex"],
             name=eq_data["name"],
@@ -72,7 +72,7 @@ def _parse_equations_json(path: Path) -> list[Equation]:
     return equations
 
 
-def _parse_equations_txt(path: Path) -> list[Equation]:
+def _parse_equations_txt(path: Path) -> list[EquationEntry]:
     """Parse equations from text format.
 
     Expected format:
@@ -115,7 +115,7 @@ def _parse_equations_txt(path: Path) -> list[Equation]:
                                     "Unknown property value: %s", prop_str
                                 )
 
-                equation = Equation(
+                equation = EquationEntry(
                     id=eq_id, latex=latex, name=name, properties=properties, description=""
                 )
                 equations.append(equation)
@@ -156,14 +156,14 @@ def parse_problems(filepath: str) -> list[Problem]:
             equation_1_id=prob_data["equation_1"],
             equation_2_id=prob_data["equation_2"],
             answer=prob_data.get("answer"),
-            difficulty=prob_data.get("difficulty", "regular"),
+            difficulty=Difficulty(prob_data.get("difficulty", "regular")),
         )
         problems.append(problem)
 
     return problems
 
 
-def validate_equations(equations: list[Equation]) -> dict[str, Any]:
+def validate_equations(equations: list[EquationEntry]) -> dict[str, Any]:
     """Validate equation data.
 
     Returns:
@@ -180,7 +180,7 @@ def validate_equations(equations: list[Equation]) -> dict[str, Any]:
         ids.add(eq.id)
 
         if not eq.properties:
-            warnings.append(f"Equation {eq.id} has no properties")
+            warnings.append(f"EquationEntry {eq.id} has no properties")
 
         for prop in eq.properties:
             by_property[prop.value] = by_property.get(prop.value, 0) + 1
@@ -219,8 +219,8 @@ def validate_problems(problems: list[Problem], max_equation_id: int) -> dict[str
         if prob.equation_2_id < 1 or prob.equation_2_id > max_equation_id:
             errors.append(f"Problem {prob.id}: equation_2_id {prob.equation_2_id} out of range")
 
-        if prob.difficulty in by_difficulty:
-            by_difficulty[prob.difficulty] += 1
+        if prob.difficulty.value in by_difficulty:
+            by_difficulty[prob.difficulty.value] += 1
 
         if prob.answer is not None:
             with_answer += 1

@@ -63,7 +63,7 @@ KNOWN_PROBLEMS: list[tuple[str, str, bool, str]] = [
 ]
 
 
-@dataclass
+@dataclass  # Mutable: fields accumulated during validate_compliance()
 class ComplianceResult:
     """Result of compliance validation."""
 
@@ -85,7 +85,7 @@ class ComplianceResult:
         return self.max_bytes - self.size_bytes
 
 
-@dataclass
+@dataclass  # Mutable: fields accumulated during validate_structure()
 class StructureResult:
     """Result of structure validation."""
 
@@ -102,7 +102,7 @@ class StructureResult:
     warnings: list[str] = field(default_factory=list)
 
 
-@dataclass
+@dataclass(frozen=True)
 class ProblemResult:
     """Result of a single problem evaluation."""
 
@@ -116,7 +116,7 @@ class ProblemResult:
     label: str
 
 
-@dataclass
+@dataclass  # Mutable: counters incremented during validate_accuracy()
 class AccuracyResult:
     """Result of accuracy validation."""
 
@@ -130,7 +130,7 @@ class AccuracyResult:
     passed: bool = False
 
 
-@dataclass
+@dataclass  # Mutable: fields accumulated during validate_regression()
 class RegressionResult:
     """Result of cross-version regression testing."""
 
@@ -140,7 +140,7 @@ class RegressionResult:
     passed: bool = False
 
 
-@dataclass
+@dataclass  # Mutable: fields set during validate_competition()
 class CompetitionResult:
     """Result of competition format simulation."""
 
@@ -151,7 +151,7 @@ class CompetitionResult:
     passed: bool = False
 
 
-@dataclass
+@dataclass  # Mutable: angles populated incrementally in run_harness()
 class HarnessReport:
     """Aggregate report across all validation angles."""
 

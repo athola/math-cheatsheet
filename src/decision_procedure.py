@@ -21,7 +21,7 @@ from etp_equations import ETPEquations
 from implication_oracle import ImplicationOracle
 
 
-@dataclass
+@dataclass(frozen=True)
 class PredictionResult:
     prediction: bool
     phase: str

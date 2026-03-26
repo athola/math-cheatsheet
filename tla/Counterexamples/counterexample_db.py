@@ -9,7 +9,6 @@ Provides queries for cheatsheet generation.
 import json
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Set
 
 # Requires PYTHONPATH=src:tla/python (set by Makefile)
 from data_models import Counterexample, Magma
@@ -22,13 +21,13 @@ class CounterexampleDatabase:
     instead of linear scan.
     """
 
-    def __init__(self, db_path: Optional[Path] = None):
+    def __init__(self, db_path: Path | None = None):
         if db_path is None:
             db_path = Path(__file__).parent / "counterexamples.json"
 
         self.db_path = db_path
-        self.counterexamples: List[Counterexample] = []
-        self._index: Dict[tuple, List[int]] = {}  # (premise_id, conclusion_id) -> [indices]
+        self.counterexamples: list[Counterexample] = []
+        self._index: dict[tuple, list[int]] = {}  # (premise_id, conclusion_id) -> [indices]
 
         if db_path.exists():
             self.load()
@@ -47,72 +46,62 @@ class CounterexampleDatabase:
 
     def load(self) -> None:
         try:
-            with open(self.db_path, 'r') as f:
+            with open(self.db_path) as f:
                 data = json.load(f)
 
             for item in data:
                 magma_data = item["magma"]
-                op_dict = {
-                    (t["a"], t["b"]): t["result"]
-                    for t in magma_data["operation"]
-                }
-                magma = Magma.from_dict_operation(
-                    carrier=magma_data["carrier"],
-                    op_dict=op_dict
+                op_dict = {(t["a"], t["b"]): t["result"] for t in magma_data["operation"]}
+                magma = Magma.from_dict_operation(carrier=magma_data["carrier"], op_dict=op_dict)
+                self.counterexamples.append(
+                    Counterexample(
+                        premise_id=item.get("premise_id", -1),
+                        conclusion_id=item.get("conclusion_id", -1),
+                        magma=magma,
+                        red_flags=set(item.get("red_flags", [])),
+                    )
                 )
-                self.counterexamples.append(Counterexample(
-                    premise_id=item.get("premise_id", -1),
-                    conclusion_id=item.get("conclusion_id", -1),
-                    magma=magma,
-                    red_flags=set(item.get("red_flags", []))
-                ))
-        except (json.JSONDecodeError, KeyError, IOError) as e:
+        except (OSError, json.JSONDecodeError, KeyError) as e:
             print(f"Warning: Could not load database: {e}")
 
         self._rebuild_index()
 
     def save(self) -> None:
         data = [c.to_dict() for c in self.counterexamples]
-        with open(self.db_path, 'w') as f:
+        with open(self.db_path, "w") as f:
             json.dump(data, f, indent=2)
 
-    def get_counterexamples(
-        self, premise_id: int, conclusion_id: int
-    ) -> List[Counterexample]:
+    def get_counterexamples(self, premise_id: int, conclusion_id: int) -> list[Counterexample]:
         indices = self._index.get((premise_id, conclusion_id), [])
         return [self.counterexamples[i] for i in indices]
 
     def get_counterexamples_by_name(
         self, equation_e1: str, equation_e2: str
-    ) -> List[Counterexample]:
+    ) -> list[Counterexample]:
         """Legacy name-based lookup for backward compatibility."""
         return [
-            c for c in self.counterexamples
+            c
+            for c in self.counterexamples
             if str(c.premise_id) == equation_e1 or str(c.conclusion_id) == equation_e2
         ]
 
     def get_red_flags(
         self, premise_id: int, conclusion_id: int, threshold: float = 0.5
-    ) -> Set[str]:
+    ) -> set[str]:
         counterexamples = self.get_counterexamples(premise_id, conclusion_id)
 
         if not counterexamples:
             return set()
 
-        flag_counts: Dict[str, int] = {}
+        flag_counts: dict[str, int] = {}
         for c in counterexamples:
             for flag in c.red_flags:
                 flag_counts[flag] = flag_counts.get(flag, 0) + 1
 
         total = len(counterexamples)
-        return {
-            flag for flag, count in flag_counts.items()
-            if count / total > threshold
-        }
+        return {flag for flag, count in flag_counts.items() if count / total > threshold}
 
-    def get_implication_status(
-        self, premise_id: int, conclusion_id: int
-    ) -> str:
+    def get_implication_status(self, premise_id: int, conclusion_id: int) -> str:
         count = len(self.get_counterexamples(premise_id, conclusion_id))
 
         if count == 0:
@@ -124,9 +113,7 @@ class CounterexampleDatabase:
         else:
             return "sometimes_false"
 
-    def generate_cheatsheet_entry(
-        self, premise_id: int, conclusion_id: int
-    ) -> dict:
+    def generate_cheatsheet_entry(self, premise_id: int, conclusion_id: int) -> dict:
         status = self.get_implication_status(premise_id, conclusion_id)
         red_flags = self.get_red_flags(premise_id, conclusion_id)
         count = len(self.get_counterexamples(premise_id, conclusion_id))
@@ -136,10 +123,10 @@ class CounterexampleDatabase:
             "status": status,
             "counterexample_count": count,
             "red_flags": list(red_flags),
-            "recommendation": self._get_recommendation(status, red_flags)
+            "recommendation": self._get_recommendation(status, red_flags),
         }
 
-    def _get_recommendation(self, status: str, red_flags: Set[str]) -> str:
+    def _get_recommendation(self, status: str, red_flags: set[str]) -> str:
         if status == "always_true":
             return "This implication appears to hold. Consider including in cheatsheet."
         elif status == "very_likely_false":
@@ -151,11 +138,8 @@ class CounterexampleDatabase:
 
     def get_statistics(self) -> dict:
         total = len(self.counterexamples)
-        implications = set(
-            (c.premise_id, c.conclusion_id)
-            for c in self.counterexamples
-        )
-        flag_counts: Dict[str, int] = {}
+        implications = set((c.premise_id, c.conclusion_id) for c in self.counterexamples)
+        flag_counts: dict[str, int] = {}
         for c in self.counterexamples:
             for flag in c.red_flags:
                 flag_counts[flag] = flag_counts.get(flag, 0) + 1
@@ -163,7 +147,7 @@ class CounterexampleDatabase:
         return {
             "total_counterexamples": total,
             "unique_implications": len(implications),
-            "red_flag_frequencies": flag_counts
+            "red_flag_frequencies": flag_counts,
         }
 
 
@@ -172,7 +156,10 @@ def main():
 
     if len(sys.argv) < 2:
         print("Usage: python counterexample_db.py <command>")
-        print("Commands: stats, search <premise_id> <conclusion_id>, report <premise_id> <conclusion_id>")
+        print(
+            "Commands: stats, search <premise_id> <conclusion_id>,"
+            " report <premise_id> <conclusion_id>"
+        )
         return
 
     command = sys.argv[1]

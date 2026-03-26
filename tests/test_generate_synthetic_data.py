@@ -2,6 +2,7 @@
 
 import json
 
+from data_models import Difficulty
 from generate_synthetic_data import (
     generate_extended_equations,
     generate_implication_knowledge,
@@ -101,8 +102,8 @@ class TestGenerateSyntheticProblems:
     def test_difficulty_assignment(self):
         """Problems with id > 1000 should be 'hard'."""
         problems = generate_synthetic_problems(num_problems=1200)
-        regular = [p for p in problems if p.difficulty == "regular"]
-        hard = [p for p in problems if p.difficulty == "hard"]
+        regular = [p for p in problems if p.difficulty == Difficulty.REGULAR]
+        hard = [p for p in problems if p.difficulty == Difficulty.HARD]
         assert len(regular) == 1000
         assert len(hard) == 200
 
@@ -116,19 +117,17 @@ class TestGenerateSyntheticProblems:
 
 
 class TestSaveSyntheticData:
-    def test_saves_all_files(self, tmp_path, monkeypatch):
+    def test_saves_all_files(self, tmp_path):
         """save_synthetic_data creates expected output files."""
-        monkeypatch.chdir(tmp_path)
-        save_synthetic_data()
+        save_synthetic_data(project_root=tmp_path)
 
         assert (tmp_path / "research" / "data" / "original" / "equations.json").exists()
         assert (tmp_path / "research" / "data" / "original" / "equations.txt").exists()
         assert (tmp_path / "research" / "data" / "original" / "train_problems.json").exists()
         assert (tmp_path / "research" / "data" / "original" / "implications.json").exists()
 
-    def test_equations_json_structure(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        save_synthetic_data()
+    def test_equations_json_structure(self, tmp_path):
+        save_synthetic_data(project_root=tmp_path)
 
         data = json.loads(
             (tmp_path / "research" / "data" / "original" / "equations.json").read_text()
@@ -137,9 +136,8 @@ class TestSaveSyntheticData:
         assert data["count"] == len(data["equations"])
         assert data["count"] == 100
 
-    def test_problems_json_structure(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        save_synthetic_data()
+    def test_problems_json_structure(self, tmp_path):
+        save_synthetic_data(project_root=tmp_path)
 
         data = json.loads(
             (tmp_path / "research" / "data" / "original" / "train_problems.json").read_text()
@@ -147,9 +145,8 @@ class TestSaveSyntheticData:
         assert data["count"] == 1200
         assert len(data["problems"]) == 1200
 
-    def test_implications_json_structure(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        save_synthetic_data()
+    def test_implications_json_structure(self, tmp_path):
+        save_synthetic_data(project_root=tmp_path)
 
         data = json.loads(
             (tmp_path / "research" / "data" / "original" / "implications.json").read_text()
@@ -157,8 +154,7 @@ class TestSaveSyntheticData:
         assert len(data) > 0
         assert all("eq1" in item and "eq2" in item and "implies" in item for item in data)
 
-    def test_returns_equations_and_problems(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        equations, problems = save_synthetic_data()
+    def test_returns_equations_and_problems(self, tmp_path):
+        equations, problems = save_synthetic_data(project_root=tmp_path)
         assert len(equations) == 100
         assert len(problems) == 1200

@@ -126,7 +126,7 @@ harness-competition: ## Simulate competition evaluation format (LIVE)
 	$(HARNESS) competition $(CHEATSHEET)
 
 .PHONY: test-harness
-test-harness: ## Run harness pytest suite (31 tests)
+test-harness: ## Run harness pytest suite
 	$(PYTHONPATH) $(PYTEST) tests/test_cheatsheet_harness.py -v
 
 # ── Legacy Validation (LIVE) ──────────────────────────────────

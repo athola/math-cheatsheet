@@ -9,6 +9,7 @@ Organized by BDD scenarios:
 """
 
 import pytest
+from conftest import all_size_2_magmas
 from hypothesis import given, note, settings
 from strategies import magmas, size_two_magmas, small_magmas
 
@@ -254,13 +255,12 @@ class TestCayleyTableDisplay:
 class TestTrivialMagma:
     """Scenario: Size-1 magma has all basic properties."""
 
-    def test_trivial_magma_has_all_properties(self):
+    def test_trivial_magma_has_all_properties(self, trivial_magma):
         """The single-element magma satisfies all basic properties."""
-        m = Magma(size=1, elements=[0], operation=[[0]])
-        assert m.is_associative()
-        assert m.is_commutative()
-        assert m.is_idempotent()
-        assert m.has_identity() == 0
+        assert trivial_magma.is_associative()
+        assert trivial_magma.is_commutative()
+        assert trivial_magma.is_idempotent()
+        assert trivial_magma.has_identity() == 0
 
 
 # ── Feature: Exhaustive size-2 census ───────────────────────────
@@ -274,19 +274,12 @@ class TestExhaustiveSize2:
 
     def test_exact_property_counts(self):
         """Verify known counts: 8 associative, 8 commutative, etc."""
-        all_magmas = []
-        for i in range(16):
-            table = [[0, 0], [0, 0]]
-            table[0][0] = i % 2
-            table[0][1] = (i // 2) % 2
-            table[1][0] = (i // 4) % 2
-            table[1][1] = (i // 8) % 2
-            all_magmas.append(Magma(size=2, elements=[0, 1], operation=table))
+        magma_list = all_size_2_magmas()
 
-        assoc_count = sum(1 for m in all_magmas if m.is_associative())
-        comm_count = sum(1 for m in all_magmas if m.is_commutative())
-        idemp_count = sum(1 for m in all_magmas if m.is_idempotent())
-        id_count = sum(1 for m in all_magmas if m.has_identity() is not None)
+        assoc_count = sum(1 for m in magma_list if m.is_associative())
+        comm_count = sum(1 for m in magma_list if m.is_commutative())
+        idemp_count = sum(1 for m in magma_list if m.is_idempotent())
+        id_count = sum(1 for m in magma_list if m.has_identity() is not None)
 
         assert assoc_count == 8
         assert comm_count == 8
@@ -295,17 +288,10 @@ class TestExhaustiveSize2:
 
     def test_property_independence_witnessed(self):
         """Verify existence of all four (assoc, comm) combinations."""
-        all_magmas = []
-        for i in range(16):
-            table = [[0, 0], [0, 0]]
-            table[0][0] = i % 2
-            table[0][1] = (i // 2) % 2
-            table[1][0] = (i // 4) % 2
-            table[1][1] = (i // 8) % 2
-            all_magmas.append(Magma(size=2, elements=[0, 1], operation=table))
+        magma_list = all_size_2_magmas()
 
         combos = set()
-        for m in all_magmas:
+        for m in magma_list:
             combos.add((m.is_associative(), m.is_commutative()))
 
         # All four combinations must exist: (T,T), (T,F), (F,T), (F,F)

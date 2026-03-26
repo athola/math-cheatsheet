@@ -1,12 +1,11 @@
 """Tests for data_models module."""
 
-import pytest
-
 from data_models import (
     SYNTHETIC_EQUATIONS,
     AlgebraicEquation,
     Counterexample,
-    Equation,
+    Difficulty,
+    EquationEntry,
     Magma,
     Problem,
     Property,
@@ -25,16 +24,16 @@ class TestProperty:
 
 class TestEquation:
     def test_creation(self):
-        eq = Equation(id=1, latex="x*y=y*x", name="comm", properties=[Property.COMMUTATIVE])
+        eq = EquationEntry(id=1, latex="x*y=y*x", name="comm", properties=[Property.COMMUTATIVE])
         assert eq.id == 1
         assert eq.name == "comm"
 
     def test_str(self):
-        eq = Equation(id=42, latex="", name="Test", properties=[])
+        eq = EquationEntry(id=42, latex="", name="Test", properties=[])
         assert str(eq) == "E42: Test"
 
     def test_to_dict(self):
-        eq = Equation(
+        eq = EquationEntry(
             id=1,
             latex="x*y",
             name="test",
@@ -47,44 +46,33 @@ class TestEquation:
         assert d["description"] == "desc"
 
     def test_default_description(self):
-        eq = Equation(id=1, latex="", name="", properties=[])
+        eq = EquationEntry(id=1, latex="", name="", properties=[])
         assert eq.description == ""
 
 
 class TestProblem:
     def test_creation(self):
-        p = Problem(id=1, equation_1_id=3, equation_2_id=5, answer=True, difficulty="regular")
+        p = Problem(
+            id=1, equation_1_id=3, equation_2_id=5, answer=True, difficulty=Difficulty.REGULAR
+        )
         assert p.answer is True
-        assert p.difficulty == "regular"
+        assert p.difficulty == Difficulty.REGULAR
 
     def test_str(self):
-        p = Problem(id=1, equation_1_id=3, equation_2_id=5, answer=None, difficulty="hard")
+        p = Problem(id=1, equation_1_id=3, equation_2_id=5, answer=None, difficulty=Difficulty.HARD)
         assert "E3" in str(p)
         assert "E5" in str(p)
 
     def test_to_dict(self):
-        p = Problem(id=1, equation_1_id=3, equation_2_id=5, answer=False, difficulty="hard")
+        p = Problem(
+            id=1, equation_1_id=3, equation_2_id=5, answer=False, difficulty=Difficulty.HARD
+        )
         d = p.to_dict()
         assert d["equation_1"] == 3
         assert d["answer"] is False
 
 
 class TestMagma:
-    @pytest.fixture
-    def xor_magma(self):
-        """Z/2Z under XOR: associative, commutative, has identity 0."""
-        return Magma(size=2, elements=[0, 1], operation=[[0, 1], [1, 0]])
-
-    @pytest.fixture
-    def and_magma(self):
-        """Z/2Z under AND: associative, commutative, has identity 1."""
-        return Magma(size=2, elements=[0, 1], operation=[[0, 0], [0, 1]])
-
-    @pytest.fixture
-    def non_assoc_magma(self):
-        """A non-associative magma of size 3."""
-        return Magma(size=3, elements=[0, 1, 2], operation=[[0, 2, 1], [2, 1, 0], [1, 0, 2]])
-
     def test_op(self, xor_magma):
         assert xor_magma.op(0, 0) == 0
         assert xor_magma.op(0, 1) == 1
