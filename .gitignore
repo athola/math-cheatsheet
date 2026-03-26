@@ -74,6 +74,9 @@ research/data/original/*.json
 # TLA+ generated outputs
 tla/MagmaSpecifications/exploration_results.json
 
+# Lockfiles (too large for pre-commit size limit)
+uv.lock
+
 # Large generated files
 *.png
 *.jpg
