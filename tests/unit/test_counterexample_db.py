@@ -299,3 +299,125 @@ class TestGenerateCheatsheetEntry:
         assert entry["status"] == "sometimes_false"
         assert entry["counterexample_count"] == 5
         assert "size_2_only" in entry["red_flags"]
+
+
+class TestGetCounterexamplesByName:
+    """
+    Feature: Legacy name-based lookup for counterexamples.
+
+    T4: Verify get_counterexamples_by_name matches on BOTH premise AND conclusion.
+    """
+
+    @pytest.mark.unit
+    def test_returns_matching_by_both_premise_and_conclusion(self, empty_db, sample_magma):
+        """
+        Scenario: Match requires both premise_id and conclusion_id
+        Given a counterexample with premise_id=1, conclusion_id=2
+        When I query by name with ("1", "2")
+        Then the counterexample should be returned
+        """
+        ce = Counterexample(premise_id=1, conclusion_id=2, magma=sample_magma)
+        empty_db.add(ce)
+        results = empty_db.get_counterexamples_by_name("1", "2")
+        assert len(results) == 1
+        assert results[0] is ce
+
+    @pytest.mark.unit
+    def test_returns_empty_when_only_premise_matches(self, empty_db, sample_magma):
+        """
+        Scenario: Premise matches but conclusion does not
+        Given a counterexample with premise_id=1, conclusion_id=2
+        When I query by name with ("1", "99")
+        Then no results should be returned
+        """
+        ce = Counterexample(premise_id=1, conclusion_id=2, magma=sample_magma)
+        empty_db.add(ce)
+        results = empty_db.get_counterexamples_by_name("1", "99")
+        assert results == []
+
+    @pytest.mark.unit
+    def test_returns_empty_when_only_conclusion_matches(self, empty_db, sample_magma):
+        """
+        Scenario: Conclusion matches but premise does not
+        Given a counterexample with premise_id=1, conclusion_id=2
+        When I query by name with ("99", "2")
+        Then no results should be returned
+        """
+        ce = Counterexample(premise_id=1, conclusion_id=2, magma=sample_magma)
+        empty_db.add(ce)
+        results = empty_db.get_counterexamples_by_name("99", "2")
+        assert results == []
+
+    @pytest.mark.unit
+    def test_returns_empty_for_no_match(self, empty_db, sample_magma):
+        """
+        Scenario: Neither premise nor conclusion matches
+        Given a counterexample with premise_id=1, conclusion_id=2
+        When I query by name with ("99", "100")
+        Then no results should be returned
+        """
+        ce = Counterexample(premise_id=1, conclusion_id=2, magma=sample_magma)
+        empty_db.add(ce)
+        results = empty_db.get_counterexamples_by_name("99", "100")
+        assert results == []
+
+
+class TestLoadSaveRoundtrip:
+    """
+    Feature: Database persistence via JSON.
+
+    I9: Verify save/load roundtrip preserves data and errors are surfaced.
+    """
+
+    @pytest.mark.unit
+    def test_save_and_load_preserves_data(self, tmp_path, sample_magma):
+        """
+        Scenario: Saving and reloading preserves counterexample data
+        Given a database with one counterexample
+        When I save and reload from the same path
+        Then the loaded data should match the original
+        """
+        db_path = tmp_path / "roundtrip.json"
+        db = CounterexampleDatabase(db_path=db_path)
+        ce = Counterexample(
+            premise_id=5,
+            conclusion_id=10,
+            magma=sample_magma,
+            red_flags=frozenset({"flag_a"}),
+        )
+        db.add(ce)
+        db.save()
+
+        db2 = CounterexampleDatabase(db_path=db_path)
+        assert len(db2.counterexamples) == 1
+        loaded = db2.counterexamples[0]
+        assert loaded.premise_id == 5
+        assert loaded.conclusion_id == 10
+        assert loaded.magma.size == sample_magma.size
+        assert loaded.magma.operation == sample_magma.operation
+
+    @pytest.mark.unit
+    def test_load_corrupted_json_raises(self, tmp_path):
+        """
+        Scenario: Corrupted JSON file raises RuntimeError
+        Given a file containing invalid JSON
+        When I create a CounterexampleDatabase pointing to it
+        Then a RuntimeError should be raised
+        """
+        db_path = tmp_path / "corrupted.json"
+        db_path.write_text("not valid json")
+        with pytest.raises(RuntimeError, match="Failed to load"):
+            CounterexampleDatabase(db_path=db_path)
+
+    @pytest.mark.unit
+    def test_load_malformed_data_raises(self, tmp_path):
+        """
+        Scenario: JSON with missing keys raises RuntimeError
+        Given a file with valid JSON but missing required keys
+        When I create a CounterexampleDatabase pointing to it
+        Then a RuntimeError should be raised with key info
+        """
+        db_path = tmp_path / "malformed.json"
+        db_path.write_text('[{"bad": "data"}]')
+        with pytest.raises(RuntimeError, match="missing key"):
+            CounterexampleDatabase(db_path=db_path)

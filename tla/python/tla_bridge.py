@@ -6,7 +6,7 @@ This module provides Python integration with TLA+ model checker
 for automated counterexample finding in finite magmas.
 
 When the compiled Rust extension `magma_core` is available, generation
-and property checks run 20-60x faster. Falls back to pure Python otherwise.
+and property checks run ~20x faster. Falls back to pure Python otherwise.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ except ImportError:
     _rust_generate = None
     _logger.warning(
         "magma_core Rust extension not available; falling back to pure Python "
-        "(20-60x slower). Build with: cd rust && maturin develop --release"
+        "(~20x slower). Build with: cd rust && maturin develop --release"
     )
 
 
@@ -103,8 +103,16 @@ def search_counterexample(
         A :class:`Magma` witnessing the non-implication, or ``None``
         if no counterexample exists up to the given size.
     """
-    parsed_premises = [parse_equation(eq) for eq in equations_holding]
-    parsed_target = parse_equation(equation_to_test)
+    parsed_premises = []
+    for i, eq in enumerate(equations_holding):
+        try:
+            parsed_premises.append(parse_equation(eq))
+        except ValueError as e:
+            raise ValueError(f"Failed to parse premise equation {i} ('{eq}'): {e}") from e
+    try:
+        parsed_target = parse_equation(equation_to_test)
+    except ValueError as e:
+        raise ValueError(f"Failed to parse target equation ('{equation_to_test}'): {e}") from e
 
     for size in range(2, max_size + 1):
         magmas = generate_all_magmas(size)
@@ -140,6 +148,15 @@ def evaluate_equation(magma: Magma, equation: str, assignment: dict[str, int]) -
         True when LHS and RHS evaluate to the same element.
     """
     eq = parse_equation(equation)
+    required_vars = eq.lhs.variables() | eq.rhs.variables()
+    missing = required_vars - set(assignment.keys())
+    if missing:
+        raise ValueError(
+            f"Assignment missing variables {missing} required by equation '{equation}'"
+        )
+    for var, val in assignment.items():
+        if not (0 <= val < magma.size):
+            raise ValueError(f"Assignment {var}={val} out of range for magma of size {magma.size}")
     lhs_val = eq.lhs.evaluate(magma.operation, assignment)
     rhs_val = eq.rhs.evaluate(magma.operation, assignment)
     return lhs_val == rhs_val

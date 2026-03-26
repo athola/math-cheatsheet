@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Test coverage for `tla_bridge`, `explore_magmas`, and `counterexample_db`
-  (40 new tests) (#3)
+  (75+ new tests) (#3)
 - Shared magma fixtures in `tests/conftest.py` to deduplicate test setup (#4)
 - Lean non-implication witnesses with explicit countermodels on Bool (#6)
 

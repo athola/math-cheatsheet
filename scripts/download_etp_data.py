@@ -3,7 +3,6 @@
 
 Downloads:
 - equations.txt: The 4694 equational laws
-- The implication graph data (if available)
 
 Also regenerates synthetic data files in research/data/original/:
 - equations.json, implications.json, train_problems.json
@@ -13,8 +12,10 @@ Source: https://github.com/teorth/equational_theories
 """
 
 import json
+import os
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -36,7 +37,7 @@ def download_file(url: str, dest: Path) -> bool:
         size = dest.stat().st_size
         print(f"  -> {size:,} bytes saved to {dest}")
         return True
-    except Exception as e:
+    except (urllib.error.URLError, OSError) as e:
         print(f"  -> FAILED: {e}")
         return False
 
@@ -99,12 +100,17 @@ def main():
                 [sys.executable, str(generate_script)],
                 cwd=str(PROJECT_ROOT),
                 env={
-                    **__import__("os").environ,
-                    "PYTHONPATH": f"src:{PROJECT_ROOT / 'tla' / 'python'}",
+                    **os.environ,
+                    "PYTHONPATH": f"{PROJECT_ROOT / 'src'}:{PROJECT_ROOT / 'tla' / 'python'}",
                 },
+                capture_output=True,
+                text=True,
             )
             if result.returncode != 0:
-                print("  -> Failed to regenerate synthetic data", file=sys.stderr)
+                print(
+                    f"  -> Failed to regenerate synthetic data:\n{result.stderr}",
+                    file=sys.stderr,
+                )
                 success = False
         else:
             print(f"  -> {generate_script} not found", file=sys.stderr)

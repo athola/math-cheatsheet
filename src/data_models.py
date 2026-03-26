@@ -43,8 +43,12 @@ class EquationEntry:
     id: int
     latex: str
     name: str
-    properties: list[Property]
+    properties: tuple[Property, ...]
     description: str = ""
+
+    def __post_init__(self):
+        if not isinstance(self.properties, tuple):
+            object.__setattr__(self, "properties", tuple(self.properties))
 
     def __str__(self) -> str:
         return f"E{self.id}: {self.name}"
@@ -98,12 +102,13 @@ class AlgebraicEquation:
 class Magma:
     """A finite magma with carrier set and binary operation.
 
-    Stores the Cayley table as a 2D list (operation[i][j] = i * j).
+    Stores the Cayley table as nested tuples (operation[i][j] = i * j).
+    Accepts lists on construction; converts to tuples for deep immutability.
     """
 
     size: int
-    elements: list[int]
-    operation: list[list[int]]
+    elements: tuple[int, ...]
+    operation: tuple[tuple[int, ...], ...]
 
     def __post_init__(self):
         if self.size < 1:
@@ -118,6 +123,13 @@ class Magma:
             for j, val in enumerate(row):
                 if not (0 <= val < self.size):
                     raise ValueError(f"Entry [{i}][{j}]={val} out of range [0, {self.size})")
+        # Convert mutable containers to immutable for deep freeze
+        if not isinstance(self.elements, tuple):
+            object.__setattr__(self, "elements", tuple(self.elements))
+        if not isinstance(self.operation, tuple) or (
+            self.operation and not isinstance(self.operation[0], tuple)
+        ):
+            object.__setattr__(self, "operation", tuple(tuple(row) for row in self.operation))
 
     def op(self, a: int, b: int) -> int:
         return self.operation[a][b]
@@ -172,7 +184,11 @@ class Magma:
         table = [[0] * size for _ in range(size)]
         for (a, b), result in op_dict.items():
             table[a][b] = result
-        return cls(size=size, elements=carrier, operation=table)
+        return cls(
+            size=size,
+            elements=tuple(carrier),
+            operation=tuple(tuple(row) for row in table),
+        )
 
     def to_tla(self) -> str:
         """Convert to TLA+ representation."""
@@ -191,8 +207,12 @@ class Counterexample:
     premise_id: int
     conclusion_id: int
     magma: Magma
-    red_flags: set[str] = field(default_factory=set)
+    red_flags: frozenset[str] = field(default_factory=frozenset)
     assignment: dict[str, int] = field(default_factory=dict)
+
+    def __post_init__(self):
+        if not isinstance(self.red_flags, frozenset):
+            object.__setattr__(self, "red_flags", frozenset(self.red_flags))
 
     def to_dict(self) -> dict:
         return {
@@ -217,70 +237,70 @@ SYNTHETIC_EQUATIONS = [
         1,
         r"(x * y) * z = x * (y * z)",
         "Associativity",
-        [Property.ASSOCIATIVE],
+        (Property.ASSOCIATIVE,),
         "Associative property",
     ),
     EquationEntry(
-        2, r"x * y = y * x", "Commutativity", [Property.COMMUTATIVE], "Commutative property"
+        2, r"x * y = y * x", "Commutativity", (Property.COMMUTATIVE,), "Commutative property"
     ),
     EquationEntry(
         3,
         r"\exists e \forall x: e * x = x",
         "Left Identity",
-        [Property.LEFT_IDENTITY],
+        (Property.LEFT_IDENTITY,),
         "Left identity element exists",
     ),
     EquationEntry(
         4,
         r"\exists e \forall x: x * e = x",
         "Right Identity",
-        [Property.RIGHT_IDENTITY],
+        (Property.RIGHT_IDENTITY,),
         "Right identity element exists",
     ),
     EquationEntry(
         5,
         r"\exists e \forall x: e * x = x * e = x",
         "Two-sided Identity",
-        [Property.BIDENTITY],
+        (Property.BIDENTITY,),
         "Two-sided identity element",
     ),
     EquationEntry(
         6,
         r"\exists e \forall x \exists x^{-1}: x^{-1} * x = e",
         "Left Inverse",
-        [Property.LEFT_INVERSE, Property.BIDENTITY],
+        (Property.LEFT_INVERSE, Property.BIDENTITY),
         "Left inverse exists",
     ),
     EquationEntry(
         7,
         r"\exists e \forall x \exists x^{-1}: x * x^{-1} = e",
         "Right Inverse",
-        [Property.RIGHT_INVERSE, Property.BIDENTITY],
+        (Property.RIGHT_INVERSE, Property.BIDENTITY),
         "Right inverse exists",
     ),
     EquationEntry(
         8,
         r"\forall x \exists x^{-1}: x * x^{-1} = x^{-1} * x = e",
         "Two-sided Inverse",
-        [Property.INVERSE, Property.BIDENTITY],
+        (Property.INVERSE, Property.BIDENTITY),
         "Two-sided inverse",
     ),
-    EquationEntry(9, r"x * x = x", "Idempotence", [Property.IDEMPOTENT], "Idempotent property"),
+    EquationEntry(9, r"x * x = x", "Idempotence", (Property.IDEMPOTENT,), "Idempotent property"),
     EquationEntry(
-        10, r"\exists 0 \forall x: 0 * x = 0", "Left Zero", [Property.ZERO], "Left zero element"
+        10, r"\exists 0 \forall x: 0 * x = 0", "Left Zero", (Property.ZERO,), "Left zero element"
     ),
     EquationEntry(
         11,
         r"x * (y * z) = (x * y) * (x * z)",
         "Left Self-Distributive",
-        [Property.DISTRIBUTIVE],
+        (Property.DISTRIBUTIVE,),
         "Left self-distributive property",
     ),
     EquationEntry(
         12,
         r"(x * y) * z = (x * z) * (y * z)",
         "Right Self-Distributive",
-        [Property.DISTRIBUTIVE],
+        (Property.DISTRIBUTIVE,),
         "Right self-distributive property",
     ),
     # Groups
@@ -288,19 +308,23 @@ SYNTHETIC_EQUATIONS = [
         13,
         "Associative + Two-sided Identity + Two-sided Inverse",
         "Group Axioms",
-        [Property.ASSOCIATIVE, Property.BIDENTITY, Property.INVERSE],
+        (Property.ASSOCIATIVE, Property.BIDENTITY, Property.INVERSE),
         "Full group structure",
     ),
     # Semi-groups
     EquationEntry(
-        14, "Associative operation only", "Semigroup", [Property.ASSOCIATIVE], "Semigroup structure"
+        14,
+        "Associative operation only",
+        "Semigroup",
+        (Property.ASSOCIATIVE,),
+        "Semigroup structure",
     ),
     # Monoids
     EquationEntry(
         15,
         "Associative + Two-sided Identity",
         "Monoid",
-        [Property.ASSOCIATIVE, Property.BIDENTITY],
+        (Property.ASSOCIATIVE, Property.BIDENTITY),
         "Monoid structure",
     ),
     # Abelian groups
@@ -308,7 +332,7 @@ SYNTHETIC_EQUATIONS = [
         16,
         "Group + Commutative",
         "Abelian Group",
-        [Property.ASSOCIATIVE, Property.BIDENTITY, Property.INVERSE, Property.COMMUTATIVE],
+        (Property.ASSOCIATIVE, Property.BIDENTITY, Property.INVERSE, Property.COMMUTATIVE),
         "Abelian group structure",
     ),
 ]

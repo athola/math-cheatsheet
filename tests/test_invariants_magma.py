@@ -34,8 +34,8 @@ class TestClosureInvariant:
 
     @given(m=magmas())
     def test_elements_match_size(self, m: Magma):
-        """The elements list is exactly [0, 1, ..., size-1]."""
-        assert m.elements == list(range(m.size))
+        """The elements tuple is exactly (0, 1, ..., size-1)."""
+        assert m.elements == tuple(range(m.size))
         assert len(m.elements) == m.size
 
     @given(m=magmas())

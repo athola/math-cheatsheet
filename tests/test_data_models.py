@@ -1,5 +1,7 @@
 """Tests for data_models module."""
 
+import pytest
+
 from data_models import (
     SYNTHETIC_EQUATIONS,
     AlgebraicEquation,
@@ -160,3 +162,64 @@ class TestSyntheticEquations:
     def test_all_have_properties(self):
         for eq in SYNTHETIC_EQUATIONS:
             assert len(eq.properties) > 0
+
+
+class TestMagmaValidation:
+    """T1: Magma.__post_init__ validation paths."""
+
+    def test_rejects_size_zero(self):
+        with pytest.raises(ValueError, match="at least 1"):
+            Magma(size=0, elements=[], operation=[])
+
+    def test_rejects_wrong_row_count(self):
+        with pytest.raises(ValueError, match="rows"):
+            Magma(size=2, elements=[0, 1], operation=[[0, 0]])
+
+    def test_rejects_wrong_column_count(self):
+        with pytest.raises(ValueError, match="columns"):
+            Magma(size=2, elements=[0, 1], operation=[[0, 0], [0]])
+
+    def test_rejects_out_of_range_entry(self):
+        with pytest.raises(ValueError, match="out of range"):
+            Magma(size=2, elements=[0, 1], operation=[[0, 5], [0, 0]])
+
+
+class TestFrozenImmutability:
+    """T5: Verify frozen dataclasses have deep immutability."""
+
+    def test_magma_field_reassignment_blocked(self):
+        m = Magma(size=2, elements=[0, 1], operation=[[0, 1], [1, 0]])
+        with pytest.raises(AttributeError):
+            m.size = 3
+
+    def test_magma_operation_is_deeply_immutable(self):
+        m = Magma(size=2, elements=[0, 1], operation=[[0, 1], [1, 0]])
+        assert isinstance(m.operation, tuple)
+        assert isinstance(m.operation[0], tuple)
+        with pytest.raises(TypeError):
+            m.operation[0] = (9, 9)
+
+    def test_magma_elements_is_tuple(self):
+        m = Magma(size=2, elements=[0, 1], operation=[[0, 1], [1, 0]])
+        assert isinstance(m.elements, tuple)
+
+    def test_counterexample_red_flags_is_frozenset(self):
+        m = Magma(size=2, elements=[0, 1], operation=[[0, 1], [1, 0]])
+        ce = Counterexample(premise_id=1, conclusion_id=2, magma=m, red_flags={"flag"})
+        assert isinstance(ce.red_flags, frozenset)
+
+    def test_equation_entry_properties_is_tuple(self):
+        eq = EquationEntry(id=1, latex="", name="", properties=[Property.COMMUTATIVE])
+        assert isinstance(eq.properties, tuple)
+
+    def test_equation_entry_field_reassignment_blocked(self):
+        eq = EquationEntry(id=1, latex="", name="", properties=[])
+        with pytest.raises(AttributeError):
+            eq.id = 2
+
+    def test_problem_field_reassignment_blocked(self):
+        p = Problem(
+            id=1, equation_1_id=3, equation_2_id=5, answer=True, difficulty=Difficulty.REGULAR
+        )
+        with pytest.raises(AttributeError):
+            p.id = 2

@@ -17,6 +17,17 @@ class ParseError(Exception):
     pass
 
 
+def _parse_difficulty(value: str, problem_id: int) -> Difficulty:
+    """Parse a difficulty string into a Difficulty enum with context on failure."""
+    try:
+        return Difficulty(value)
+    except ValueError:
+        raise ParseError(
+            f"Problem {problem_id}: unknown difficulty '{value}', "
+            f"expected one of {[d.value for d in Difficulty]}"
+        ) from None
+
+
 def parse_equations(filepath: str) -> list[EquationEntry]:
     """Parse equations from file.
 
@@ -156,7 +167,7 @@ def parse_problems(filepath: str) -> list[Problem]:
             equation_1_id=prob_data["equation_1"],
             equation_2_id=prob_data["equation_2"],
             answer=prob_data.get("answer"),
-            difficulty=Difficulty(prob_data.get("difficulty", "regular")),
+            difficulty=_parse_difficulty(prob_data.get("difficulty", "regular"), prob_data["id"]),
         )
         problems.append(problem)
 

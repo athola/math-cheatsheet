@@ -48,7 +48,15 @@ class CounterexampleDatabase:
         try:
             with open(self.db_path) as f:
                 data = json.load(f)
+        except FileNotFoundError:
+            self._rebuild_index()
+            return
+        except (OSError, json.JSONDecodeError) as e:
+            raise RuntimeError(
+                f"Failed to load counterexample database {self.db_path}: {e}"
+            ) from e
 
+        try:
             for item in data:
                 magma_data = item["magma"]
                 op_dict = {(t["a"], t["b"]): t["result"] for t in magma_data["operation"]}
@@ -61,15 +69,19 @@ class CounterexampleDatabase:
                         red_flags=set(item.get("red_flags", [])),
                     )
                 )
-        except (OSError, json.JSONDecodeError, KeyError) as e:
-            print(f"Warning: Could not load database: {e}")
+        except KeyError as e:
+            raise RuntimeError(
+                f"Malformed counterexample data in {self.db_path}: missing key {e}"
+            ) from e
 
         self._rebuild_index()
 
     def save(self) -> None:
         data = [c.to_dict() for c in self.counterexamples]
-        with open(self.db_path, "w") as f:
+        tmp_path = self.db_path.with_suffix(".tmp")
+        with open(tmp_path, "w") as f:
             json.dump(data, f, indent=2)
+        tmp_path.replace(self.db_path)
 
     def get_counterexamples(self, premise_id: int, conclusion_id: int) -> list[Counterexample]:
         indices = self._index.get((premise_id, conclusion_id), [])
@@ -82,7 +94,7 @@ class CounterexampleDatabase:
         return [
             c
             for c in self.counterexamples
-            if str(c.premise_id) == equation_e1 or str(c.conclusion_id) == equation_e2
+            if str(c.premise_id) == equation_e1 and str(c.conclusion_id) == equation_e2
         ]
 
     def get_red_flags(

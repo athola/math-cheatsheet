@@ -22,7 +22,7 @@ class TestEvaluateEquation:
     @pytest.mark.unit
     def test_commutative_equation_holds_in_xor(self, xor_magma):
         """
-        Scenario: Commutativity holds in XOR magma for all assignments
+        Scenario: Commutativity holds in XOR magma for a specific assignment
         Given the XOR magma (Z/2Z addition)
         When I evaluate 'x * y = y * x' with x=0, y=1
         Then the result should be True
@@ -113,6 +113,28 @@ class TestEvaluateEquation:
         lp = Magma(size=2, elements=[0, 1], operation=[[0, 0], [1, 1]])
         assert evaluate_equation(lp, "x * y = x", {"x": 0, "y": 1}) is True
         assert evaluate_equation(lp, "x * y = x", {"x": 1, "y": 0}) is True
+
+    @pytest.mark.unit
+    def test_missing_variable_raises_error(self, xor_magma):
+        """
+        Scenario: Missing variable in assignment raises ValueError
+        Given the XOR magma
+        When I evaluate 'x * y = y * x' with only x assigned
+        Then a ValueError should be raised indicating missing variable y
+        """
+        with pytest.raises(ValueError, match="missing variables"):
+            evaluate_equation(xor_magma, "x * y = y * x", {"x": 0})
+
+    @pytest.mark.unit
+    def test_out_of_range_assignment_raises_error(self, xor_magma):
+        """
+        Scenario: Out-of-range assignment value raises ValueError
+        Given the XOR magma of size 2
+        When I evaluate with y=5 (out of range [0, 2))
+        Then a ValueError should be raised indicating the out-of-range value
+        """
+        with pytest.raises(ValueError, match="out of range"):
+            evaluate_equation(xor_magma, "x * y = y * x", {"x": 0, "y": 5})
 
 
 class TestSearchCounterexample:
