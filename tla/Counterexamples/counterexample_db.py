@@ -52,9 +52,7 @@ class CounterexampleDatabase:
             self._rebuild_index()
             return
         except (OSError, json.JSONDecodeError) as e:
-            raise RuntimeError(
-                f"Failed to load counterexample database {self.db_path}: {e}"
-            ) from e
+            raise RuntimeError(f"Failed to load counterexample database {self.db_path}: {e}") from e
 
         try:
             for item in data:
