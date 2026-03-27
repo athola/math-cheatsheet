@@ -90,7 +90,8 @@ def evaluate_with_llm(
                 max_tokens=1024,
                 messages=[{"role": "user", "content": prompt}],
             )
-            text = response.content[0].text
+            block = response.content[0]
+            text = block.text if hasattr(block, "text") else str(block)
             predicted = parse_verdict(text)
         except Exception as e:
             print(f"  Error on problem {prob['id']}: {e}")
