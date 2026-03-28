@@ -6,7 +6,7 @@ Provides composable strategies for generating algebraic structures
 
 from hypothesis import strategies as st
 
-from data_models import Equation, Magma, Problem, Property
+from data_models import Difficulty, EquationEntry, Magma, Problem, Property
 
 # ── Magma strategies ────────────────────────────────────────────
 
@@ -83,7 +83,7 @@ def equations(draw):
     name = draw(st.text(min_size=1, max_size=30, alphabet=alphabet))
     props = draw(property_lists())
     desc = draw(st.text(max_size=100))
-    return Equation(id=eq_id, latex=latex, name=name, properties=props, description=desc)
+    return EquationEntry(id=eq_id, latex=latex, name=name, properties=props, description=desc)
 
 
 # ── Problem strategies ──────────────────────────────────────────
@@ -96,7 +96,7 @@ def problems(draw, max_eq_id: int = 100):
     eq1 = draw(st.integers(min_value=1, max_value=max_eq_id))
     eq2 = draw(st.integers(min_value=1, max_value=max_eq_id))
     answer = draw(st.one_of(st.none(), st.booleans()))
-    difficulty = draw(st.sampled_from(["regular", "hard"]))
+    difficulty = draw(st.sampled_from(list(Difficulty)))
     return Problem(
         id=prob_id,
         equation_1_id=eq1,

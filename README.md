@@ -1,12 +1,16 @@
 # Math Cheatsheet — Equational Theories
 
-A formally verified 10KB reference for determining equational implication
-in magmas. Built for the
-[SAIR Mathematics Distillation Challenge][sair-challenge],
+[![CI](https://github.com/athola/math-cheatsheet/actions/workflows/ci.yml/badge.svg)][ci]
+
+A formally verified 10 KB reference for determining equational
+implication in magmas. Built for the
+[SAIR Mathematics Distillation Challenge][sair-challenge]
 using Lean 4, TLA+, Rust, and Python.
 
 **98.01% accuracy** on the full 22M implication matrix
 (4,694 equations, 22,028,942 pairs) | 9,911 bytes of 10,240 limit
+
+[ci]: https://github.com/athola/math-cheatsheet/actions/workflows/ci.yml
 
 ## Competition Context
 
@@ -42,7 +46,7 @@ make test             # run Python test suite
 make test-rust        # run Rust proptest suite
 make lean-check       # check Lean 4 proofs
 make harness          # 5-angle cheatsheet validation
-make evaluate-v4      # evaluate v4 decision procedure (requires implications.csv)
+make download-etp     # download ETP equation data from GitHub
 make check            # all quality gates (lint + typecheck + test + rust)
 ```
 
@@ -84,6 +88,7 @@ math-cheatsheet/
 ├── lean/                 # Lean 4 formal proofs
 ├── tla/                  # TLA+ specs and Python bridge
 ├── tests/                # pytest suite (unit, property, cross-language)
+│   └── unit/             # unit tests (counterexample_db, tla_bridge, etc.)
 ├── cheatsheet/           # Cheatsheet versions (v1 → v3 → final, competition)
 ├── experiments/          # Validation scripts and results
 ├── scripts/              # CLI utilities (demos, evaluation, data)
@@ -105,7 +110,7 @@ make test-rust            # Rust proptest invariants
 make test-invariants      # all invariant tests combined
 ```
 
-### Quality gates
+### Quality Gates
 
 ```bash
 make lint                 # ruff linting

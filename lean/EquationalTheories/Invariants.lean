@@ -81,7 +81,6 @@ theorem assoc_vars : StdEqn.associativity.lhs.vars ∪ StdEqn.associativity.rhs.
   simp [StdEqn.associativity, Term.vars]
   ext x
   simp [Finset.mem_union, Finset.mem_insert, Finset.mem_singleton]
-  omega
 
 /-- Commutativity equation uses exactly variables {0, 1}. -/
 theorem comm_vars : StdEqn.commutativity.lhs.vars ∪ StdEqn.commutativity.rhs.vars = {0, 1} := by
@@ -93,8 +92,6 @@ theorem comm_vars : StdEqn.commutativity.lhs.vars ∪ StdEqn.commutativity.rhs.v
 /-- Idempotence equation uses exactly variable {0}. -/
 theorem idemp_vars : StdEqn.idempotence.lhs.vars ∪ StdEqn.idempotence.rhs.vars = {0} := by
   simp [StdEqn.idempotence, Term.vars]
-  ext x
-  simp [Finset.mem_union, Finset.mem_singleton]
 
 /-! ## Feature: Concrete magma property verification
 
@@ -103,54 +100,82 @@ These serve as compile-time witnesses that our definitions are correct. -/
 
 /-- XOR on Bool is commutative. -/
 theorem bool_xor_commutative :
-    let m : Magma Bool := ⟨xor⟩
-    MagmaSatisfies m StdEqn.commutativity := by
+    MagmaSatisfies (⟨xor⟩ : Magma Bool) StdEqn.commutativity := by
   intro σ
   simp [satisfies, StdEqn.commutativity]
   cases σ 0 <;> cases σ 1 <;> rfl
 
 /-- XOR on Bool is associative. -/
 theorem bool_xor_associative :
-    let m : Magma Bool := ⟨xor⟩
-    MagmaSatisfies m StdEqn.associativity := by
+    MagmaSatisfies (⟨xor⟩ : Magma Bool) StdEqn.associativity := by
   intro σ
   simp [satisfies, StdEqn.associativity]
-  cases σ 0 <;> cases σ 1 <;> cases σ 2 <;> rfl
 
 /-- AND on Bool is commutative. -/
 theorem bool_and_commutative :
-    let m : Magma Bool := ⟨(· && ·)⟩
-    MagmaSatisfies m StdEqn.commutativity := by
+    MagmaSatisfies (⟨(· && ·)⟩ : Magma Bool) StdEqn.commutativity := by
   intro σ
   simp [satisfies, StdEqn.commutativity]
   cases σ 0 <;> cases σ 1 <;> rfl
 
 /-- AND on Bool is idempotent. -/
 theorem bool_and_idempotent :
-    let m : Magma Bool := ⟨(· && ·)⟩
-    MagmaSatisfies m StdEqn.idempotence := by
+    MagmaSatisfies (⟨(· && ·)⟩ : Magma Bool) StdEqn.idempotence := by
   intro σ
   simp [satisfies, StdEqn.idempotence]
-  cases σ 0 <;> rfl
 
-/-! ## Feature: Non-implication witnesses
+/-! ## Feature: Non-implication witnesses with explicit countermodels
 
-To prove that commutativity does NOT imply associativity (or vice versa),
-one must construct a concrete magma where the premise holds but the conclusion
-fails. Full `¬ implies` proofs require explicit countermodels on a finite
-carrier (e.g., Fin 3 or Fin 4).
+Concrete finite magmas on Bool (= Fin 2) that witness non-implications
+between standard equations. Each proof constructs an explicit countermodel
+and a specific variable assignment that separates the two properties. -/
 
-The self-implications below demonstrate the reflexivity infrastructure;
-actual non-implication witnesses are a future work item tracked in the
-project backlog. -/
+/-- NAND on Bool: a ◇ b = ¬(a ∧ b). Commutative but not associative. -/
+private def nandMagma : Magma Bool := ⟨fun a b => !(a && b)⟩
 
-/-- Self-implication: Commutativity implies commutativity (reflexivity). -/
-theorem comm_implies_comm : implies StdEqn.commutativity StdEqn.commutativity :=
-  implication_reflexivity _
+/-- Left projection on Bool: a ◇ b = a. Associative and idempotent but not commutative. -/
+private def lprojMagma : Magma Bool := ⟨fun a _ => a⟩
 
-/-- Self-implication: Associativity implies associativity (reflexivity). -/
-theorem assoc_implies_assoc : implies StdEqn.associativity StdEqn.associativity :=
-  implication_reflexivity _
+private theorem nandMagma_comm : MagmaSatisfies nandMagma StdEqn.commutativity := by
+  intro σ
+  simp [satisfies, StdEqn.commutativity, nandMagma]
+  cases σ 0 <;> cases σ 1 <;> rfl
+
+private theorem nandMagma_not_assoc : ¬ MagmaSatisfies nandMagma StdEqn.associativity := by
+  intro h
+  have := h (fun n => if n = 2 then true else false)
+  simp [satisfies, StdEqn.associativity, nandMagma] at this
+
+private theorem lprojMagma_assoc : MagmaSatisfies lprojMagma StdEqn.associativity := by
+  intro σ
+  simp [satisfies, StdEqn.associativity, lprojMagma]
+
+private theorem lprojMagma_idemp : MagmaSatisfies lprojMagma StdEqn.idempotence := by
+  intro σ
+  simp [satisfies, StdEqn.idempotence, lprojMagma]
+
+private theorem lprojMagma_not_comm : ¬ MagmaSatisfies lprojMagma StdEqn.commutativity := by
+  intro h
+  have := h (fun n => if n = 0 then false else true)
+  simp [satisfies, StdEqn.commutativity, lprojMagma] at this
+
+/-- Commutativity does NOT imply associativity.
+    Witness: NAND on Bool is commutative but not associative. -/
+theorem comm_not_implies_assoc : ¬ implies StdEqn.commutativity StdEqn.associativity := by
+  intro h
+  exact nandMagma_not_assoc (h nandMagma nandMagma_comm)
+
+/-- Associativity does NOT imply commutativity.
+    Witness: left projection on Bool is associative but not commutative. -/
+theorem assoc_not_implies_comm : ¬ implies StdEqn.associativity StdEqn.commutativity := by
+  intro h
+  exact lprojMagma_not_comm (h lprojMagma lprojMagma_assoc)
+
+/-- Idempotence does NOT imply commutativity.
+    Witness: left projection on Bool is idempotent but not commutative. -/
+theorem idemp_not_implies_comm : ¬ implies StdEqn.idempotence StdEqn.commutativity := by
+  intro h
+  exact lprojMagma_not_comm (h lprojMagma lprojMagma_idemp)
 
 /-! ## Feature: Term size invariants -/
 

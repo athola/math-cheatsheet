@@ -63,12 +63,12 @@ test-invariants: test-property test-cross-language test-rust ## Run all invarian
 
 .PHONY: lint
 lint: ## Lint Python source with ruff
-	$(RUFF) check src/ tests/ experiments/ tla/python/
+	$(RUFF) check src/ tests/ experiments/ tla/ scripts/
 
 .PHONY: format
 format: ## Auto-format Python source with ruff
-	$(RUFF) format src/ tests/ experiments/ tla/python/
-	$(RUFF) check --fix src/ tests/ experiments/ tla/python/
+	$(RUFF) format src/ tests/ experiments/ tla/ scripts/
+	$(RUFF) check --fix src/ tests/ experiments/ tla/ scripts/
 
 .PHONY: typecheck
 typecheck: ## Run mypy type checking
@@ -126,7 +126,7 @@ harness-competition: ## Simulate competition evaluation format (LIVE)
 	$(HARNESS) competition $(CHEATSHEET)
 
 .PHONY: test-harness
-test-harness: ## Run harness pytest suite (31 tests)
+test-harness: ## Run harness pytest suite
 	$(PYTHONPATH) $(PYTEST) tests/test_cheatsheet_harness.py -v
 
 # ── Legacy Validation (LIVE) ──────────────────────────────────

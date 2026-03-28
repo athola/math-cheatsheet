@@ -448,41 +448,41 @@ class TestCanonicalMagmas:
     @pytest.mark.unit
     def test_lp_properties(self):
         """LP should be associative and idempotent but not commutative."""
-        lp = CANONICAL_MAGMAS[0]
-        assert lp.satisfies(parse_equation("x * (y * z) = (x * y) * z"))
-        assert lp.satisfies(parse_equation("x * x = x"))
-        assert not lp.satisfies(parse_equation("x * y = y * x"))
+        _name, lp = CANONICAL_MAGMAS[0]
+        assert parse_equation("x * (y * z) = (x * y) * z").holds_in(lp.operation, lp.size)
+        assert parse_equation("x * x = x").holds_in(lp.operation, lp.size)
+        assert not parse_equation("x * y = y * x").holds_in(lp.operation, lp.size)
 
     @pytest.mark.unit
     def test_rp_properties(self):
         """RP should be associative and idempotent but not commutative."""
-        rp = CANONICAL_MAGMAS[1]
-        assert rp.satisfies(parse_equation("x * (y * z) = (x * y) * z"))
-        assert rp.satisfies(parse_equation("x * x = x"))
-        assert not rp.satisfies(parse_equation("x * y = y * x"))
+        _name, rp = CANONICAL_MAGMAS[1]
+        assert parse_equation("x * (y * z) = (x * y) * z").holds_in(rp.operation, rp.size)
+        assert parse_equation("x * x = x").holds_in(rp.operation, rp.size)
+        assert not parse_equation("x * y = y * x").holds_in(rp.operation, rp.size)
 
     @pytest.mark.unit
     def test_c0_properties(self):
         """C0 should be associative and commutative but not idempotent."""
-        c0 = CANONICAL_MAGMAS[2]
-        assert c0.satisfies(parse_equation("x * (y * z) = (x * y) * z"))
-        assert c0.satisfies(parse_equation("x * y = y * x"))
-        assert not c0.satisfies(parse_equation("x * x = x"))
+        _name, c0 = CANONICAL_MAGMAS[2]
+        assert parse_equation("x * (y * z) = (x * y) * z").holds_in(c0.operation, c0.size)
+        assert parse_equation("x * y = y * x").holds_in(c0.operation, c0.size)
+        assert not parse_equation("x * x = x").holds_in(c0.operation, c0.size)
 
     @pytest.mark.unit
     def test_xr_properties(self):
         """XOR should be commutative, associative, not idempotent."""
-        xr = CANONICAL_MAGMAS[3]
-        assert xr.satisfies(parse_equation("x * y = y * x"))
-        assert xr.satisfies(parse_equation("x * (y * z) = (x * y) * z"))
-        assert not xr.satisfies(parse_equation("x * x = x"))
+        _name, xr = CANONICAL_MAGMAS[3]
+        assert parse_equation("x * y = y * x").holds_in(xr.operation, xr.size)
+        assert parse_equation("x * (y * z) = (x * y) * z").holds_in(xr.operation, xr.size)
+        assert not parse_equation("x * x = x").holds_in(xr.operation, xr.size)
 
     @pytest.mark.unit
     def test_cm_properties(self):
         """CM should be commutative but NOT associative."""
-        cm = CANONICAL_MAGMAS[4]
-        assert cm.satisfies(parse_equation("x * y = y * x"))
-        assert not cm.satisfies(parse_equation("x * (y * z) = (x * y) * z"))
+        _name, cm = CANONICAL_MAGMAS[4]
+        assert parse_equation("x * y = y * x").holds_in(cm.operation, cm.size)
+        assert not parse_equation("x * (y * z) = (x * y) * z").holds_in(cm.operation, cm.size)
 
 
 class TestBatchAnalysis:

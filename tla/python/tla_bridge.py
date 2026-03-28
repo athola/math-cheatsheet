@@ -6,7 +6,7 @@ This module provides Python integration with TLA+ model checker
 for automated counterexample finding in finite magmas.
 
 When the compiled Rust extension `magma_core` is available, generation
-and property checks run 20-60x faster. Falls back to pure Python otherwise.
+and property checks run ~20x faster. Falls back to pure Python otherwise.
 """
 
 from __future__ import annotations
@@ -18,7 +18,8 @@ import tempfile
 from typing import Any
 
 # Requires PYTHONPATH=src:tla/python (set by Makefile)
-from data_models import Counterexample, Magma
+from data_models import Magma
+from equation_analyzer import parse_equation
 
 _logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ except ImportError:
     _rust_generate = None
     _logger.warning(
         "magma_core Rust extension not available; falling back to pure Python "
-        "(20-60x slower). Build with: cd rust && maturin develop --release"
+        "(~20x slower). Build with: cd rust && maturin develop --release"
     )
 
 
@@ -81,26 +82,84 @@ def to_python_magma(magma) -> Magma:
 
 
 def search_counterexample(
-    equations_holding: list[int], equation_to_test: int, max_size: int = 4
-) -> Counterexample | None:
+    equations_holding: list[str],
+    equation_to_test: str,
+    max_size: int = 4,
+) -> Magma | None:
+    """Search for a magma where all *equations_holding* are satisfied
+    but *equation_to_test* is not.
+
+    Iterates over every magma of sizes 2 through *max_size*, checking
+    all variable assignments exhaustively.  Returns the first magma
+    that satisfies every premise equation universally while falsifying
+    the target equation (i.e. it does **not** hold universally).
+
+    Args:
+        equations_holding: Equation strings that must hold (premises).
+        equation_to_test: Equation string that should fail (target).
+        max_size: Largest carrier-set size to search (inclusive).
+
+    Returns:
+        A :class:`Magma` witnessing the non-implication, or ``None``
+        if no counterexample exists up to the given size.
     """
-    Search for a magma where all `equations_holding` are true
-    but `equation_to_test` is false.
-    """
-    raise NotImplementedError(
-        "Counterexample search requires equation evaluation. "
-        "Use explore_magmas.find_implication_counterexamples() for property-based search."
-    )
+    parsed_premises = []
+    for i, eq in enumerate(equations_holding):
+        try:
+            parsed_premises.append(parse_equation(eq))
+        except ValueError as e:
+            raise ValueError(f"Failed to parse premise equation {i} ('{eq}'): {e}") from e
+    try:
+        parsed_target = parse_equation(equation_to_test)
+    except ValueError as e:
+        raise ValueError(f"Failed to parse target equation ('{equation_to_test}'): {e}") from e
+
+    for size in range(2, max_size + 1):
+        magmas = generate_all_magmas(size)
+        for magma in magmas:
+            py_magma = to_python_magma(magma)
+            table = py_magma.operation
+            n = py_magma.size
+
+            # All premises must hold universally in this magma
+            if not all(eq.holds_in(table, n) for eq in parsed_premises):
+                continue
+
+            # Target must fail (not hold universally) in this magma
+            if not parsed_target.holds_in(table, n):
+                return py_magma
+
+    return None
 
 
 def evaluate_equation(magma: Magma, equation: str, assignment: dict[str, int]) -> bool:
+    """Evaluate an equation in a magma given variable assignment.
+
+    Parses the equation string (e.g. "x * y = y * x") into an AST,
+    evaluates both sides against the magma's operation table using the
+    given variable assignment, and returns True iff the two sides are equal.
+
+    Args:
+        magma: The finite magma to evaluate in.
+        equation: Equation string with ``*`` or ``◇`` as the binary operator.
+        assignment: Mapping from variable names to element indices.
+
+    Returns:
+        True when LHS and RHS evaluate to the same element.
     """
-    Evaluate an equation in a magma given variable assignment.
-    """
-    raise NotImplementedError(
-        "Equation evaluation requires a term parser. "
-        "See lean/EquationalTheories/Core.lean for term representation."
-    )
+    eq = parse_equation(equation)
+    required_vars = eq.lhs.variables() | eq.rhs.variables()
+    missing = required_vars - set(assignment.keys())
+    if missing:
+        raise ValueError(
+            f"Assignment missing variables {missing} required by equation '{equation}'"
+        )
+    for var, val in assignment.items():
+        if not (0 <= val < magma.size):
+            raise ValueError(f"Assignment {var}={val} out of range for magma of size {magma.size}")
+    lhs_val = eq.lhs.evaluate(magma.operation, assignment)
+    rhs_val = eq.rhs.evaluate(magma.operation, assignment)
+    return lhs_val == rhs_val
 
 
 class TLAModelChecker:

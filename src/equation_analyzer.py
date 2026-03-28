@@ -17,8 +17,10 @@ and Birkhoff's completeness theorem for equational logic.
 from __future__ import annotations
 
 import itertools
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum, auto
+
+from data_models import Magma
 
 
 class NodeType(Enum):
@@ -190,66 +192,30 @@ def parse_equation(s: str) -> Equation:
 # --- Canonical Counterexample Magmas ---
 
 
-@dataclass
-class CounterexampleMagma:
-    name: str
-    size: int
-    table: list[list[int]]
-    properties: list[str] = field(default_factory=list)
-
-    def satisfies(self, eq: Equation) -> bool:
-        return eq.holds_in(self.table, self.size)
-
-
-# The 7 canonical magmas from the v3 cheatsheet
-CANONICAL_MAGMAS = [
-    CounterexampleMagma(
-        "LP (Left Projection)",
-        2,
-        [[0, 0], [1, 1]],
-        ["associative", "idempotent", "NOT commutative"],
-    ),
-    CounterexampleMagma(
-        "RP (Right Projection)",
-        2,
-        [[0, 1], [0, 1]],
-        ["associative", "idempotent", "NOT commutative"],
-    ),
-    CounterexampleMagma(
-        "C0 (Constant Zero)",
-        2,
-        [[0, 0], [0, 0]],
-        ["associative", "commutative", "NOT idempotent"],
-    ),
-    CounterexampleMagma(
-        "XR (XOR / Z2 addition)",
-        2,
-        [[0, 1], [1, 0]],
-        ["commutative", "associative", "has identity", "NOT idempotent"],
-    ),
-    CounterexampleMagma(
+# The 7 canonical magmas from the v3 cheatsheet.
+# Each entry is (name, Magma).
+CANONICAL_MAGMAS: list[tuple[str, Magma]] = [
+    ("LP (Left Projection)", Magma(size=2, elements=[0, 1], operation=[[0, 0], [1, 1]])),
+    ("RP (Right Projection)", Magma(size=2, elements=[0, 1], operation=[[0, 1], [0, 1]])),
+    ("C0 (Constant Zero)", Magma(size=2, elements=[0, 1], operation=[[0, 0], [0, 0]])),
+    ("XR (XOR / Z2 addition)", Magma(size=2, elements=[0, 1], operation=[[0, 1], [1, 0]])),
+    (
         "CM (Commutative Non-Associative)",
-        2,
-        [[1, 1], [1, 0]],
-        ["commutative", "NOT associative"],
+        Magma(size=2, elements=[0, 1], operation=[[1, 1], [1, 0]]),
     ),
-    CounterexampleMagma(
-        "N1 (Non-comm Non-assoc)",
-        2,
-        [[0, 0], [1, 0]],
-        ["NOT commutative", "NOT associative"],
-    ),
-    CounterexampleMagma(
+    ("N1 (Non-comm Non-assoc)", Magma(size=2, elements=[0, 1], operation=[[0, 0], [1, 0]])),
+    (
         "Z3 (Z/3Z addition)",
-        3,
-        [[0, 1, 2], [1, 2, 0], [2, 0, 1]],
-        ["commutative", "associative", "has identity", "NOT idempotent"],
+        Magma(size=3, elements=[0, 1, 2], operation=[[0, 1, 2], [1, 2, 0], [2, 0, 1]]),
     ),
 ]
 
-# All 16 possible 2-element magma tables
-ALL_SIZE_2_MAGMAS = [
-    CounterexampleMagma(f"M2_{i:04b}", 2, [[i >> 3 & 1, i >> 2 & 1], [i >> 1 & 1, i & 1]])
+# All 16 possible 2-element magma tables.
+ALL_SIZE_2_MAGMAS: list[tuple[str, Magma]] = [
+    (
+        f"M2_{i:04b}",
+        Magma(size=2, elements=[0, 1], operation=[[i >> 3 & 1, i >> 2 & 1], [i >> 1 & 1, i & 1]]),
+    )
     for i in range(16)
 ]
 
@@ -263,12 +229,12 @@ class ImplicationVerdict(Enum):
     UNKNOWN = "UNKNOWN"
 
 
-@dataclass
+@dataclass(frozen=True)
 class AnalysisResult:
     verdict: ImplicationVerdict
     phase: str
     reason: str
-    counterexample: CounterexampleMagma | None = None
+    counterexample: Magma | None = None
 
 
 def analyze_implication(h: Equation, t: Equation) -> AnalysisResult:
@@ -325,19 +291,19 @@ def analyze_implication(h: Equation, t: Equation) -> AnalysisResult:
         return sub_result
 
     # Phase 4: Counterexample testing (canonical magmas)
-    for magma in CANONICAL_MAGMAS:
-        if magma.satisfies(h) and not magma.satisfies(t):
+    for name, magma in CANONICAL_MAGMAS:
+        if h.holds_in(magma.operation, magma.size) and not t.holds_in(magma.operation, magma.size):
             return AnalysisResult(
-                ImplicationVerdict.FALSE, "Phase 4", f"Counterexample: {magma.name}", magma
+                ImplicationVerdict.FALSE, "Phase 4", f"Counterexample: {name}", magma
             )
 
     # Phase 4b: Exhaustive 2-element search
-    for magma in ALL_SIZE_2_MAGMAS:
-        if magma.satisfies(h) and not magma.satisfies(t):
+    for name, magma in ALL_SIZE_2_MAGMAS:
+        if h.holds_in(magma.operation, magma.size) and not t.holds_in(magma.operation, magma.size):
             return AnalysisResult(
                 ImplicationVerdict.FALSE,
                 "Phase 4b",
-                f"Counterexample: {magma.name} table={magma.table}",
+                f"Counterexample: {name} table={magma.operation}",
                 magma,
             )
 

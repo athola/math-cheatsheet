@@ -15,7 +15,7 @@ from pathlib import Path
 from data_models import Problem
 
 
-@dataclass
+@dataclass(frozen=True)
 class EvaluationResult:
     """Result of evaluating a single problem."""
 
@@ -34,7 +34,7 @@ class EvaluationResult:
         return asdict(self)
 
 
-@dataclass
+@dataclass(frozen=True)
 class EvaluationSummary:
     """Summary of evaluation results."""
 

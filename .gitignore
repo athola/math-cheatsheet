@@ -68,8 +68,14 @@ rust/Cargo.lock
 # Large data files (download via make download-etp)
 research/data/etp/implications.csv
 
+# Generated synthetic data (regenerate via make generate-data)
+research/data/original/*.json
+
 # TLA+ generated outputs
 tla/MagmaSpecifications/exploration_results.json
+
+# Lockfiles (too large for pre-commit size limit)
+uv.lock
 
 # Large generated files
 *.png

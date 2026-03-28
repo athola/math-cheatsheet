@@ -6,7 +6,8 @@ from data_models import (
     SYNTHETIC_EQUATIONS,
     AlgebraicEquation,
     Counterexample,
-    Equation,
+    Difficulty,
+    EquationEntry,
     Magma,
     Problem,
     Property,
@@ -25,16 +26,16 @@ class TestProperty:
 
 class TestEquation:
     def test_creation(self):
-        eq = Equation(id=1, latex="x*y=y*x", name="comm", properties=[Property.COMMUTATIVE])
+        eq = EquationEntry(id=1, latex="x*y=y*x", name="comm", properties=[Property.COMMUTATIVE])
         assert eq.id == 1
         assert eq.name == "comm"
 
     def test_str(self):
-        eq = Equation(id=42, latex="", name="Test", properties=[])
+        eq = EquationEntry(id=42, latex="", name="Test", properties=[])
         assert str(eq) == "E42: Test"
 
     def test_to_dict(self):
-        eq = Equation(
+        eq = EquationEntry(
             id=1,
             latex="x*y",
             name="test",
@@ -47,44 +48,33 @@ class TestEquation:
         assert d["description"] == "desc"
 
     def test_default_description(self):
-        eq = Equation(id=1, latex="", name="", properties=[])
+        eq = EquationEntry(id=1, latex="", name="", properties=[])
         assert eq.description == ""
 
 
 class TestProblem:
     def test_creation(self):
-        p = Problem(id=1, equation_1_id=3, equation_2_id=5, answer=True, difficulty="regular")
+        p = Problem(
+            id=1, equation_1_id=3, equation_2_id=5, answer=True, difficulty=Difficulty.REGULAR
+        )
         assert p.answer is True
-        assert p.difficulty == "regular"
+        assert p.difficulty == Difficulty.REGULAR
 
     def test_str(self):
-        p = Problem(id=1, equation_1_id=3, equation_2_id=5, answer=None, difficulty="hard")
+        p = Problem(id=1, equation_1_id=3, equation_2_id=5, answer=None, difficulty=Difficulty.HARD)
         assert "E3" in str(p)
         assert "E5" in str(p)
 
     def test_to_dict(self):
-        p = Problem(id=1, equation_1_id=3, equation_2_id=5, answer=False, difficulty="hard")
+        p = Problem(
+            id=1, equation_1_id=3, equation_2_id=5, answer=False, difficulty=Difficulty.HARD
+        )
         d = p.to_dict()
         assert d["equation_1"] == 3
         assert d["answer"] is False
 
 
 class TestMagma:
-    @pytest.fixture
-    def xor_magma(self):
-        """Z/2Z under XOR: associative, commutative, has identity 0."""
-        return Magma(size=2, elements=[0, 1], operation=[[0, 1], [1, 0]])
-
-    @pytest.fixture
-    def and_magma(self):
-        """Z/2Z under AND: associative, commutative, has identity 1."""
-        return Magma(size=2, elements=[0, 1], operation=[[0, 0], [0, 1]])
-
-    @pytest.fixture
-    def non_assoc_magma(self):
-        """A non-associative magma of size 3."""
-        return Magma(size=3, elements=[0, 1, 2], operation=[[0, 2, 1], [2, 1, 0], [1, 0, 2]])
-
     def test_op(self, xor_magma):
         assert xor_magma.op(0, 0) == 0
         assert xor_magma.op(0, 1) == 1
@@ -172,3 +162,64 @@ class TestSyntheticEquations:
     def test_all_have_properties(self):
         for eq in SYNTHETIC_EQUATIONS:
             assert len(eq.properties) > 0
+
+
+class TestMagmaValidation:
+    """T1: Magma.__post_init__ validation paths."""
+
+    def test_rejects_size_zero(self):
+        with pytest.raises(ValueError, match="at least 1"):
+            Magma(size=0, elements=[], operation=[])
+
+    def test_rejects_wrong_row_count(self):
+        with pytest.raises(ValueError, match="rows"):
+            Magma(size=2, elements=[0, 1], operation=[[0, 0]])
+
+    def test_rejects_wrong_column_count(self):
+        with pytest.raises(ValueError, match="columns"):
+            Magma(size=2, elements=[0, 1], operation=[[0, 0], [0]])
+
+    def test_rejects_out_of_range_entry(self):
+        with pytest.raises(ValueError, match="out of range"):
+            Magma(size=2, elements=[0, 1], operation=[[0, 5], [0, 0]])
+
+
+class TestFrozenImmutability:
+    """T5: Verify frozen dataclasses have deep immutability."""
+
+    def test_magma_field_reassignment_blocked(self):
+        m = Magma(size=2, elements=[0, 1], operation=[[0, 1], [1, 0]])
+        with pytest.raises(AttributeError):
+            m.size = 3
+
+    def test_magma_operation_is_deeply_immutable(self):
+        m = Magma(size=2, elements=[0, 1], operation=[[0, 1], [1, 0]])
+        assert isinstance(m.operation, tuple)
+        assert isinstance(m.operation[0], tuple)
+        with pytest.raises(TypeError):
+            m.operation[0] = (9, 9)
+
+    def test_magma_elements_is_tuple(self):
+        m = Magma(size=2, elements=[0, 1], operation=[[0, 1], [1, 0]])
+        assert isinstance(m.elements, tuple)
+
+    def test_counterexample_red_flags_is_frozenset(self):
+        m = Magma(size=2, elements=[0, 1], operation=[[0, 1], [1, 0]])
+        ce = Counterexample(premise_id=1, conclusion_id=2, magma=m, red_flags={"flag"})
+        assert isinstance(ce.red_flags, frozenset)
+
+    def test_equation_entry_properties_is_tuple(self):
+        eq = EquationEntry(id=1, latex="", name="", properties=[Property.COMMUTATIVE])
+        assert isinstance(eq.properties, tuple)
+
+    def test_equation_entry_field_reassignment_blocked(self):
+        eq = EquationEntry(id=1, latex="", name="", properties=[])
+        with pytest.raises(AttributeError):
+            eq.id = 2
+
+    def test_problem_field_reassignment_blocked(self):
+        p = Problem(
+            id=1, equation_1_id=3, equation_2_id=5, answer=True, difficulty=Difficulty.REGULAR
+        )
+        with pytest.raises(AttributeError):
+            p.id = 2

@@ -16,7 +16,8 @@ from strategies import equations, magmas, problems
 from data_models import (
     SYNTHETIC_EQUATIONS,
     Counterexample,
-    Equation,
+    Difficulty,
+    EquationEntry,
     Magma,
     Problem,
     Property,
@@ -32,7 +33,7 @@ class TestEquationInvariants:
     """Scenario: Equation data survives serialization."""
 
     @given(eq=equations())
-    def test_to_dict_roundtrip(self, eq: Equation):
+    def test_to_dict_roundtrip(self, eq: EquationEntry):
         """to_dict preserves all fields."""
         d = eq.to_dict()
         assert d["id"] == eq.id
@@ -42,13 +43,13 @@ class TestEquationInvariants:
         assert d["properties"] == [p.value for p in eq.properties]
 
     @given(eq=equations())
-    def test_str_contains_id(self, eq: Equation):
+    def test_str_contains_id(self, eq: EquationEntry):
         """String representation contains the equation id."""
         s = str(eq)
         assert str(eq.id) in s
 
     @given(eq=equations())
-    def test_properties_are_valid_enums(self, eq: Equation):
+    def test_properties_are_valid_enums(self, eq: EquationEntry):
         """All properties are valid Property enum members."""
         for p in eq.properties:
             assert isinstance(p, Property)
@@ -81,7 +82,7 @@ class TestProblemInvariants:
         assert d["equation_1"] == p.equation_1_id
         assert d["equation_2"] == p.equation_2_id
         assert d["answer"] == p.answer
-        assert d["difficulty"] == p.difficulty
+        assert d["difficulty"] == p.difficulty.value
 
     @given(p=problems())
     def test_str_contains_equation_ids(self, p: Problem):
@@ -93,7 +94,7 @@ class TestProblemInvariants:
     @given(p=problems())
     def test_difficulty_is_valid(self, p: Problem):
         """Difficulty is either 'regular' or 'hard'."""
-        assert p.difficulty in ("regular", "hard")
+        assert p.difficulty in (Difficulty.REGULAR, Difficulty.HARD)
 
     @given(p=problems())
     def test_answer_is_optional_bool(self, p: Problem):

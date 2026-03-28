@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from data_models import Problem
+from data_models import Difficulty, Problem
 from evaluation import EvaluationResult, EvaluationSummary, Evaluator, compare_evaluations
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -32,7 +32,7 @@ def _evaluator_with(results):
 def _make_problems(answers):
     """Create Problem objects with given answers."""
     return [
-        Problem(id=i + 1, equation_1_id=1, equation_2_id=2, answer=a, difficulty="regular")
+        Problem(id=i + 1, equation_1_id=1, equation_2_id=2, answer=a, difficulty=Difficulty.REGULAR)
         for i, a in enumerate(answers)
     ]
 
@@ -164,7 +164,9 @@ class TestEvaluationSummaryFields:
 class TestSimulateLlmCall:
     def test_known_answer_returns_prediction(self):
         ev = Evaluator(model="test")
-        problem = Problem(id=1, equation_1_id=1, equation_2_id=2, answer=True, difficulty="regular")
+        problem = Problem(
+            id=1, equation_1_id=1, equation_2_id=2, answer=True, difficulty=Difficulty.REGULAR
+        )
         result = ev._simulate_llm_call(problem, use_cheatsheet=False)
         assert result.predicted_answer in (True, False)
         assert result.model == "test"
@@ -172,7 +174,9 @@ class TestSimulateLlmCall:
 
     def test_none_answer_returns_none_prediction(self):
         ev = Evaluator(model="test")
-        problem = Problem(id=1, equation_1_id=1, equation_2_id=2, answer=None, difficulty="regular")
+        problem = Problem(
+            id=1, equation_1_id=1, equation_2_id=2, answer=None, difficulty=Difficulty.REGULAR
+        )
         result = ev._simulate_llm_call(problem)
         assert result.predicted_answer is None
         assert result.correct is False
@@ -180,7 +184,9 @@ class TestSimulateLlmCall:
     def test_cheatsheet_mode_flag(self):
         """Cheatsheet and baseline modes both produce results."""
         ev = Evaluator(model="test")
-        p = Problem(id=1, equation_1_id=1, equation_2_id=2, answer=True, difficulty="regular")
+        p = Problem(
+            id=1, equation_1_id=1, equation_2_id=2, answer=True, difficulty=Difficulty.REGULAR
+        )
         r1 = ev._simulate_llm_call(p, use_cheatsheet=False)
         r2 = ev._simulate_llm_call(p, use_cheatsheet=True)
         assert isinstance(r1.predicted_answer, bool)

@@ -73,7 +73,7 @@ def op(left: Term, right: Term) -> Term:
     return Term(is_var=False, left=left, right=right)
 
 
-@dataclass
+@dataclass(frozen=True)
 class Equation:
     """A parsed equation with structural metadata."""
 
@@ -92,13 +92,13 @@ class Equation:
     is_tautology: bool = False
 
     def __post_init__(self):
-        self.variables = self.lhs.variables() | self.rhs.variables()
-        self.var_count = len(self.variables)
-        self.max_depth = max(self.lhs.depth(), self.rhs.depth())
-        self.total_ops = self.lhs.size() + self.rhs.size()
-        self.lhs_is_var = self.lhs.is_var
-        self.rhs_is_var = self.rhs.is_var
-        self.is_tautology = self.lhs == self.rhs
+        object.__setattr__(self, "variables", self.lhs.variables() | self.rhs.variables())
+        object.__setattr__(self, "var_count", len(self.variables))
+        object.__setattr__(self, "max_depth", max(self.lhs.depth(), self.rhs.depth()))
+        object.__setattr__(self, "total_ops", self.lhs.size() + self.rhs.size())
+        object.__setattr__(self, "lhs_is_var", self.lhs.is_var)
+        object.__setattr__(self, "rhs_is_var", self.rhs.is_var)
+        object.__setattr__(self, "is_tautology", self.lhs == self.rhs)
 
 
 def _tokenize(s: str) -> list[str]:

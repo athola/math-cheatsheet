@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from data_models import Equation, Problem, Property
+from data_models import Difficulty, EquationEntry, Problem, Property
 from parsers import (
     ParseError,
     parse_equations,
@@ -107,7 +107,7 @@ class TestParseProblems:
         problems = parse_problems(str(tmp_problems_json))
         assert len(problems) == 2
         assert problems[0].answer is False
-        assert problems[1].difficulty == "hard"
+        assert problems[1].difficulty == Difficulty.HARD
 
     def test_file_not_found(self):
         with pytest.raises(ParseError):
@@ -117,8 +117,8 @@ class TestParseProblems:
 class TestValidateEquations:
     def test_valid_equations(self):
         equations = [
-            Equation(id=1, latex="", name="A", properties=[Property.ASSOCIATIVE]),
-            Equation(id=2, latex="", name="B", properties=[Property.COMMUTATIVE]),
+            EquationEntry(id=1, latex="", name="A", properties=[Property.ASSOCIATIVE]),
+            EquationEntry(id=2, latex="", name="B", properties=[Property.COMMUTATIVE]),
         ]
         result = validate_equations(equations)
         assert len(result["errors"]) == 0
@@ -126,8 +126,8 @@ class TestValidateEquations:
 
     def test_duplicate_ids(self):
         equations = [
-            Equation(id=1, latex="", name="A", properties=[Property.ASSOCIATIVE]),
-            Equation(id=1, latex="", name="B", properties=[Property.COMMUTATIVE]),
+            EquationEntry(id=1, latex="", name="A", properties=[Property.ASSOCIATIVE]),
+            EquationEntry(id=1, latex="", name="B", properties=[Property.COMMUTATIVE]),
         ]
         result = validate_equations(equations)
         assert len(result["errors"]) == 1
@@ -135,7 +135,7 @@ class TestValidateEquations:
 
     def test_no_properties_warning(self):
         equations = [
-            Equation(id=1, latex="", name="A", properties=[]),
+            EquationEntry(id=1, latex="", name="A", properties=[]),
         ]
         result = validate_equations(equations)
         assert len(result["warnings"]) == 1
@@ -144,14 +144,18 @@ class TestValidateEquations:
 class TestValidateProblems:
     def test_valid_problems(self):
         problems = [
-            Problem(id=1, equation_1_id=1, equation_2_id=2, answer=True, difficulty="regular"),
+            Problem(
+                id=1, equation_1_id=1, equation_2_id=2, answer=True, difficulty=Difficulty.REGULAR
+            ),
         ]
         result = validate_problems(problems, max_equation_id=10)
         assert len(result["errors"]) == 0
 
     def test_out_of_range_equation(self):
         problems = [
-            Problem(id=1, equation_1_id=99, equation_2_id=2, answer=True, difficulty="regular"),
+            Problem(
+                id=1, equation_1_id=99, equation_2_id=2, answer=True, difficulty=Difficulty.REGULAR
+            ),
         ]
         result = validate_problems(problems, max_equation_id=10)
         assert len(result["errors"]) == 1
@@ -159,17 +163,27 @@ class TestValidateProblems:
 
     def test_duplicate_problem_ids(self):
         problems = [
-            Problem(id=1, equation_1_id=1, equation_2_id=2, answer=True, difficulty="regular"),
-            Problem(id=1, equation_1_id=3, equation_2_id=4, answer=False, difficulty="regular"),
+            Problem(
+                id=1, equation_1_id=1, equation_2_id=2, answer=True, difficulty=Difficulty.REGULAR
+            ),
+            Problem(
+                id=1, equation_1_id=3, equation_2_id=4, answer=False, difficulty=Difficulty.REGULAR
+            ),
         ]
         result = validate_problems(problems, max_equation_id=10)
         assert any("Duplicate" in e for e in result["errors"])
 
     def test_difficulty_counts(self):
         problems = [
-            Problem(id=1, equation_1_id=1, equation_2_id=2, answer=True, difficulty="regular"),
-            Problem(id=2, equation_1_id=1, equation_2_id=3, answer=False, difficulty="hard"),
-            Problem(id=3, equation_1_id=1, equation_2_id=4, answer=True, difficulty="hard"),
+            Problem(
+                id=1, equation_1_id=1, equation_2_id=2, answer=True, difficulty=Difficulty.REGULAR
+            ),
+            Problem(
+                id=2, equation_1_id=1, equation_2_id=3, answer=False, difficulty=Difficulty.HARD
+            ),
+            Problem(
+                id=3, equation_1_id=1, equation_2_id=4, answer=True, difficulty=Difficulty.HARD
+            ),
         ]
         result = validate_problems(problems, max_equation_id=10)
         assert result["stats"]["by_difficulty"]["regular"] == 1
@@ -177,16 +191,24 @@ class TestValidateProblems:
 
     def test_with_answer_count(self):
         problems = [
-            Problem(id=1, equation_1_id=1, equation_2_id=2, answer=True, difficulty="regular"),
-            Problem(id=2, equation_1_id=1, equation_2_id=3, answer=None, difficulty="regular"),
-            Problem(id=3, equation_1_id=1, equation_2_id=4, answer=False, difficulty="regular"),
+            Problem(
+                id=1, equation_1_id=1, equation_2_id=2, answer=True, difficulty=Difficulty.REGULAR
+            ),
+            Problem(
+                id=2, equation_1_id=1, equation_2_id=3, answer=None, difficulty=Difficulty.REGULAR
+            ),
+            Problem(
+                id=3, equation_1_id=1, equation_2_id=4, answer=False, difficulty=Difficulty.REGULAR
+            ),
         ]
         result = validate_problems(problems, max_equation_id=10)
         assert result["stats"]["with_answer"] == 2
 
     def test_eq2_out_of_range(self):
         problems = [
-            Problem(id=1, equation_1_id=1, equation_2_id=99, answer=True, difficulty="regular"),
+            Problem(
+                id=1, equation_1_id=1, equation_2_id=99, answer=True, difficulty=Difficulty.REGULAR
+            ),
         ]
         result = validate_problems(problems, max_equation_id=10)
         assert len(result["errors"]) == 1
@@ -247,14 +269,14 @@ bad line without pipes
         p.write_text(json.dumps(data))
         problems = parse_problems(str(p))
         assert problems[0].answer is None
-        assert problems[0].difficulty == "regular"
+        assert problems[0].difficulty == Difficulty.REGULAR
 
 
 class TestValidateEquationsStats:
     def test_property_count_stats(self):
         equations = [
-            Equation(id=1, latex="", name="A", properties=[Property.ASSOCIATIVE]),
-            Equation(
+            EquationEntry(id=1, latex="", name="A", properties=[Property.ASSOCIATIVE]),
+            EquationEntry(
                 id=2, latex="", name="B", properties=[Property.ASSOCIATIVE, Property.COMMUTATIVE]
             ),
         ]

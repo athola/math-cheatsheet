@@ -16,13 +16,13 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class TLCRunner:
     """Wrapper for running TLC model checker."""
 
-    def __init__(self, tla_dir: Path, tools_path: Optional[Path] = None):
+    def __init__(self, tla_dir: Path, tools_path: Path | None = None):
         """
         Initialize TLC runner.
 
@@ -33,7 +33,7 @@ class TLCRunner:
         self.tla_dir = Path(tla_dir)
         self.tools_path = tools_path or self._find_tla_tools()
 
-    def _find_tla_tools(self) -> Optional[Path]:
+    def _find_tla_tools(self) -> Path | None:
         """Find TLA+ tools jar file in common locations."""
         common_paths = [
             Path("/usr/share/tla/tla2tools.jar"),
@@ -49,10 +49,7 @@ class TLCRunner:
         # Try to find in PATH
         try:
             result = subprocess.run(
-                ["which", "tlc2.TLC"],
-                capture_output=True,
-                text=True,
-                check=False
+                ["which", "tlc2.TLC"], capture_output=True, text=True, check=False
             )
             if result.returncode == 0:
                 return Path(result.stdout.strip())
@@ -64,11 +61,11 @@ class TLCRunner:
     def run(
         self,
         model: str,
-        specs: List[str],
+        specs: list[str],
         depth: int = 100,
         timeout: int = 300,
-        config: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        config: str | None = None,
+    ) -> dict[str, Any]:
         """
         Run TLC on a model.
 
@@ -85,14 +82,16 @@ class TLCRunner:
         if not self.tools_path:
             return {
                 "status": "error",
-                "error": "TLA+ tools not found. Please install TLA+ Toolbox."
+                "error": "TLA+ tools not found. Please install TLA+ Toolbox.",
             }
 
         cmd = [
             "java",
-            "-cp", str(self.tools_path),
+            "-cp",
+            str(self.tools_path),
             "tlc2.TLC",
-            "-depth", str(depth),
+            "-depth",
+            str(depth),
             "-deadlock",
         ]
 
@@ -103,11 +102,7 @@ class TLCRunner:
 
         try:
             result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                cwd=str(self.tla_dir)
+                cmd, capture_output=True, text=True, timeout=timeout, cwd=str(self.tla_dir)
             )
 
             return self._parse_tlc_output(result.stdout, result.stderr, result.returncode)
@@ -117,9 +112,7 @@ class TLCRunner:
         except (FileNotFoundError, OSError) as e:
             return {"status": "error", "error": str(e)}
 
-    def _parse_tlc_output(
-        self, stdout: str, stderr: str, returncode: int
-    ) -> Dict[str, Any]:
+    def _parse_tlc_output(self, stdout: str, stderr: str, returncode: int) -> dict[str, Any]:
         """Parse TLC output to extract results."""
         output = stdout + stderr
 
@@ -128,28 +121,24 @@ class TLCRunner:
             return {
                 "status": "success",
                 "message": "Model checking completed successfully",
-                "output": output
+                "output": output,
             }
 
         # Check for errors
         if returncode != 0:
             # Extract error message
-            error_match = re.search(r'Error: (.+)', output)
+            error_match = re.search(r"Error: (.+)", output)
             if error_match:
                 return {"status": "error", "error": error_match.group(1), "output": output}
 
         # Check for counterexamples (invariant violations)
         counterexample = self._extract_counterexample(output)
         if counterexample:
-            return {
-                "status": "counterexample",
-                "counterexample": counterexample,
-                "output": output
-            }
+            return {"status": "counterexample", "counterexample": counterexample, "output": output}
 
         return {"status": "unknown", "output": output}
 
-    def _extract_counterexample(self, output: str) -> Optional[Dict[str, Any]]:
+    def _extract_counterexample(self, output: str) -> dict[str, Any] | None:
         """Extract counterexample from TLC output."""
         # TLC typically outputs counterexamples in a specific format
         # This is a simplified parser
@@ -168,10 +157,7 @@ class TLCRunner:
                     var, val = line.split("=", 1)
                     variables[var.strip()] = val.strip()
 
-            parsed_states.append({
-                "state_number": int(state_num),
-                "variables": variables
-            })
+            parsed_states.append({"state_number": int(state_num), "variables": variables})
 
         return {"states": parsed_states} if parsed_states else None
 
@@ -185,34 +171,14 @@ class EquationChecker:
 
         # Common equation encodings
         self.equations = {
-            "associativity": [
-                ["*", ["*", ["x"], ["y"]], ["z"]],
-                ["*", ["x"], ["*", ["y"], ["z"]]]
-            ],
-            "commutativity": [
-                ["*", ["x"], ["y"]],
-                ["*", ["y"], ["x"]]
-            ],
-            "idempotence": [
-                ["*", ["x"], ["x"]],
-                ["x"]
-            ],
-            "left_identity": [
-                ["*", ["e"], ["x"]],
-                ["x"]
-            ],
-            "right_identity": [
-                ["*", ["x"], ["e"]],
-                ["x"]
-            ],
+            "associativity": [["*", ["*", ["x"], ["y"]], ["z"]], ["*", ["x"], ["*", ["y"], ["z"]]]],
+            "commutativity": [["*", ["x"], ["y"]], ["*", ["y"], ["x"]]],
+            "idempotence": [["*", ["x"], ["x"]], ["x"]],
+            "left_identity": [["*", ["e"], ["x"]], ["x"]],
+            "right_identity": [["*", ["x"], ["e"]], ["x"]],
         }
 
-    def check_implication(
-        self,
-        eqn1: str,
-        eqn2: str,
-        magma_size: int = 2
-    ) -> Dict[str, Any]:
+    def check_implication(self, eqn1: str, eqn2: str, magma_size: int = 2) -> dict[str, Any]:
         """
         Check if equation 1 implies equation 2.
 
@@ -246,10 +212,7 @@ def main():
 
     runner = TLCRunner(Path(args.tla_dir))
     result = runner.run(
-        model=args.model,
-        specs=args.specs.split(","),
-        depth=args.depth,
-        timeout=args.timeout
+        model=args.model, specs=args.specs.split(","), depth=args.depth, timeout=args.timeout
     )
 
     print(json.dumps(result, indent=2))
