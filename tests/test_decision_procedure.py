@@ -1,10 +1,12 @@
 """Tests for DecisionProcedure.
 
 Uses small synthetic fixtures for ETPEquations and ImplicationOracle
-to test all 7 phases of the decision procedure independently.
+to test all phases of the decision procedure independently.
+Includes slow integration tests for accuracy on the full 22M matrix.
 """
 
 import csv
+import json
 from pathlib import Path
 
 import pytest
@@ -12,6 +14,8 @@ import pytest
 from decision_procedure import DecisionProcedure, PredictionResult
 from etp_equations import ETPEquations
 from implication_oracle import ImplicationOracle
+
+DATA_DIR = Path(__file__).parent.parent / "research" / "data" / "etp"
 
 
 @pytest.fixture
@@ -146,16 +150,18 @@ class TestPhase5Substitution:
         """
         # Eq3 x*y=y*x, Eq4 x*y=x: not a substitution instance
         result = proc.predict(3, 4)
-        # This won't hit P5, it'll fall through to P6
-        assert result.phase in ("P5-substitution", "P6-default")
+        # Falls through P5, then structural analysis may catch it via counterexample
+        assert result.prediction is False
+        assert result.phase in ("P5-substitution", "P5c-structural(Phase 4)", "P6-default")
 
 
 class TestPhase6Default:
     def test_default_false(self, proc: DecisionProcedure):
-        """When no rule matches, default to FALSE."""
+        """When no structural rule matches, prediction is FALSE."""
         result = proc.predict(3, 4)
         assert result.prediction is False
-        assert result.phase == "P6-default"
+        # May be caught by structural analysis (counterexample) or fall to default
+        assert "P5c" in result.phase or "P6" in result.phase
 
 
 class TestPredictBool:
@@ -192,6 +198,82 @@ class TestEvaluate:
         assert result["accuracy"] > 0.0
 
 
+class TestPhaseEquivClass:
+    """Test the equivalence class phase (P5a) in the decision procedure."""
+
+    @pytest.fixture
+    def equiv_equations_file(self, tmp_path: Path) -> Path:
+        """Create equations where Eq3 and Eq4 have the same profile."""
+        eq_path = tmp_path / "equations.txt"
+        # 6 equations:
+        #   1: x = x         (tautology)
+        #   2: x = y         (collapse)
+        #   3: x ◇ y = y ◇ x (commutativity)
+        #   4: x ◇ x = x ◇ x (tautology-like but different from Eq1)
+        #   5: x ◇ y = x     (left projection)
+        #   6: x ◇ y = y     (right projection)
+        eq_path.write_text(
+            "x = x\nx = y\nx ◇ y = y ◇ x\nx ◇ x = x ◇ x\nx ◇ y = x\nx ◇ y = y\n",
+            encoding="utf-8",
+        )
+        return eq_path
+
+    @pytest.fixture
+    def equiv_oracle_csv(self, tmp_path: Path) -> Path:
+        """6x6 matrix where Eq3 and Eq6 have identical row profiles."""
+        csv_path = tmp_path / "implications.csv"
+        matrix = [
+            [3, -3, -3, -3, -3, -3],  # Eq1: tautology
+            [3, 3, 3, 3, 3, 3],  # Eq2: collapse
+            [3, -3, 3, -3, -3, 3],  # Eq3: implies 1, 3, 6
+            [3, -3, -3, 3, -3, -3],  # Eq4: implies 1, 4
+            [3, -3, -3, -3, 3, -3],  # Eq5: implies 1, 5
+            [3, -3, 3, -3, -3, 3],  # Eq6: same row as Eq3 → same class
+        ]
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            for row in matrix:
+                writer.writerow(row)
+        return csv_path
+
+    @pytest.fixture
+    def equiv_proc(self, equiv_equations_file: Path, equiv_oracle_csv: Path) -> DecisionProcedure:
+        eqs = ETPEquations(equiv_equations_file)
+        oracle = ImplicationOracle(equiv_oracle_csv)
+        return DecisionProcedure(eqs, oracle)
+
+    def test_same_class_predicts_true(self, equiv_proc: DecisionProcedure):
+        """Eq3 and Eq6 have the same row profile, so 3→6 should be TRUE."""
+        result = equiv_proc.predict(3, 6)
+        assert result.prediction is True
+        assert result.phase == "P5a-equiv-class"
+
+    def test_same_class_symmetric(self, equiv_proc: DecisionProcedure):
+        """Equivalence is symmetric: 6→3 should also be TRUE."""
+        result = equiv_proc.predict(6, 3)
+        assert result.prediction is True
+        assert result.phase == "P5a-equiv-class"
+
+    def test_different_class_falls_through(self, equiv_proc: DecisionProcedure):
+        """Eq4 and Eq5 are in different classes, so they don't match here."""
+        result = equiv_proc.predict(4, 5)
+        assert result.phase != "P5a-equiv-class"
+
+    def test_earlier_phases_take_priority(self, equiv_proc: DecisionProcedure):
+        """Self-implication is caught by P0, not P5a."""
+        result = equiv_proc.predict(3, 3)
+        assert result.phase == "P0-self"
+
+    def test_equiv_class_not_used_without_oracle(self, tmp_path: Path):
+        """Without oracle, equiv class phase is skipped."""
+        eq_path = tmp_path / "equations.txt"
+        eq_path.write_text("x = x\nx = y\n", encoding="utf-8")
+        eqs = ETPEquations(eq_path)
+        proc = DecisionProcedure(eqs, oracle=None)
+        result = proc.predict(1, 2)
+        assert result.phase != "P5a-equiv-class"
+
+
 class TestEvaluateByPhase:
     def test_returns_phase_breakdown(self, proc: DecisionProcedure):
         phases = proc.evaluate_by_phase()
@@ -210,3 +292,111 @@ class TestEvaluateByPhase:
         proc = DecisionProcedure(eqs, oracle=None)
         with pytest.raises(ValueError, match="Need oracle"):
             proc.evaluate_by_phase()
+
+
+@pytest.mark.slow
+class TestFullMatrixAccuracy:
+    """Evaluate the decision procedure against the full 22M implication matrix.
+
+    Requires: research/data/etp/equations.txt and research/data/etp/implications.csv
+    """
+
+    @pytest.fixture(scope="class")
+    def full_proc(self) -> DecisionProcedure:
+        eqs_path = DATA_DIR / "equations.txt"
+        csv_path = DATA_DIR / "implications.csv"
+        if not eqs_path.exists() or not csv_path.exists():
+            pytest.skip("Full dataset not available")
+        eqs = ETPEquations(eqs_path)
+        oracle = ImplicationOracle(csv_path)
+        return DecisionProcedure(eqs, oracle)
+
+    def test_accuracy_at_least_90_percent(self, full_proc: DecisionProcedure):
+        """FR-003 requirement: accuracy >= 90% on the full 22M matrix."""
+        result = full_proc.evaluate()
+        accuracy = result["accuracy"]
+        assert accuracy >= 0.90, f"Accuracy {accuracy:.4f} is below 90% threshold"
+
+    def test_accuracy_at_least_98_percent(self, full_proc: DecisionProcedure):
+        """Stretch goal: maintain ~98% accuracy after equivalence class addition."""
+        result = full_proc.evaluate()
+        accuracy = result["accuracy"]
+        assert accuracy >= 0.98, f"Accuracy {accuracy:.4f} is below 98% stretch target"
+
+
+@pytest.mark.slow
+class TestCompetitionProblems:
+    """Evaluate the decision procedure on the 1200 competition problems.
+
+    Requires: research/data/etp/competition/synthetic_problems.json
+    """
+
+    @pytest.fixture(scope="class")
+    def competition_data(self) -> list[dict]:
+        problems_path = DATA_DIR / "competition" / "synthetic_problems.json"
+        if not problems_path.exists():
+            pytest.skip("Competition data not available")
+        with open(problems_path, encoding="utf-8") as f:
+            return json.load(f)
+
+    @pytest.fixture(scope="class")
+    def full_proc(self) -> DecisionProcedure:
+        eqs_path = DATA_DIR / "equations.txt"
+        csv_path = DATA_DIR / "implications.csv"
+        if not eqs_path.exists() or not csv_path.exists():
+            pytest.skip("Full dataset not available")
+        eqs = ETPEquations(eqs_path)
+        oracle = ImplicationOracle(csv_path)
+        return DecisionProcedure(eqs, oracle)
+
+    def test_competition_accuracy_at_least_93_percent(
+        self, full_proc: DecisionProcedure, competition_data: list[dict]
+    ):
+        """FR-003 requirement: accuracy >= 93% on the 1200 competition problems."""
+        correct = 0
+        total = 0
+        for problem in competition_data:
+            h_id = problem["equation_1_id"]
+            t_id = problem["equation_2_id"]
+            expected = problem["answer"]
+            predicted = full_proc.predict_bool(h_id, t_id)
+            if predicted == expected:
+                correct += 1
+            total += 1
+
+        accuracy = correct / total if total > 0 else 0.0
+        assert accuracy >= 0.93, (
+            f"Competition accuracy {accuracy:.4f} ({correct}/{total}) is below 93% threshold"
+        )
+
+    def test_competition_has_1200_problems(self, competition_data: list[dict]):
+        """Verify we have the expected number of competition problems."""
+        assert len(competition_data) == 1200
+
+    def test_competition_normal_accuracy(
+        self, full_proc: DecisionProcedure, competition_data: list[dict]
+    ):
+        """Track accuracy on normal-difficulty problems separately."""
+        normal = [p for p in competition_data if p["difficulty"] == "normal"]
+        correct = sum(
+            1
+            for p in normal
+            if full_proc.predict_bool(p["equation_1_id"], p["equation_2_id"]) == p["answer"]
+        )
+        accuracy = correct / len(normal) if normal else 0.0
+        # Normal problems should be easier
+        assert accuracy >= 0.93, f"Normal accuracy {accuracy:.4f} below 93%"
+
+    def test_competition_hard_accuracy(
+        self, full_proc: DecisionProcedure, competition_data: list[dict]
+    ):
+        """Track accuracy on hard-difficulty problems separately."""
+        hard = [p for p in competition_data if p["difficulty"] == "hard"]
+        correct = sum(
+            1
+            for p in hard
+            if full_proc.predict_bool(p["equation_1_id"], p["equation_2_id"]) == p["answer"]
+        )
+        accuracy = correct / len(hard) if hard else 0.0
+        # Hard problems may have lower accuracy, but still track it
+        assert accuracy >= 0.80, f"Hard accuracy {accuracy:.4f} below 80%"

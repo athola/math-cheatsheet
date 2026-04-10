@@ -29,20 +29,22 @@ counterexamples.
 | Metric                  | Value         |
 |-------------------------|---------------|
 | Decision procedure accuracy | 98.01% (22M pairs) |
+| Competition problem accuracy | 94.25% (1,200 problems) |
 | Cheatsheet size         | 9,911 / 10,240 bytes |
 | Competition submission  | 9,851 bytes (`competition-v1.txt`) |
 | Equations covered       | 4,694         |
-| Cheatsheet versions     | v1 → v2 → v3 → final |
+| Decision procedure phases | 9 (P0-P6 + structural) |
+| Test suite              | 480+ tests (83% coverage) |
 
 ## Quick Start
 
 ```bash
 make setup            # create venv, install Python deps
-make test             # run Python test suite
+make test             # run Python test suite (480+ tests)
 make test-rust        # run Rust proptest suite
 make lean-check       # check Lean 4 proofs
 make harness          # 5-angle cheatsheet validation
-make evaluate-v4      # evaluate v4 decision procedure (requires implications.csv)
+make tla-check        # run TLC model checker on all TLA+ modules
 make check            # all quality gates (lint + typecheck + test + rust)
 ```
 
@@ -75,21 +77,48 @@ The cheatsheet harness validates from five independent angles
 Current cheatsheet: `cheatsheet/final.txt` (9,911 bytes of 10,240 limit).
 Competition submission: `cheatsheet/competition.txt` → `competition-v1.txt` (9,851 bytes).
 
+## Decision Procedure
+
+The multi-phase implication predictor runs 9 phases in sequence:
+
+| Phase | Name | Decision |
+|-------|------|----------|
+| P0 | Self-implication | H = T → TRUE |
+| P1 | Tautology target | T is x=x → TRUE |
+| P2 | Collapse hypothesis | H forces \|M\|=1 → TRUE |
+| P3 | Tautology hypothesis | H is x=x, T is not → FALSE |
+| P4 | Variable analysis | New vars in T → FALSE |
+| P5 | Substitution | T is H with merged vars → TRUE |
+| P5a | Equivalence class | Same implication profile → TRUE |
+| P5b/c | Structural analysis | Counterexample magmas / determined ops → TRUE/FALSE |
+| P6 | Default | → FALSE |
+
+Evaluate against the full matrix: `python src/decision_procedure.py`
+Analyze errors: `python src/error_analyzer.py`
+Batch competition scoring: `python src/competition_evaluator.py`
+
 ## Project Structure
 
 ```
 math-cheatsheet/
-├── src/                  # Python core: parsers, analyzers, evaluation
+├── src/                  # Python core
+│   ├── decision_procedure.py  # 9-phase implication predictor
+│   ├── equation_analyzer.py   # Structural analysis + counterexamples
+│   ├── etp_equations.py       # ETP dataset parser (4,694 equations)
+│   ├── implication_oracle.py  # 22M ground-truth matrix
+│   ├── competition_evaluator.py # Batch scoring + category breakdown
+│   ├── error_analyzer.py      # Failure pattern analysis
+│   ├── counterexample_generator.py # Exhaustive magma search
+│   ├── llm_evaluator.py       # Claude API evaluation (with caching)
+│   └── cheatsheet_harness.py  # 5-angle validation
 ├── rust/                 # Rust PyO3 extension (magma_core)
 ├── lean/                 # Lean 4 formal proofs
 ├── tla/                  # TLA+ specs and Python bridge
-├── tests/                # pytest suite (unit, property, cross-language)
-├── cheatsheet/           # Cheatsheet versions (v1 → v3 → final, competition)
-├── experiments/          # Validation scripts and results
-├── scripts/              # CLI utilities (demos, evaluation, data)
-├── docs/                 # Specification, plans, analysis
-├── research/             # Domain research notes
-├── .claude/commands/     # Claude Code slash commands (evaluate, status)
+├── tests/                # pytest suite (480+ tests)
+├── cheatsheet/           # Cheatsheet versions (v1 → final, competition)
+├── scripts/              # CLI utilities, TLA+ automation, Lean scaffolding
+├── docs/                 # Specification, plans, analysis, bibliography
+├── research/             # Domain research notes + ETP dataset
 └── Makefile              # Build, test, and validate targets
 ```
 
@@ -112,6 +141,16 @@ make lint                 # ruff linting
 make typecheck            # mypy type checking
 make format               # auto-format with ruff
 make check                # lint + typecheck + test + rust
+```
+
+### Analysis Tools
+
+```bash
+python src/error_analyzer.py          # break down 22M matrix errors by pattern
+python src/competition_evaluator.py   # batch scoring with category breakdown
+python src/counterexample_generator.py # exhaustive magma counterexample search
+make tla-check                        # run TLC model checker on TLA+ specs
+make etp-status                       # show ETP dataset summary
 ```
 
 ### Demos

@@ -10,13 +10,26 @@ Phases:
   3: Tautology hypothesis + non-tautology target → FALSE
   4: Variable analysis (new vars in target → FALSE)
   5: Substitution detection (target is specialization → TRUE)
+  5a: Equivalence class lookup (same row profile → TRUE)
+  5b: Determined operation detection (e.g. left projection forces magma → TRUE/FALSE)
+  5c: Counterexample testing (canonical + exhaustive 2-element magmas → FALSE)
   6: Default → FALSE
+
+Structural analysis (phases 5b, 5c) is delegated to equation_analyzer.py
+to avoid duplicating logic. See issue #21.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from equation_analyzer import (
+    ImplicationVerdict,
+    analyze_implication,
+)
+from equation_analyzer import (
+    parse_equation as ea_parse_equation,
+)
 from etp_equations import ETPEquations
 from implication_oracle import ImplicationOracle
 
@@ -81,6 +94,41 @@ class DecisionProcedure:
                 return PredictionResult(
                     True, "P5-substitution", "Target is substitution instance of hypothesis"
                 )
+
+        # Phase 5a: Equivalence class lookup
+        # Equations with identical implication row profiles mutually imply each other.
+        # Proof: if rows are identical then matrix[h,t] == matrix[t,t] == TRUE (diagonal).
+        if self.oracle is not None:
+            h_class = self.oracle.equivalence_class(h_id)
+            t_class = self.oracle.equivalence_class(t_id)
+            if h_class is not None and t_class is not None and h_class == t_class:
+                return PredictionResult(
+                    True,
+                    "P5a-equiv-class",
+                    "Same equivalence class (identical row profiles)",
+                )
+
+        # Phase 5b/5c: Structural analysis via equation_analyzer
+        # Delegates to the richer analysis in equation_analyzer.py which has:
+        # - Determined operation detection (left/right projection, constant law)
+        # - Counterexample testing (canonical + exhaustive 2-element magmas)
+        # - Structural heuristics (depth comparison)
+        if h_id in self.equations and t_id in self.equations:
+            try:
+                h_eq = ea_parse_equation(self.equations[h_id].text)
+                t_eq = ea_parse_equation(self.equations[t_id].text)
+                ea_result = analyze_implication(h_eq, t_eq)
+                if ea_result.verdict == ImplicationVerdict.TRUE:
+                    return PredictionResult(
+                        True, f"P5b-structural({ea_result.phase})", ea_result.reason
+                    )
+                elif ea_result.verdict == ImplicationVerdict.FALSE:
+                    return PredictionResult(
+                        False, f"P5c-structural({ea_result.phase})", ea_result.reason
+                    )
+                # UNKNOWN falls through to default
+            except (ValueError, KeyError):
+                pass  # Parse errors fall through to default
 
         # Phase 6: Default FALSE (base rate favors FALSE)
         return PredictionResult(False, "P6-default", "No rule matched, default FALSE")

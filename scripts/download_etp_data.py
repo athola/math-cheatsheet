@@ -17,8 +17,7 @@ DATA_DIR = Path(__file__).parent.parent / "data"
 
 URLS = {
     "equations.txt": (
-        "https://raw.githubusercontent.com/teorth/equational_theories"
-        "/main/data/equations.txt"
+        "https://raw.githubusercontent.com/teorth/equational_theories/main/data/equations.txt"
     ),
 }
 
@@ -44,10 +43,12 @@ def parse_equations_file(path: Path) -> list[dict]:
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            equations.append({
-                "id": i,
-                "raw": line,
-            })
+            equations.append(
+                {
+                    "id": i,
+                    "raw": line,
+                }
+            )
     return equations
 
 

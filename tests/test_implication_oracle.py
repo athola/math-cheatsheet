@@ -195,3 +195,69 @@ class TestConjValueHandling:
         assert oracle.query(1, 2) is False
         assert oracle.query(2, 1) is False
         assert oracle.query(2, 2) is True
+
+
+class TestEquivalenceClass:
+    """Test equivalence_class() method that groups equations by row profile."""
+
+    def test_self_is_same_class(self, oracle: ImplicationOracle):
+        """An equation is in the same class as itself."""
+        c1 = oracle.equivalence_class(1)
+        assert c1 is not None
+        assert c1 == oracle.equivalence_class(1)
+
+    def test_distinct_profiles_different_classes(self, oracle: ImplicationOracle):
+        """Equations with different row profiles get different class IDs."""
+        # Eq1 (tautology), Eq2 (collapse), Eq3, Eq4 all have different rows
+        classes = {oracle.equivalence_class(i) for i in range(1, 5)}
+        assert len(classes) == 4, "All 4 equations have distinct profiles"
+
+    def test_same_profile_same_class(self, tmp_path: Path):
+        """Equations with identical row profiles get the same class ID."""
+        csv_path = tmp_path / "equiv.csv"
+        # Eq1 and Eq3 have identical rows: [3, -3, 3, -3]
+        matrix = [
+            [3, -3, 3, -3],  # Eq1
+            [3, 3, 3, 3],  # Eq2: collapse
+            [3, -3, 3, -3],  # Eq3: same as Eq1
+            [3, -3, -3, 3],  # Eq4: different
+        ]
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            for row in matrix:
+                writer.writerow(row)
+        oracle = ImplicationOracle(csv_path)
+
+        assert oracle.equivalence_class(1) == oracle.equivalence_class(3)
+        assert oracle.equivalence_class(1) != oracle.equivalence_class(2)
+        assert oracle.equivalence_class(1) != oracle.equivalence_class(4)
+
+    def test_out_of_range_returns_none(self, oracle: ImplicationOracle):
+        """Out-of-range equation ID returns None."""
+        assert oracle.equivalence_class(99) is None
+        assert oracle.equivalence_class(0) is None
+
+    def test_equivalence_classes_property(self, tmp_path: Path):
+        """The equivalence_classes property returns a dict of class_id -> set of eq_ids."""
+        csv_path = tmp_path / "equiv.csv"
+        matrix = [
+            [3, -3, 3, -3],  # Eq1
+            [3, 3, 3, 3],  # Eq2
+            [3, -3, 3, -3],  # Eq3: same as Eq1
+            [3, -3, -3, 3],  # Eq4
+        ]
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            for row in matrix:
+                writer.writerow(row)
+        oracle = ImplicationOracle(csv_path)
+
+        classes = oracle.equivalence_classes
+        # Find class containing Eq1 and Eq3
+        eq1_class = oracle.equivalence_class(1)
+        assert eq1_class is not None
+        assert classes[eq1_class] == {1, 3}
+        # Eq2 and Eq4 are singletons
+        eq2_class = oracle.equivalence_class(2)
+        assert eq2_class is not None
+        assert classes[eq2_class] == {2}
