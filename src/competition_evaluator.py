@@ -302,8 +302,10 @@ def _load_problems(path: Path) -> list[dict]:
     problems = []
     for obj in raw:
         prob: dict = {}
-        prob["hypothesis_id"] = obj.get("hypothesis_id") or obj.get("equation_1_id")
-        prob["target_id"] = obj.get("target_id") or obj.get("equation_2_id")
+        h = obj.get("hypothesis_id")
+        prob["hypothesis_id"] = h if h is not None else obj.get("equation_1_id")
+        t = obj.get("target_id")
+        prob["target_id"] = t if t is not None else obj.get("equation_2_id")
         prob["answer"] = obj["answer"]
         problems.append(prob)
     return problems

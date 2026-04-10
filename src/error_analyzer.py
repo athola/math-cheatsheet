@@ -215,7 +215,6 @@ class ErrorAnalyzer:
         groups: dict[str, list[ErrorRecord]] = defaultdict(list)
         for err in errors:
             val = getattr(err, key)
-            groups[str(val)] = groups.get(str(val), [])
             groups[str(val)].append(err)
 
         # Sort by count descending

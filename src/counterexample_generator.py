@@ -44,6 +44,10 @@ class MagmaGenerator:
         """
         if size < 1:
             raise ValueError(f"Size must be at least 1, got {size}")
+        if size > 3:
+            raise ValueError(
+                f"Size {size} would generate {size ** (size**2):,} tables. Max safe size is 3."
+            )
 
         n_entries = size * size
         tables = []
