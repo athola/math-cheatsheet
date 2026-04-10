@@ -21,6 +21,7 @@ to avoid duplicating logic. See issue #21.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from equation_analyzer import (
@@ -127,8 +128,8 @@ class DecisionProcedure:
                         False, f"P5c-structural({ea_result.phase})", ea_result.reason
                     )
                 # UNKNOWN falls through to default
-            except (ValueError, KeyError):
-                pass  # Parse errors fall through to default
+            except (ValueError, KeyError) as exc:
+                logging.debug("Structural analysis failed for E%d→E%d: %s", h_id, t_id, exc)
 
         # Phase 6: Default FALSE (base rate favors FALSE)
         return PredictionResult(False, "P6-default", "No rule matched, default FALSE")

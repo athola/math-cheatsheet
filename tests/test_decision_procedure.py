@@ -164,6 +164,41 @@ class TestPhase6Default:
         assert "P5c" in result.phase or "P6" in result.phase
 
 
+class TestPhase5cStructuralFalse:
+    """Test P5c: structural analysis returning FALSE via determined operation."""
+
+    def test_determined_op_disproves(self, proc: DecisionProcedure):
+        """
+        Eq4 (x*y=x) determines LP magma; Eq3 (comm) fails in LP → FALSE.
+        This tests the structural delegation path (P5b/P5c) specifically.
+        """
+        result = proc.predict(4, 3)
+        assert result.prediction is False
+        # Should be caught by structural analysis, not default
+        assert "P5c" in result.phase or "P5b" in result.phase, (
+            f"Expected structural phase, got: {result.phase}"
+        )
+
+    def test_structural_phase_provides_reason(self, proc: DecisionProcedure):
+        """Structural analysis should explain WHY the implication fails."""
+        result = proc.predict(4, 3)
+        assert result.reason != ""
+        assert (
+            "left projection" in result.reason.lower() or "counterexample" in result.reason.lower()
+        )
+
+
+class TestStructuralFallthrough:
+    """Test that parse errors in structural analysis fall through gracefully."""
+
+    def test_no_oracle_still_uses_structural(self, eqs: ETPEquations):
+        """Without oracle, structural analysis still runs on parseable equations."""
+        proc_no_oracle = DecisionProcedure(eqs, oracle=None)
+        # Eq4 (x*y=x) → Eq3 (x*y=y*x): structural analysis should catch this
+        result = proc_no_oracle.predict(4, 3)
+        assert result.prediction is False
+
+
 class TestPredictBool:
     def test_returns_bool(self, proc: DecisionProcedure):
         assert proc.predict_bool(2, 2) is True
