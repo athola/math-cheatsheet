@@ -34,6 +34,8 @@ from equation_analyzer import (
 from etp_equations import ETPEquations
 from implication_oracle import ImplicationOracle
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class PredictionResult:
@@ -70,7 +72,18 @@ class DecisionProcedure:
         return self._collapse_ids
 
     def predict(self, h_id: int, t_id: int) -> PredictionResult:
-        """Run the full decision procedure."""
+        """Run the full decision procedure.
+
+        Logs the deciding phase at ``DEBUG`` level for every call
+        (regression #30). Enable via ``logging.getLogger('decision_procedure')
+        .setLevel(logging.DEBUG)`` or the project's ``--verbose`` CLI flag.
+        """
+        result = self._predict(h_id, t_id)
+        logger.debug("E%d => E%d : %s (%s)", h_id, t_id, result.prediction, result.phase)
+        return result
+
+    def _predict(self, h_id: int, t_id: int) -> PredictionResult:
+        """Actual decision logic; public ``predict`` wraps with logging."""
         # Phase 0: Self-implication
         if h_id == t_id:
             return PredictionResult(True, "P0-self", "Identical equations")
@@ -135,7 +148,7 @@ class DecisionProcedure:
                     )
                 # UNKNOWN falls through to default
             except (ValueError, KeyError) as exc:
-                logging.debug("Structural analysis failed for E%d→E%d: %s", h_id, t_id, exc)
+                logger.debug("Structural analysis failed for E%d=>E%d: %s", h_id, t_id, exc)
 
         # Phase 6: Default FALSE (base rate favors FALSE)
         return PredictionResult(False, "P6-default", "No rule matched, default FALSE")

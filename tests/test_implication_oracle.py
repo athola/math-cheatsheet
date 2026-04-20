@@ -90,9 +90,12 @@ class TestQueryRaw:
         assert oracle.query_raw(1, 1) == 3
         assert oracle.query_raw(1, 2) == -3
 
-    def test_out_of_range_returns_zero(self, oracle: ImplicationOracle):
-        assert oracle.query_raw(99, 1) == 0
-        assert oracle.query_raw(1, 99) == 0
+    def test_out_of_range_raises_keyerror(self, oracle: ImplicationOracle):
+        """Regression #31: query_raw must raise instead of returning 0."""
+        with pytest.raises(KeyError, match="out of range"):
+            oracle.query_raw(99, 1)
+        with pytest.raises(KeyError, match="out of range"):
+            oracle.query_raw(1, 99)
 
 
 class TestRowColCounts:

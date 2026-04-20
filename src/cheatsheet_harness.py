@@ -328,12 +328,78 @@ def validate_structure(cheatsheet_path: Path) -> StructureResult:
 # ---------------------------------------------------------------------------
 
 
+def load_training_set(
+    path: Path | str = Path("research/data/etp/competition-training.jsonl"),
+) -> list[tuple[str, str, bool, str]] | None:
+    """Load the full training set from the ETP data directory, if present.
+
+    Returns ``None`` when the file does not exist so callers can fall back to
+    the curated ``KNOWN_PROBLEMS``. Supports JSONL or JSON array format with
+    the same shape as the competition problems (``equation_1``, ``equation_2``,
+    ``answer``, optional ``difficulty`` / ``id``).
+
+    Regression #33: previously the harness was limited to 24 hand-curated
+    problems, which was too small a sample to catch accuracy regressions on
+    the broader matrix.
+    """
+    import json as _json
+
+    p = Path(path)
+    if not p.exists():
+        return None
+
+    problems: list[tuple[str, str, bool, str]] = []
+    content = p.read_text(encoding="utf-8").strip()
+    if content.startswith("["):
+        raw_records = _json.loads(content)
+    else:
+        raw_records = []
+        for line in content.splitlines():
+            line = line.strip()
+            if line:
+                raw_records.append(_json.loads(line))
+    for rec in raw_records:
+        h = rec.get("equation_1") or rec.get("hypothesis")
+        t = rec.get("equation_2") or rec.get("target")
+        ans = rec.get("answer")
+        if h is None or t is None or ans is None:
+            continue
+        label = str(rec.get("id") or rec.get("label") or rec.get("difficulty") or "training")
+        problems.append((h, t, bool(ans), label))
+    return problems or None
+
+
 def validate_accuracy(
     problems: list[tuple[str, str, bool, str]] | None = None,
+    *,
+    use_training_set: bool = False,
+    training_set_path: Path | str | None = None,
 ) -> AccuracyResult:
-    """Test the decision procedure against known-answer problems."""
+    """Test the decision procedure against known-answer problems.
+
+    Parameters
+    ----------
+    problems:
+        Explicit problem list. If ``None`` and ``use_training_set`` is
+        ``True``, the full training set is loaded from
+        ``training_set_path`` (or the default ETP location). Otherwise the
+        curated ``KNOWN_PROBLEMS`` list is used.
+    use_training_set:
+        When true, load the full training set. Falls back to
+        ``KNOWN_PROBLEMS`` if the training file is missing.
+    training_set_path:
+        Optional override for the training set location.
+    """
     if problems is None:
-        problems = KNOWN_PROBLEMS
+        if use_training_set:
+            loaded = load_training_set(
+                training_set_path
+                if training_set_path is not None
+                else Path("research/data/etp/competition-training.jsonl")
+            )
+            problems = loaded if loaded is not None else KNOWN_PROBLEMS
+        else:
+            problems = KNOWN_PROBLEMS
 
     result = AccuracyResult(total=len(problems))
 

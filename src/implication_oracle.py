@@ -36,6 +36,7 @@ Usage
 from __future__ import annotations
 
 import csv
+import hashlib
 from collections import Counter
 from pathlib import Path
 
@@ -45,14 +46,52 @@ import numpy as np
 class ImplicationOracle:
     """Fast lookup for the 22M implication matrix."""
 
-    def __init__(self, csv_path: str | Path):
+    def __init__(self, csv_path: str | Path, *, expected_sha256: str | None = None):
+        """Load and validate an ETP implication CSV.
+
+        Parameters
+        ----------
+        csv_path:
+            Path to the matrix CSV.
+        expected_sha256:
+            Optional SHA-256 hex digest. When provided, the file's digest
+            must match or ``ValueError`` is raised (regression #22). When
+            ``csv_path.with_suffix(csv_path.suffix + ".sha256")`` exists,
+            its contents are used as the expected digest automatically.
+        """
         self.csv_path = Path(csv_path)
         self._matrix: np.ndarray = np.array([], dtype=np.int8)
         self._eq_ids: list[int] = []  # row index → equation ID
         self._eq_to_row: dict[int, int] = {}  # equation ID → row index
         self._col_eq_ids: list[int] = []  # column index → equation ID
         self._eq_to_col: dict[int, int] = {}
+        self._expected_sha256 = expected_sha256 or self._load_sidecar_digest()
         self._load()
+
+    def _load_sidecar_digest(self) -> str | None:
+        """Return the digest from a sibling ``.sha256`` file, if present."""
+        sidecar = self.csv_path.with_suffix(self.csv_path.suffix + ".sha256")
+        if not sidecar.exists():
+            return None
+        raw = sidecar.read_text(encoding="utf-8").strip()
+        # Common sha256sum format: "<hex>  <filename>". Take just the hex.
+        return raw.split()[0] if raw else None
+
+    def _verify_digest(self) -> None:
+        """Raise if the file digest does not match the expected one."""
+        if self._expected_sha256 is None:
+            return
+        hasher = hashlib.sha256()
+        with open(self.csv_path, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                hasher.update(chunk)
+        actual = hasher.hexdigest()
+        if actual.lower() != self._expected_sha256.lower():
+            raise ValueError(
+                f"Implication matrix checksum mismatch for {self.csv_path}:"
+                f" expected {self._expected_sha256[:16]}..., got {actual[:16]}..."
+                " Run `make download-etp` to refetch a clean copy."
+            )
 
     _VALID_VALUES: tuple[int, ...] = (-4, -3, 3, 4)
 
@@ -66,6 +105,8 @@ class ImplicationOracle:
                 f"Implication matrix CSV not found at {self.csv_path}."
                 " Run `make download-etp` to fetch it from the ETP repository."
             )
+
+        self._verify_digest()
 
         rows: list[list[int]] = []
         row_len: int | None = None
@@ -186,11 +227,20 @@ class ImplicationOracle:
         return None
 
     def query_raw(self, hypothesis_id: int, target_id: int) -> int:
-        """Return raw matrix value (3, -3, 4, -4)."""
+        """Return raw matrix value (3, -3, 4, -4).
+
+        Raises ``KeyError`` when either id is out of range. Previously this
+        returned ``0`` silently (which is not a valid encoding), masking bugs
+        in the caller (regression #31).
+        """
         row = self._eq_to_row.get(hypothesis_id)
         col = self._eq_to_col.get(target_id)
         if row is None or col is None:
-            return 0
+            raise KeyError(
+                f"Equation id out of range in query_raw: hypothesis_id={hypothesis_id},"
+                f" target_id={target_id}; valid range is"
+                f" [{min(self._eq_ids)}, {max(self._eq_ids)}]."
+            )
         return int(self._matrix[row, col])
 
     def row_true_count(self, eq_id: int) -> int:

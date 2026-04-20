@@ -125,6 +125,14 @@ harness-regression: ## Cross-version quality comparison (LIVE)
 harness-competition: ## Simulate competition evaluation format (LIVE)
 	$(HARNESS) competition $(CHEATSHEET)
 
+.PHONY: competition-sim
+competition-sim: ## Run end-to-end competition simulation (#24)
+	PYTHONPATH=src:tla/python $(PYTHON) scripts/competition_sim.py --n $${N:-50} --seed $${SEED:-0}
+
+.PHONY: accuracy-gate
+accuracy-gate: ## Enforce accuracy threshold (regression #23)
+	PYTHONPATH=src:tla/python $(PYTHON) scripts/check_accuracy_gate.py --threshold $${MIN_ACCURACY:-98.0}
+
 .PHONY: test-harness
 test-harness: ## Run harness pytest suite (31 tests)
 	$(PYTHONPATH) $(PYTEST) tests/test_cheatsheet_harness.py -v
