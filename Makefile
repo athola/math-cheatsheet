@@ -156,6 +156,23 @@ evaluate-baseline: ## Run baseline LLM evaluation (LIVE, simulated)
 download-etp: ## Download ETP equation data from GitHub
 	$(PYTHONPATH) $(PYTHON) scripts/download_etp_data.py
 
+.PHONY: etp-status
+etp-status: ## Print ETP dataset stats (equations, matrix, classifications)
+	@$(PYTHONPATH) $(PYTHON) -c "\
+	from etp_equations import ETPDataset; \
+	ds = ETPDataset(); \
+	s = ds.summary(); \
+	print('=== ETP Dataset Status ==='); \
+	print(f'Equations:  {s[\"total_equations\"]}'); \
+	print(f'Matrix:     {s[\"matrix_shape\"][0]}x{s[\"matrix_shape\"][1]}'); \
+	print(); \
+	print('Oracle classification:'); \
+	[print(f'  {k}: {v}') for k, v in sorted(s['classification_counts'].items())]; \
+	print(); \
+	print('Structural classification:'); \
+	[print(f'  {k}: {v}') for k, v in sorted(s['structural_counts'].items())]; \
+	"
+
 # ── Demo (LIVE - dogfooding) ────────────────────────────────────
 
 .PHONY: demo-magmas
@@ -184,6 +201,20 @@ demo-cheatsheet: ## Show cheatsheet stats and byte count (LIVE)
 
 .PHONY: demo
 demo: demo-magmas demo-properties demo-counterexamples demo-cheatsheet ## Run all demos (LIVE)
+
+# ── TLA+ Model Checking ───────────────────────────────────────────
+
+.PHONY: tla-setup
+tla-setup: ## Download TLA+ tools (tla2tools.jar)
+	bash scripts/setup_tla_tools.sh
+
+.PHONY: tla-check
+tla-check: ## Run TLC model checker on all TLA+ modules
+	$(PYTHON) scripts/run_tla_checks.py
+
+.PHONY: tla-check-verbose
+tla-check-verbose: ## Run TLC with verbose output
+	$(PYTHON) scripts/run_tla_checks.py --verbose
 
 # ── Clean ───────────────────────────────────────────────────────
 

@@ -4,11 +4,18 @@ Tests the pure functions (parse_verdict, load_cheatsheet) without
 requiring API keys or network access.
 """
 
+import json
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from llm_evaluator import load_cheatsheet, parse_verdict
+from llm_evaluator import (
+    EvalCache,
+    compute_cache_key,
+    load_cheatsheet,
+    parse_verdict,
+)
 
 
 class TestParseVerdict:
@@ -63,3 +70,330 @@ class TestLoadCheatsheet:
     def test_file_not_found_raises(self):
         with pytest.raises(FileNotFoundError):
             load_cheatsheet("/nonexistent/path.txt")
+
+
+class TestComputeCacheKey:
+    """Test cache key generation from cheatsheet + equation pair."""
+
+    def test_deterministic(self):
+        """Same inputs always produce the same key."""
+        key1 = compute_cache_key("cheatsheet", "eq1", "eq2")
+        key2 = compute_cache_key("cheatsheet", "eq1", "eq2")
+        assert key1 == key2
+
+    def test_different_inputs_different_keys(self):
+        """Different inputs produce different keys."""
+        key1 = compute_cache_key("cheatsheet", "eq1", "eq2")
+        key2 = compute_cache_key("cheatsheet", "eq1", "eq3")
+        assert key1 != key2
+
+    def test_key_is_hex_sha256(self):
+        """Key should be a valid 64-char hex string (sha256)."""
+        key = compute_cache_key("cs", "a", "b")
+        assert len(key) == 64
+        int(key, 16)  # should not raise
+
+    def test_cheatsheet_change_changes_key(self):
+        """Changing cheatsheet content changes the key."""
+        key1 = compute_cache_key("v1", "eq1", "eq2")
+        key2 = compute_cache_key("v2", "eq1", "eq2")
+        assert key1 != key2
+
+    def test_order_matters(self):
+        """eq1/eq2 order matters (implication is directional)."""
+        key1 = compute_cache_key("cs", "a", "b")
+        key2 = compute_cache_key("cs", "b", "a")
+        assert key1 != key2
+
+
+class TestEvalCache:
+    """Test the evaluation cache for persistence and retrieval."""
+
+    def test_empty_cache(self, tmp_path: Path):
+        """New cache has no entries."""
+        cache = EvalCache(tmp_path / "cache.json")
+        assert cache.get("nonexistent") is None
+
+    def test_put_and_get(self, tmp_path: Path):
+        """Can store and retrieve an entry."""
+        cache = EvalCache(tmp_path / "cache.json")
+        entry = {
+            "predicted": True,
+            "response_text": "VERDICT: TRUE",
+            "model": "test-model",
+            "timestamp": "2026-04-09T00:00:00",
+            "input_tokens": 100,
+            "output_tokens": 50,
+        }
+        cache.put("abc123", entry)
+        result = cache.get("abc123")
+        assert result is not None
+        assert result["predicted"] is True
+        assert result["input_tokens"] == 100
+
+    def test_persistence_across_instances(self, tmp_path: Path):
+        """Cache survives being saved and reloaded."""
+        cache_path = tmp_path / "cache.json"
+        cache1 = EvalCache(cache_path)
+        cache1.put(
+            "key1",
+            {
+                "predicted": False,
+                "response_text": "VERDICT: FALSE",
+                "model": "m",
+                "timestamp": "t",
+                "input_tokens": 10,
+                "output_tokens": 5,
+            },
+        )
+        cache1.save()
+
+        # Load a fresh instance
+        cache2 = EvalCache(cache_path)
+        result = cache2.get("key1")
+        assert result is not None
+        assert result["predicted"] is False
+
+    def test_stats_tracking(self, tmp_path: Path):
+        """Stats accumulate token counts."""
+        cache = EvalCache(tmp_path / "cache.json")
+        cache.put(
+            "k1",
+            {
+                "predicted": True,
+                "response_text": "r",
+                "model": "m",
+                "timestamp": "t",
+                "input_tokens": 100,
+                "output_tokens": 50,
+            },
+        )
+        cache.put(
+            "k2",
+            {
+                "predicted": False,
+                "response_text": "r",
+                "model": "m",
+                "timestamp": "t",
+                "input_tokens": 200,
+                "output_tokens": 80,
+            },
+        )
+        stats = cache.get_stats()
+        assert stats["total_input_tokens"] == 300
+        assert stats["total_output_tokens"] == 130
+
+    def test_cost_estimate(self, tmp_path: Path):
+        """Stats include a cost estimate."""
+        cache = EvalCache(tmp_path / "cache.json")
+        cache.put(
+            "k1",
+            {
+                "predicted": True,
+                "response_text": "r",
+                "model": "m",
+                "timestamp": "t",
+                "input_tokens": 1000,
+                "output_tokens": 500,
+            },
+        )
+        stats = cache.get_stats()
+        assert "total_cost_estimate_usd" in stats
+        assert stats["total_cost_estimate_usd"] > 0
+
+    def test_save_creates_file(self, tmp_path: Path):
+        """save() writes a valid JSON file."""
+        cache_path = tmp_path / "subdir" / "cache.json"
+        cache = EvalCache(cache_path)
+        cache.put(
+            "k",
+            {
+                "predicted": True,
+                "response_text": "r",
+                "model": "m",
+                "timestamp": "t",
+                "input_tokens": 1,
+                "output_tokens": 1,
+            },
+        )
+        cache.save()
+        assert cache_path.exists()
+        data = json.loads(cache_path.read_text())
+        assert data["version"] == 1
+        assert "k" in data["entries"]
+        assert "stats" in data
+
+    def test_cache_version_mismatch_resets(self, tmp_path: Path):
+        """If cache file has wrong version, start fresh."""
+        cache_path = tmp_path / "cache.json"
+        cache_path.write_text(json.dumps({"version": 99, "entries": {"old": {}}}))
+        cache = EvalCache(cache_path)
+        assert cache.get("old") is None
+
+    def test_corrupt_file_handled(self, tmp_path: Path):
+        """Corrupt JSON file doesn't crash, starts fresh."""
+        cache_path = tmp_path / "cache.json"
+        cache_path.write_text("not valid json{{{")
+        cache = EvalCache(cache_path)
+        assert cache.get("any") is None
+
+
+class TestEvaluateWithLLMCaching:
+    """Test that evaluate_with_llm integrates with cache."""
+
+    def _make_mock_response(self, text: str, input_tokens: int = 100, output_tokens: int = 50):
+        """Create a mock Anthropic API response."""
+        mock_resp = MagicMock()
+        mock_resp.content = [MagicMock(text=text)]
+        mock_resp.usage = MagicMock(input_tokens=input_tokens, output_tokens=output_tokens)
+        return mock_resp
+
+    def _make_problems(self):
+        return [
+            {
+                "id": 1,
+                "equation_1": "x * y = y * x",
+                "equation_2": "x * x = x",
+                "equation_1_id": 10,
+                "equation_2_id": 20,
+                "answer": True,
+                "difficulty": "normal",
+            },
+            {
+                "id": 2,
+                "equation_1": "x * (y * z) = (x * y) * z",
+                "equation_2": "x * y = x",
+                "equation_1_id": 30,
+                "equation_2_id": 40,
+                "answer": False,
+                "difficulty": "normal",
+            },
+        ]
+
+    @patch("llm_evaluator.time.sleep")
+    def test_cache_miss_calls_api(self, mock_sleep, tmp_path):
+        """On cache miss, API is called and result is cached."""
+        import llm_evaluator
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = self._make_mock_response(
+            "VERDICT: TRUE\nREASONING: trivial"
+        )
+
+        cache = EvalCache(tmp_path / "cache.json")
+        problems = self._make_problems()[:1]
+
+        result = llm_evaluator.evaluate_with_llm(
+            problems, "cheatsheet", cache=cache, client=mock_client
+        )
+
+        assert mock_client.messages.create.call_count == 1
+        assert result["total"] == 1
+
+    def test_cache_hit_skips_api(self, tmp_path):
+        """On cache hit, API is NOT called."""
+        import llm_evaluator
+
+        problems = self._make_problems()[:1]
+        cheatsheet = "cheatsheet"
+        cache = EvalCache(tmp_path / "cache.json")
+
+        # Pre-populate cache
+        key = compute_cache_key(cheatsheet, problems[0]["equation_1"], problems[0]["equation_2"])
+        cache.put(
+            key,
+            {
+                "predicted": True,
+                "response_text": "VERDICT: TRUE\nREASONING: cached",
+                "model": "claude-sonnet-4-20250514",
+                "timestamp": "2026-04-09T00:00:00",
+                "input_tokens": 100,
+                "output_tokens": 50,
+            },
+        )
+
+        mock_client = MagicMock()
+        result = llm_evaluator.evaluate_with_llm(
+            problems, cheatsheet, cache=cache, client=mock_client
+        )
+
+        assert mock_client.messages.create.call_count == 0
+        assert result["total"] == 1
+        assert result["cache_hits"] == 1
+
+    @patch("llm_evaluator.time.sleep")
+    def test_no_cache_flag_bypasses(self, mock_sleep):
+        """When cache=None, every problem hits the API."""
+        import llm_evaluator
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = self._make_mock_response(
+            "VERDICT: FALSE\nREASONING: counter"
+        )
+
+        problems = self._make_problems()
+
+        result = llm_evaluator.evaluate_with_llm(
+            problems, "cheatsheet", cache=None, client=mock_client
+        )
+
+        assert mock_client.messages.create.call_count == 2
+        assert result["cache_hits"] == 0
+
+    @patch("llm_evaluator.time.sleep")
+    def test_mixed_hits_and_misses(self, mock_sleep, tmp_path):
+        """Some problems cached, others need API calls."""
+        import llm_evaluator
+
+        problems = self._make_problems()
+        cheatsheet = "cheatsheet"
+        cache = EvalCache(tmp_path / "cache.json")
+
+        # Cache only the first problem
+        key = compute_cache_key(cheatsheet, problems[0]["equation_1"], problems[0]["equation_2"])
+        cache.put(
+            key,
+            {
+                "predicted": True,
+                "response_text": "VERDICT: TRUE\nREASONING: cached",
+                "model": "claude-sonnet-4-20250514",
+                "timestamp": "2026-04-09T00:00:00",
+                "input_tokens": 100,
+                "output_tokens": 50,
+            },
+        )
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = self._make_mock_response(
+            "VERDICT: FALSE\nREASONING: counter"
+        )
+
+        result = llm_evaluator.evaluate_with_llm(
+            problems, cheatsheet, cache=cache, client=mock_client
+        )
+
+        # Only 1 API call (second problem)
+        assert mock_client.messages.create.call_count == 1
+        assert result["cache_hits"] == 1
+        assert result["cache_misses"] == 1
+        assert result["total"] == 2
+
+    @patch("llm_evaluator.time.sleep")
+    def test_token_usage_in_result(self, mock_sleep, tmp_path):
+        """Result includes token usage summary."""
+        import llm_evaluator
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = self._make_mock_response(
+            "VERDICT: TRUE\nREASONING: ok", input_tokens=150, output_tokens=75
+        )
+
+        problems = self._make_problems()[:1]
+        cache = EvalCache(tmp_path / "cache.json")
+
+        result = llm_evaluator.evaluate_with_llm(
+            problems, "cheatsheet", cache=cache, client=mock_client
+        )
+
+        assert result["token_usage"]["input_tokens"] == 150
+        assert result["token_usage"]["output_tokens"] == 75

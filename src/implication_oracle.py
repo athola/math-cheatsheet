@@ -19,6 +19,7 @@ Usage:
 from __future__ import annotations
 
 import csv
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -54,6 +55,44 @@ class ImplicationOracle:
         self._col_eq_ids = list(range(1, n_cols + 1))
         self._eq_to_row = {eq_id: i for i, eq_id in enumerate(self._eq_ids)}
         self._eq_to_col = {eq_id: j for j, eq_id in enumerate(self._col_eq_ids)}
+
+        # Build equivalence classes: equations with identical row profiles
+        self._eq_to_equiv: dict[int, int] = {}
+        self._equiv_classes: dict[int, set[int]] = {}
+        self._build_equivalence_classes()
+
+    def _build_equivalence_classes(self):
+        """Group equations by identical row profiles.
+
+        Equations with the same row in the implication matrix imply exactly
+        the same targets. By the diagonal argument (self-implication is TRUE),
+        same-row equations mutually imply each other.
+        """
+        row_hash_to_class: dict[bytes, int] = {}
+        class_id = 0
+        for i, eq_id in enumerate(self._eq_ids):
+            row_bytes = self._matrix[i].tobytes()
+            if row_bytes not in row_hash_to_class:
+                row_hash_to_class[row_bytes] = class_id
+                class_id += 1
+            cid = row_hash_to_class[row_bytes]
+            self._eq_to_equiv[eq_id] = cid
+            if cid not in self._equiv_classes:
+                self._equiv_classes[cid] = set()
+            self._equiv_classes[cid].add(eq_id)
+
+    def equivalence_class(self, eq_id: int) -> int | None:
+        """Return the equivalence class ID for an equation.
+
+        Equations in the same class have identical implication row profiles
+        and mutually imply each other. Returns None if eq_id is out of range.
+        """
+        return self._eq_to_equiv.get(eq_id)
+
+    @property
+    def equivalence_classes(self) -> dict[int, set[int]]:
+        """Return all equivalence classes: class_id -> set of equation IDs."""
+        return self._equiv_classes
 
     @property
     def num_equations(self) -> int:
@@ -201,8 +240,6 @@ if __name__ == "__main__":
         print(f"  E{h} => E{t}: {result}")
 
     # Classification distribution
-    from collections import Counter
-
     classes: Counter[str] = Counter()
     for eq_id in oracle._col_eq_ids:
         classes[oracle.classify(eq_id)] += 1

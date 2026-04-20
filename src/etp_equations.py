@@ -13,8 +13,12 @@ Structural features extracted:
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
+
+StructuralClass = Literal["tautology", "collapse", "trivial_lhs", "trivial_rhs", "balanced"]
 
 
 @dataclass(frozen=True)
@@ -244,6 +248,27 @@ class ETPEquations:
         t = self.equations[t_id]
         return t.variables - h.variables
 
+    def classify_structural(self, eq_id: int) -> StructuralClass:
+        """Classify an equation by structural features alone (no oracle).
+
+        Categories:
+        - tautology: LHS == RHS (e.g. x = x)
+        - collapse: forces |M|=1 (detected structurally)
+        - trivial_lhs: LHS is a single variable (not tautology/collapse)
+        - trivial_rhs: RHS is a single variable (not tautology/collapse)
+        - balanced: both sides have operations
+        """
+        eq = self.equations[eq_id]
+        if eq.is_tautology:
+            return "tautology"
+        if self.is_collapse_structural(eq_id):
+            return "collapse"
+        if eq.lhs_is_var:
+            return "trivial_lhs"
+        if eq.rhs_is_var:
+            return "trivial_rhs"
+        return "balanced"
+
     def is_substitution_instance(self, h_id: int, t_id: int) -> bool:
         """Check if target can be obtained from hypothesis by variable merging."""
         h = self.equations[h_id]
@@ -268,6 +293,70 @@ class ETPEquations:
         return False
 
 
+class ETPDataset:
+    """Unified query interface combining ETPEquations + ImplicationOracle.
+
+    Provides one-stop access to structural features, implication queries,
+    and classifications for the full ETP dataset.
+    """
+
+    def __init__(
+        self,
+        equations_path: str | Path = "research/data/etp/equations.txt",
+        implications_path: str | Path = "research/data/etp/implications.csv",
+    ):
+        from implication_oracle import ImplicationOracle
+
+        self.equations = ETPEquations(equations_path)
+        self.oracle = ImplicationOracle(implications_path)
+
+    def implies(self, hypothesis_id: int, target_id: int) -> bool | None:
+        """Query whether hypothesis implies target."""
+        result: bool | None = self.oracle.query(hypothesis_id, target_id)
+        return result
+
+    def classify(self, eq_id: int) -> str:
+        """Oracle-based classification (collapse/tautology/weak/mid/strong)."""
+        result: str = self.oracle.classify(eq_id)
+        return result
+
+    def get_equation(self, eq_id: int) -> Equation:
+        """Retrieve the parsed equation object."""
+        return self.equations[eq_id]
+
+    def equation_info(self, eq_id: int) -> dict:
+        """Return combined structural + oracle info for an equation."""
+        eq = self.equations[eq_id]
+        return {
+            "id": eq_id,
+            "text": eq.text,
+            "var_count": eq.var_count,
+            "max_depth": eq.max_depth,
+            "total_ops": eq.total_ops,
+            "is_tautology": eq.is_tautology,
+            "variables": sorted(eq.variables),
+            "structural_class": self.equations.classify_structural(eq_id),
+            "oracle_class": self.oracle.classify(eq_id),
+            "implies_count": self.oracle.row_true_count(eq_id),
+            "implied_by_count": self.oracle.col_true_count(eq_id),
+        }
+
+    def summary(self) -> dict:
+        """Return dataset-level summary statistics."""
+        oracle_counts: Counter[str] = Counter()
+        structural_counts: Counter[str] = Counter()
+        for eq_id in self.equations.ids():
+            oracle_counts[self.oracle.classify(eq_id)] += 1
+            structural_counts[self.equations.classify_structural(eq_id)] += 1
+
+        return {
+            "total_equations": len(self.equations),
+            "matrix_shape": self.oracle.shape,
+            "classification_counts": dict(oracle_counts),
+            "structural_counts": dict(structural_counts),
+        }
+
+
 if __name__ == "__main__":
     eqs = ETPEquations("research/data/etp/equations.txt")
     print(f"Loaded {len(eqs)} equations")
@@ -281,3 +370,11 @@ if __name__ == "__main__":
     # Count structural collapse detection
     structural_collapse = sum(1 for i in eqs.ids() if eqs.is_collapse_structural(i))
     print(f"\nStructural collapse detection: {structural_collapse}")
+
+    # Structural classification distribution
+    struct_classes: Counter[str] = Counter()
+    for eq_id in eqs.ids():
+        struct_classes[eqs.classify_structural(eq_id)] += 1
+    print("\nStructural classification:")
+    for cls, count in struct_classes.most_common():
+        print(f"  {cls}: {count}")
