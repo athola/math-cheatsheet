@@ -36,6 +36,7 @@ Usage
 from __future__ import annotations
 
 import csv
+import functools
 import hashlib
 from collections import Counter
 from pathlib import Path
@@ -150,18 +151,11 @@ class ImplicationOracle:
         self._eq_to_row = {eq_id: i for i, eq_id in enumerate(self._eq_ids)}
         self._eq_to_col = {eq_id: j for j, eq_id in enumerate(self._col_eq_ids)}
 
-        # Build equivalence classes: equations with identical row profiles
-        self._eq_to_equiv: dict[int, int] = {}
-        self._equiv_classes: dict[int, set[int]] = {}
-        self._build_equivalence_classes()
-
-    def _build_equivalence_classes(self):
-        """Group equations by identical row profiles.
-
-        Equations with the same row in the implication matrix imply exactly
-        the same targets. By the diagonal argument (self-implication is TRUE),
-        same-row equations mutually imply each other.
-        """
+    @functools.cached_property
+    def _equiv_data(self) -> tuple[dict[int, int], dict[int, set[int]]]:
+        """Build equivalence class maps lazily (O(n) row hashing, deferred until first use)."""
+        eq_to_equiv: dict[int, int] = {}
+        equiv_classes: dict[int, set[int]] = {}
         row_hash_to_class: dict[bytes, int] = {}
         class_id = 0
         for i, eq_id in enumerate(self._eq_ids):
@@ -170,23 +164,18 @@ class ImplicationOracle:
                 row_hash_to_class[row_bytes] = class_id
                 class_id += 1
             cid = row_hash_to_class[row_bytes]
-            self._eq_to_equiv[eq_id] = cid
-            if cid not in self._equiv_classes:
-                self._equiv_classes[cid] = set()
-            self._equiv_classes[cid].add(eq_id)
+            eq_to_equiv[eq_id] = cid
+            equiv_classes.setdefault(cid, set()).add(eq_id)
+        return eq_to_equiv, equiv_classes
 
     def equivalence_class(self, eq_id: int) -> int | None:
-        """Return the equivalence class ID for an equation.
-
-        Equations in the same class have identical implication row profiles
-        and mutually imply each other. Returns None if eq_id is out of range.
-        """
-        return self._eq_to_equiv.get(eq_id)
+        """Return the equivalence class ID for an equation, or None if out of range."""
+        return self._equiv_data[0].get(eq_id)
 
     @property
     def equivalence_classes(self) -> dict[int, set[int]]:
         """Return all equivalence classes: class_id -> set of equation IDs."""
-        return self._equiv_classes
+        return self._equiv_data[1]
 
     @property
     def num_equations(self) -> int:

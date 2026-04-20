@@ -89,7 +89,7 @@ pre-commit-install: ## Install pre-commit git hooks
 
 .PHONY: generate-data
 generate-data: ## Generate synthetic equations and problems
-	$(PYTHONPATH) $(PYTHON) src/generate_synthetic_data.py
+	$(PYTHON) scripts/generate_synthetic_data.py
 
 .PHONY: parse-data
 parse-data: ## Parse and validate equation/problem data (LIVE)
@@ -191,12 +191,12 @@ demo-magmas: ## Generate and inspect all size-2 magmas (LIVE)
 .PHONY: demo-properties
 demo-properties: ## Count magma properties across size-2 and size-3 (LIVE)
 	@echo "=== Magma Property Census (LIVE) ==="
-	$(PYTHONPATH) $(PYTHON) scripts/demo_properties.py
+	$(PYTHONPATH) $(PYTHON) scripts/demo.py --mode properties
 
 .PHONY: demo-counterexamples
 demo-counterexamples: ## Find counterexamples to classic non-implications (LIVE)
 	@echo "=== Counterexample Search Demo (LIVE) ==="
-	$(PYTHONPATH) $(PYTHON) scripts/demo_counterexamples.py
+	$(PYTHONPATH) $(PYTHON) scripts/demo.py --mode counterexamples
 
 .PHONY: demo-cheatsheet
 demo-cheatsheet: ## Show cheatsheet stats and byte count (LIVE)

@@ -473,32 +473,3 @@ def _detect_determined_operation(eq: Equation) -> tuple[list[list[int]], str] | 
     return None
 
 
-def batch_analyze(problems: list[tuple[str, str]]) -> list[AnalysisResult]:
-    """Analyze a batch of (hypothesis, target) equation string pairs."""
-    results = []
-    for h_str, t_str in problems:
-        try:
-            h = parse_equation(h_str)
-            t = parse_equation(t_str)
-            results.append(analyze_implication(h, t))
-        except (ValueError, KeyError) as e:
-            results.append(AnalysisResult(ImplicationVerdict.UNKNOWN, "Error", str(e)))
-    return results
-
-
-def analyze_equation_structure(eq_str: str) -> dict:
-    """Analyze structural properties of a single equation."""
-    eq = parse_equation(eq_str)
-    return {
-        "equation": str(eq),
-        "variables": sorted(eq.variables()),
-        "num_variables": len(eq.variables()),
-        "max_depth": eq.max_depth(),
-        "total_operations": eq.total_ops(),
-        "lhs_depth": eq.lhs.depth(),
-        "rhs_depth": eq.rhs.depth(),
-        "lhs_size": eq.lhs.size(),
-        "rhs_size": eq.rhs.size(),
-        "is_tautology": _is_tautology(eq),
-        "is_collapse": _is_collapse(eq),
-    }

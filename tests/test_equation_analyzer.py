@@ -16,9 +16,7 @@ from src.equation_analyzer import (
     ImplicationVerdict,
     NodeType,
     Term,
-    analyze_equation_structure,
     analyze_implication,
-    batch_analyze,
     parse_equation,
 )
 
@@ -483,67 +481,6 @@ class TestCanonicalMagmas:
         cm = CANONICAL_MAGMAS[4]
         assert cm.satisfies(parse_equation("x * y = y * x"))
         assert not cm.satisfies(parse_equation("x * (y * z) = (x * y) * z"))
-
-
-class TestBatchAnalysis:
-    """
-    Feature: Batch analysis of multiple implication problems.
-
-    As a competition contestant
-    I want to analyze many problems at once
-    So that I can evaluate cheatsheet accuracy on the full test set.
-    """
-
-    @pytest.mark.unit
-    def test_batch_analyze_mixed(self):
-        """
-        Scenario: Analyze a batch with mixed TRUE/FALSE problems
-        Given several equation pairs
-        When I batch analyze them
-        Then I get correct verdicts for clear-cut cases
-        """
-        problems = [
-            ("x * y = y * x", "x * y = y * x"),  # TRUE (identical)
-            ("x * (x * x) = x", "x * y = y * x"),  # FALSE (new var)
-            ("x = y", "x * y = y * x"),  # TRUE (collapse)
-        ]
-        results = batch_analyze(problems)
-        assert len(results) == 3
-        assert results[0].verdict == ImplicationVerdict.TRUE
-        assert results[1].verdict == ImplicationVerdict.FALSE
-        assert results[2].verdict == ImplicationVerdict.TRUE
-
-
-class TestEquationStructureAnalysis:
-    """
-    Feature: Analyze structural properties of individual equations.
-
-    As a researcher
-    I want to extract structural features from equations
-    So that I can classify and compare them.
-    """
-
-    @pytest.mark.unit
-    def test_analyze_associativity(self):
-        info = analyze_equation_structure("x * (y * z) = (x * y) * z")
-        assert info["num_variables"] == 3
-        assert info["max_depth"] == 2
-        assert info["total_operations"] == 4
-        assert not info["is_tautology"]
-        assert not info["is_collapse"]
-
-    @pytest.mark.unit
-    def test_analyze_tautology(self):
-        info = analyze_equation_structure("x = x")
-        assert info["is_tautology"]
-        assert info["num_variables"] == 1
-        assert info["max_depth"] == 0
-
-    @pytest.mark.unit
-    def test_analyze_collapse(self):
-        info = analyze_equation_structure("x = y")
-        assert info["is_collapse"]
-        assert info["num_variables"] == 2
 
 
 class TestPhase5DeterminedOperations:

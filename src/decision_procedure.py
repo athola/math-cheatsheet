@@ -157,53 +157,14 @@ class DecisionProcedure:
         """Simple bool prediction for accuracy evaluation."""
         return self.predict(h_id, t_id).prediction
 
-    def evaluate(self, sample_size: int | None = None) -> dict[str, object]:
-        """Evaluate against the oracle's full matrix.
-
-        If sample_size is set, evaluate on a random sample instead of all 22M.
-        """
+    def evaluate(self) -> dict[str, object]:
+        """Evaluate against the oracle's full matrix."""
         if not self.oracle:
             raise ValueError("Need oracle for evaluation")
 
         result: dict[str, object] = self.oracle.accuracy_of(self.predict_bool)
         return result
 
-    def evaluate_by_phase(self) -> dict[str, dict]:
-        """Break down predictions by which phase decided them."""
-        if not self.oracle:
-            raise ValueError("Need oracle for evaluation")
-
-        phase_stats: dict[str, dict] = {}
-
-        for i, h_id in enumerate(self.oracle._eq_ids):
-            for j, t_id in enumerate(self.oracle._col_eq_ids):
-                actual = self.oracle.decode_truth(int(self.oracle._matrix[i, j]))
-                if actual is None:
-                    continue
-
-                result = self.predict(h_id, t_id)
-                phase = result.phase
-
-                if phase not in phase_stats:
-                    phase_stats[phase] = {"tp": 0, "fp": 0, "tn": 0, "fn": 0, "total": 0}
-
-                ps = phase_stats[phase]
-                ps["total"] += 1
-                if result.prediction and actual:
-                    ps["tp"] += 1
-                elif result.prediction and not actual:
-                    ps["fp"] += 1
-                elif not result.prediction and actual:
-                    ps["fn"] += 1
-                else:
-                    ps["tn"] += 1
-
-        # Add accuracy to each phase
-        for phase, ps in phase_stats.items():
-            correct = ps["tp"] + ps["tn"]
-            ps["accuracy"] = correct / ps["total"] if ps["total"] > 0 else 0.0
-
-        return phase_stats
 
 
 if __name__ == "__main__":
