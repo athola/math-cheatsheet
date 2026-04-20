@@ -256,6 +256,36 @@ class TestEvaluateByCategory:
         # At least "collapse" should be there since eq2 is collapse
         assert "collapse" in category_names
 
+    def test_per_category_timing_is_measured_not_averaged(
+        self, evaluator: CompetitionEvaluator, monkeypatch: pytest.MonkeyPatch
+    ):
+        """elapsed_seconds per category must reflect actual work in that category.
+
+        Regression test for #45: previously elapsed was computed as
+        ``total / n_categories`` so every category got the same number regardless
+        of size. Using a monotonic counter clock, we verify the recorded times
+        track distinct call counts, not an even division.
+        """
+        import competition_evaluator as ce
+
+        tick = {"n": 0}
+
+        def fake_time() -> float:
+            tick["n"] += 1
+            return float(tick["n"])
+
+        monkeypatch.setattr(ce.time, "time", fake_time)
+        categories = evaluator.evaluate_by_category()
+        times = sorted(r.elapsed_seconds for r in categories.values())
+        # With the fake clock, every elapsed reading is a positive integer count
+        # of clock ticks. An averaged implementation would produce identical
+        # fractional values across all categories; a measured implementation
+        # yields at least one category with a different integer count.
+        assert any(t != times[0] for t in times), (
+            "All per-category times identical under monotonic fake clock"
+            " — implementation is averaging, not measuring."
+        )
+
 
 # ---------------------------------------------------------------------------
 # compare_versions

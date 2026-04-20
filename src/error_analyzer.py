@@ -102,11 +102,39 @@ _PHASE_SUGGESTIONS: dict[str, str] = {
         "Phase 5 errors: substitution detection may miss multi-step"
         " or non-trivial specializations. Consider deeper unification."
     ),
+    "P5a-equiv-class": (
+        "Phase 5a errors: equivalence class lookup disagreed with ground truth."
+        " The row-profile hash may be merging equations that actually differ"
+        " on conjectured cells; re-check oracle value range."
+    ),
+    "P5b-structural": (
+        "Phase 5b errors: structural TRUE via equation_analyzer overshot."
+        " The delegated phase (shown in parens) flagged an implication that"
+        " ground truth rejects; tighten that analyzer phase."
+    ),
+    "P5c-structural": (
+        "Phase 5c errors: structural FALSE via equation_analyzer missed a TRUE."
+        " The delegated counterexample/heuristic phase rejected an implication"
+        " the matrix confirms; widen the analyzer's acceptance criteria."
+    ),
     "P6-default": (
         "Phase 6 errors: the default FALSE catchall misses true implications."
         " This is the main area for new rules."
     ),
 }
+
+
+def _suggestion_for_phase(phase: str) -> str | None:
+    """Look up a phase suggestion, tolerating dynamic parenthesised suffixes.
+
+    Phases like ``P5b-structural(Phase 4b)`` embed the delegated analyzer phase
+    in parentheses. The suggestion table is keyed on the bare prefix so those
+    phases still resolve to a hint.
+    """
+    if phase in _PHASE_SUGGESTIONS:
+        return _PHASE_SUGGESTIONS[phase]
+    bare = phase.split("(", 1)[0]
+    return _PHASE_SUGGESTIONS.get(bare)
 
 
 class ErrorAnalyzer:
@@ -256,8 +284,9 @@ class ErrorAnalyzer:
                     "count": len(errs),
                     "pct_of_total": round(len(errs) / total * 100, 2),
                     "example": {"h_id": example.h_id, "t_id": example.t_id},
-                    "suggestion": _PHASE_SUGGESTIONS.get(
-                        phase, f"Investigate phase {phase} for improvement opportunities."
+                    "suggestion": (
+                        _suggestion_for_phase(phase)
+                        or f"Investigate phase {phase} for improvement opportunities."
                     ),
                 }
             )
@@ -294,10 +323,9 @@ class ErrorAnalyzer:
         # Phase suggestions: only for phases with errors
         suggestions = []
         for phase in by_phase:
-            if phase in _PHASE_SUGGESTIONS:
-                suggestions.append(
-                    f"[{phase}] ({by_phase[phase]} errors): {_PHASE_SUGGESTIONS[phase]}"
-                )
+            msg = _suggestion_for_phase(phase)
+            if msg is not None:
+                suggestions.append(f"[{phase}] ({by_phase[phase]} errors): {msg}")
 
         return ErrorReport(
             total_pairs=total_pairs,

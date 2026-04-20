@@ -261,3 +261,50 @@ class TestEquivalenceClass:
         eq2_class = oracle.equivalence_class(2)
         assert eq2_class is not None
         assert classes[eq2_class] == {2}
+
+
+class TestShapeValidation:
+    """Feature: ImplicationOracle validates CSV shape on load (regression for #46)."""
+
+    def test_non_square_matrix_raises(self, tmp_path: Path):
+        """A non-square matrix must raise a clear error at construction."""
+        csv_path = tmp_path / "bad.csv"
+        # 3 rows x 4 columns — not square.
+        matrix = [
+            [3, -3, -3, -3],
+            [3, 3, 3, 3],
+            [3, -3, 3, -3],
+        ]
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            for row in matrix:
+                writer.writerow(row)
+        with pytest.raises(ValueError, match="square"):
+            ImplicationOracle(csv_path)
+
+    def test_ragged_matrix_raises(self, tmp_path: Path):
+        """Rows of mismatched lengths must be rejected with a clear error."""
+        csv_path = tmp_path / "ragged.csv"
+        csv_path.write_text("3,-3,-3\n3,3,3,3\n3,-3,3\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="ragged|shape|row"):
+            ImplicationOracle(csv_path)
+
+    def test_out_of_range_value_raises(self, tmp_path: Path):
+        """Values outside the documented {-4,-3,3,4} set must be rejected."""
+        csv_path = tmp_path / "bad_values.csv"
+        matrix = [
+            [3, 0, 3],
+            [3, 3, 3],
+            [3, -3, 3],
+        ]
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            for row in matrix:
+                writer.writerow(row)
+        with pytest.raises(ValueError, match="value|encoding"):
+            ImplicationOracle(csv_path)
+
+    def test_missing_file_raises_clear_error(self, tmp_path: Path):
+        """A missing CSV must raise FileNotFoundError with remediation hint."""
+        with pytest.raises(FileNotFoundError, match="download|make"):
+            ImplicationOracle(tmp_path / "nope.csv")

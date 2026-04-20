@@ -226,16 +226,22 @@ class CompetitionEvaluator:
         """Evaluate full matrix, broken down by hypothesis equation category.
 
         Categories come from oracle.classify(): collapse, tautology, weak, mid, strong.
+
+        Per-category ``elapsed_seconds`` is measured directly by summing the
+        wall-clock span each hypothesis row takes, so categories of different
+        sizes surface their real cost rather than an average.
         """
-        t0 = time.time()
         category_counts: dict[str, dict[str, int]] = {}
+        category_elapsed: dict[str, float] = {}
 
         for i, h_id in enumerate(self.oracle._eq_ids):
             cat = self.oracle.classify(h_id)
 
             if cat not in category_counts:
                 category_counts[cat] = {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
+                category_elapsed[cat] = 0.0
 
+            row_start = time.time()
             for j, t_id in enumerate(self.oracle._col_eq_ids):
                 actual_val = int(self.oracle._matrix[i, j])
                 if actual_val in (3, 4):
@@ -256,9 +262,7 @@ class CompetitionEvaluator:
                     cc["fn"] += 1
                 else:
                     cc["tn"] += 1
-
-        elapsed = time.time() - t0
-        per_cat_time = elapsed / len(category_counts) if category_counts else 0.0
+            category_elapsed[cat] += time.time() - row_start
 
         results: dict[str, EvalResult] = {}
         for cat, counts in category_counts.items():
@@ -267,7 +271,7 @@ class CompetitionEvaluator:
                 fp=counts["fp"],
                 tn=counts["tn"],
                 fn=counts["fn"],
-                elapsed_seconds=per_cat_time,
+                elapsed_seconds=category_elapsed[cat],
             )
         return results
 

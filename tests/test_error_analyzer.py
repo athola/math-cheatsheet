@@ -270,6 +270,39 @@ class TestReport:
         assert isinstance(report.phase_suggestions, list)
 
 
+class TestPhaseSuggestionCoverage:
+    """Feature: _PHASE_SUGGESTIONS covers every phase the decision procedure emits."""
+
+    def test_p5a_equiv_class_has_suggestion(self):
+        """Phase P5a-equiv-class must have an entry so reports show a hint."""
+        from error_analyzer import _suggestion_for_phase
+
+        msg = _suggestion_for_phase("P5a-equiv-class")
+        assert msg is not None
+        assert "equivalence" in msg.lower() or "class" in msg.lower()
+
+    def test_p5b_structural_has_suggestion_with_dynamic_suffix(self):
+        """Phase P5b-structural(<ea_phase>) must resolve even with a parenthesized suffix."""
+        from error_analyzer import _suggestion_for_phase
+
+        msg = _suggestion_for_phase("P5b-structural(Phase 4b)")
+        assert msg is not None
+        assert "structural" in msg.lower() or "counterexample" in msg.lower()
+
+    def test_p5c_structural_has_suggestion_with_dynamic_suffix(self):
+        """Phase P5c-structural(<ea_phase>) must resolve even with a parenthesized suffix."""
+        from error_analyzer import _suggestion_for_phase
+
+        msg = _suggestion_for_phase("P5c-structural(Phase 7)")
+        assert msg is not None
+        assert "structural" in msg.lower() or "false" in msg.lower()
+
+    def test_unknown_phase_returns_none(self):
+        from error_analyzer import _suggestion_for_phase
+
+        assert _suggestion_for_phase("PX-nonexistent") is None
+
+
 class TestSampling:
     """Feature: Error collection supports random sampling."""
 

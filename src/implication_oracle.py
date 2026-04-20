@@ -1,16 +1,33 @@
 """Implication oracle for the ETP dataset.
 
 Loads the 4694-equation implication matrix and provides fast queries.
-The CSV contains 4693 rows x 4694 columns (equation 1 / x=x is omitted
-as a row since it implies only itself, but appears as column 0).
 
-Encoding:
+Expected CSV format
+-------------------
+- **Shape**: square N x N (N = 4694 for the full ETP dataset).
+- **Dtype**: integer values in the set ``{-4, -3, 3, 4}``; no zeros, no other
+  integers. Row ``i`` describes what equation ``i+1`` implies about the
+  equations in each column.
+
+Encoding
+--------
     3  = proven TRUE (implication holds)
    -3  = proven FALSE (implication does not hold)
     4  = conjectured TRUE
    -4  = conjectured FALSE
 
-Usage:
+Validation
+----------
+At construction time the oracle enforces three integrity checks and raises
+``ValueError`` (or ``FileNotFoundError``) with remediation hints if any fail:
+
+1. The file must exist (hint: ``make download-etp``).
+2. Every row must have the same number of columns (no ragged rows).
+3. The matrix must be square.
+4. All entries must be in the encoding set above.
+
+Usage
+-----
     oracle = ImplicationOracle("research/data/etp/implications.csv")
     result = oracle.query(43, 4512)  # Does eq 43 imply eq 4512?
     # Returns: True, False, or None (unknown)
@@ -37,16 +54,52 @@ class ImplicationOracle:
         self._eq_to_col: dict[int, int] = {}
         self._load()
 
+    _VALID_VALUES: tuple[int, ...] = (-4, -3, 3, 4)
+
     def _load(self):
-        """Load the CSV into a numpy array for fast queries."""
-        rows = []
+        """Load the CSV into a numpy array for fast queries.
+
+        Validates shape and encoding. See module docstring for the contract.
+        """
+        if not self.csv_path.exists():
+            raise FileNotFoundError(
+                f"Implication matrix CSV not found at {self.csv_path}."
+                " Run `make download-etp` to fetch it from the ETP repository."
+            )
+
+        rows: list[list[int]] = []
+        row_len: int | None = None
         with open(self.csv_path, encoding="utf-8") as f:
             reader = csv.reader(f)
-            for row in reader:
-                rows.append([int(x) for x in row])
+            for line_no, row in enumerate(reader, start=1):
+                parsed = [int(x) for x in row]
+                if row_len is None:
+                    row_len = len(parsed)
+                elif len(parsed) != row_len:
+                    raise ValueError(
+                        f"Ragged matrix in {self.csv_path}: row {line_no} has"
+                        f" {len(parsed)} columns, expected {row_len}."
+                    )
+                rows.append(parsed)
 
         self._matrix = np.array(rows, dtype=np.int8)
         n_rows, n_cols = self._matrix.shape
+        if n_rows != n_cols:
+            raise ValueError(
+                f"Implication matrix must be square; got shape {n_rows}x{n_cols}"
+                f" from {self.csv_path}. A truncated or mismatched file is the"
+                " most likely cause — try `make download-etp` to refetch."
+            )
+        invalid_mask = ~np.isin(self._matrix, self._VALID_VALUES)
+        if invalid_mask.any():
+            bad_count = int(invalid_mask.sum())
+            sample_idx = tuple(int(v) for v in np.argwhere(invalid_mask)[0])
+            sample_val = int(self._matrix[sample_idx])
+            raise ValueError(
+                f"Implication matrix has {bad_count} entr{'y' if bad_count == 1 else 'ies'}"
+                f" with invalid encoding (first: value {sample_val} at {sample_idx});"
+                f" expected one of {self._VALID_VALUES}."
+            )
 
         # Matrix is 4694x4694. Row i = Col i = Equation (i+1).
         # Verified: diagonal is all TRUE (self-implication),
