@@ -201,8 +201,10 @@ class CounterexampleMagma:
         return eq.holds_in(self.table, self.size)
 
 
-# The 7 canonical magmas from the v3 cheatsheet
-CANONICAL_MAGMAS = [
+# The 7 canonical magmas from the v3 cheatsheet.
+# Exposed as a tuple so the module-level constant cannot be mutated by callers
+# (regression #41). Iteration semantics are identical to the former list.
+CANONICAL_MAGMAS: tuple[CounterexampleMagma, ...] = (
     CounterexampleMagma(
         "LP (Left Projection)",
         2,
@@ -245,13 +247,13 @@ CANONICAL_MAGMAS = [
         [[0, 1, 2], [1, 2, 0], [2, 0, 1]],
         ["commutative", "associative", "has identity", "NOT idempotent"],
     ),
-]
+)
 
-# All 16 possible 2-element magma tables
-ALL_SIZE_2_MAGMAS = [
+# All 16 possible 2-element magma tables (tuple to prevent mutation — #41).
+ALL_SIZE_2_MAGMAS: tuple[CounterexampleMagma, ...] = tuple(
     CounterexampleMagma(f"M2_{i:04b}", 2, [[i >> 3 & 1, i >> 2 & 1], [i >> 1 & 1, i & 1]])
     for i in range(16)
-]
+)
 
 
 # --- Analysis Functions ---

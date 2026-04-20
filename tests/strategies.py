@@ -36,7 +36,7 @@ def magmas(draw, min_size: int = 1, max_size: int = 4):
     """Generate an arbitrary finite magma with size in [min_size, max_size]."""
     size = draw(st.integers(min_value=min_size, max_value=max_size))
     table = draw(magma_tables(size=size))
-    return Magma(size=size, elements=list(range(size)), operation=table)
+    return Magma(size=size, operation=table)
 
 
 @st.composite

@@ -43,7 +43,7 @@ class TestPropertyAgreement:
     @settings(max_examples=16)  # There are only 16 size-2 magmas
     def test_size_2_all_properties(self, table):
         """Exhaustive: all 16 size-2 magmas agree across languages."""
-        py_m = PyMagma(size=2, elements=[0, 1], operation=table)
+        py_m = PyMagma(size=2, operation=table)
         rust_m = magma_core.Magma(2, table)
 
         assert py_m.is_associative() == rust_m.is_associative()
@@ -60,7 +60,7 @@ class TestPropertyAgreement:
     @settings(max_examples=200)
     def test_size_3_associativity(self, table):
         """Sampled: size-3 magmas agree on associativity."""
-        py_m = PyMagma(size=3, elements=[0, 1, 2], operation=table)
+        py_m = PyMagma(size=3, operation=table)
         rust_m = magma_core.Magma(3, table)
 
         assert py_m.is_associative() == rust_m.is_associative()
@@ -69,7 +69,7 @@ class TestPropertyAgreement:
     @settings(max_examples=200)
     def test_size_3_commutativity(self, table):
         """Sampled: size-3 magmas agree on commutativity."""
-        py_m = PyMagma(size=3, elements=[0, 1, 2], operation=table)
+        py_m = PyMagma(size=3, operation=table)
         rust_m = magma_core.Magma(3, table)
 
         assert py_m.is_commutative() == rust_m.is_commutative()
@@ -78,7 +78,7 @@ class TestPropertyAgreement:
     @settings(max_examples=200)
     def test_size_3_identity(self, table):
         """Sampled: size-3 magmas agree on identity existence."""
-        py_m = PyMagma(size=3, elements=[0, 1, 2], operation=table)
+        py_m = PyMagma(size=3, operation=table)
         rust_m = magma_core.Magma(3, table)
 
         py_id = py_m.has_identity()
@@ -89,7 +89,7 @@ class TestPropertyAgreement:
     @settings(max_examples=200)
     def test_size_3_idempotence(self, table):
         """Sampled: size-3 magmas agree on idempotence."""
-        py_m = PyMagma(size=3, elements=[0, 1, 2], operation=table)
+        py_m = PyMagma(size=3, operation=table)
         rust_m = magma_core.Magma(3, table)
 
         assert py_m.is_idempotent() == rust_m.is_idempotent()

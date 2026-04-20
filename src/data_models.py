@@ -87,11 +87,12 @@ class AlgebraicEquation:
 class Magma:
     """A finite magma with carrier set and binary operation.
 
-    Stores the Cayley table as a 2D list (operation[i][j] = i * j).
+    Stores the Cayley table as a 2D list (operation[i][j] = i * j). The carrier
+    set is always ``range(size)``, exposed via the computed ``elements``
+    property so it cannot drift from ``size`` (regression #39).
     """
 
     size: int
-    elements: list[int]
     operation: list[list[int]]
 
     def __post_init__(self):
@@ -107,6 +108,16 @@ class Magma:
             for j, val in enumerate(row):
                 if not (0 <= val < self.size):
                     raise ValueError(f"Entry [{i}][{j}]={val} out of range [0, {self.size})")
+
+    @property
+    def elements(self) -> tuple[int, ...]:
+        """Carrier set, always ``(0, 1, ..., size-1)``.
+
+        Previously a stored field (duplicated ``range(size)`` at every call
+        site). Exposed as a property so the invariant is expressed in one
+        place and cannot drift from ``size``.
+        """
+        return tuple(range(self.size))
 
     def op(self, a: int, b: int) -> int:
         return self.operation[a][b]
@@ -161,7 +172,12 @@ class Magma:
         table = [[0] * size for _ in range(size)]
         for (a, b), result in op_dict.items():
             table[a][b] = result
-        return cls(size=size, elements=carrier, operation=table)
+        if list(carrier) != list(range(size)):
+            raise ValueError(
+                f"Magma carrier must be range(size); got {list(carrier)}."
+                " Re-index your operation table so keys are 0..size-1."
+            )
+        return cls(size=size, operation=table)
 
     def to_tla(self) -> str:
         """Convert to TLA+ representation."""
@@ -200,8 +216,9 @@ class Counterexample:
         }
 
 
-# Synthetic equation definitions based on common magma properties
-SYNTHETIC_EQUATIONS = [
+# Synthetic equation definitions based on common magma properties.
+# Tuple, not list, so the catalog cannot be mutated by callers (#41).
+SYNTHETIC_EQUATIONS: tuple["Equation", ...] = (
     Equation(
         1,
         r"(x * y) * z = x * (y * z)",
@@ -298,4 +315,4 @@ SYNTHETIC_EQUATIONS = [
         [Property.ASSOCIATIVE, Property.BIDENTITY, Property.INVERSE, Property.COMMUTATIVE],
         "Abelian group structure",
     ),
-]
+)

@@ -64,7 +64,7 @@ def generate_all_magmas(size: int) -> tuple:
                 table[row][col] = temp % n
                 temp //= n
 
-        magmas.append(Magma(size=size, elements=list(range(n)), operation=table))
+        magmas.append(Magma(size=size, operation=table))
 
     return tuple(magmas)
 
@@ -75,7 +75,6 @@ def to_python_magma(magma) -> Magma:
         return magma
     return Magma(
         size=magma.size,
-        elements=list(magma.elements),
         operation=[list(row) for row in magma.operation],
     )
 

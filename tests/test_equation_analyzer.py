@@ -544,3 +544,55 @@ class TestEquationStructureAnalysis:
         info = analyze_equation_structure("x = y")
         assert info["is_collapse"]
         assert info["num_variables"] == 2
+
+
+class TestPhase4bExhaustiveSearch:
+    """Regression for #38 — assert verdict AND phase origin."""
+
+    @pytest.mark.unit
+    def test_phase_4b_finds_exhaustive_counterexample(self):
+        """An implication caught by exhaustive 2-element search, not canonical magmas.
+
+        The previous test in ``test_coverage_gaps.py`` only asserted the verdict
+        was FALSE, which could be satisfied by any earlier phase (#38). This
+        version pins the phase to "Phase 4b" so we verify the exhaustive search
+        actually fires.
+        """
+        h = parse_equation("x * (x * y) = x * y")
+        t = parse_equation("(x * y) * y = x * y")
+        result = analyze_implication(h, t)
+        assert result.verdict == ImplicationVerdict.FALSE
+        assert result.phase == "Phase 4b", (
+            f"Expected Phase 4b to discharge this FALSE; got {result.phase}."
+            " Either canonical magmas now cover this case (update the test)"
+            " or Phase 4b regressed."
+        )
+
+
+class TestPhase7StructuralHeuristic:
+    """Regression for #37 — assert phase unconditionally."""
+
+    @pytest.mark.unit
+    def test_depth_heuristic_triggers_phase_7(self):
+        """A pair designed so only the depth heuristic can discharge it.
+
+        The previous test in ``test_coverage_gaps.py`` wrapped its assertion
+        in ``if result.phase == "Phase 7":`` which let the test pass even when
+        Phase 7 never fired (#37). This version picks a pair where Phase 7
+        should be the deciding phase and asserts that unconditionally.
+
+        Note: hypothesis ``x * y = z`` has a free variable ``z`` that does not
+        appear in the target. Phase 2 (new-vars heuristic) looks at the TARGET's
+        new vars vs hypothesis, not the other direction, so Phase 2 does not
+        fire here. Earlier phases have no counterexample; only Phase 7's depth
+        gap (3 vs 1) catches it.
+        """
+        h = parse_equation("x * y = z")
+        t = parse_equation("x * (y * (y * x)) = (x * y) * ((y * x) * x)")
+        result = analyze_implication(h, t)
+        assert result.verdict == ImplicationVerdict.FALSE
+        assert result.phase == "Phase 7", (
+            f"Expected Phase 7 depth heuristic to fire; got {result.phase}."
+            " Check that neither canonical nor exhaustive search decides this"
+            " pair before Phase 7."
+        )
