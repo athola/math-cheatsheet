@@ -16,6 +16,9 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
+
+StructuralClass = Literal["tautology", "collapse", "trivial_lhs", "trivial_rhs", "balanced"]
 
 
 @dataclass(frozen=True)
@@ -245,7 +248,7 @@ class ETPEquations:
         t = self.equations[t_id]
         return t.variables - h.variables
 
-    def classify_structural(self, eq_id: int) -> str:
+    def classify_structural(self, eq_id: int) -> StructuralClass:
         """Classify an equation by structural features alone (no oracle).
 
         Categories:
