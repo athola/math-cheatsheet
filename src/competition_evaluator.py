@@ -21,9 +21,15 @@ from etp_equations import ETPEquations
 from implication_oracle import ImplicationOracle
 
 
-@dataclass
+@dataclass(frozen=True)
 class EvalResult:
-    """Evaluation result with standard classification metrics."""
+    """Evaluation result with standard classification metrics.
+
+    Frozen (#43/I4) so consumer code cannot mutate metrics after a report is
+    produced. Prefer :meth:`from_counts` — the bare constructor requires every
+    derived metric (accuracy, precision, recall, f1, confusion_matrix) to be
+    supplied consistently, which is easy to get wrong (#43/S3).
+    """
 
     accuracy: float
     precision: float
@@ -130,50 +136,46 @@ class CompetitionEvaluator:
         self.oracle = ImplicationOracle(oracle_path)
         self.procedure = DecisionProcedure(self.equations, self.oracle)
 
+    @staticmethod
+    def _bump_confusion(counts: dict[str, int], predicted: bool, actual: bool) -> None:
+        """Increment the right tp/fp/tn/fn cell on ``counts``.
+
+        Factored out so the full-matrix and per-phase breakdowns stay in sync
+        when the classification logic changes (regression #43/S2).
+        """
+        if predicted and actual:
+            counts["tp"] += 1
+        elif predicted and not actual:
+            counts["fp"] += 1
+        elif not predicted and actual:
+            counts["fn"] += 1
+        else:
+            counts["tn"] += 1
+
     def evaluate_full_matrix(self) -> EvalResult:
         """Evaluate against the full implication matrix with phase breakdown."""
         t0 = time.time()
 
-        tp = fp = tn = fn = 0
+        global_counts: dict[str, int] = {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
         phase_stats: dict[str, dict] = {}
 
         for i, h_id in enumerate(self.oracle._eq_ids):
             for j, t_id in enumerate(self.oracle._col_eq_ids):
-                actual_val = int(self.oracle._matrix[i, j])
-                if actual_val in (3, 4):
-                    actual = True
-                elif actual_val in (-3, -4):
-                    actual = False
-                else:
+                actual = self.oracle.decode_truth(int(self.oracle._matrix[i, j]))
+                if actual is None:
                     continue
 
                 result = self.procedure.predict(h_id, t_id)
                 predicted = result.prediction
                 phase = result.phase
 
-                # Update global counts
-                if predicted and actual:
-                    tp += 1
-                elif predicted and not actual:
-                    fp += 1
-                elif not predicted and actual:
-                    fn += 1
-                else:
-                    tn += 1
+                self._bump_confusion(global_counts, predicted, actual)
 
-                # Update phase stats
                 if phase not in phase_stats:
                     phase_stats[phase] = {"tp": 0, "fp": 0, "tn": 0, "fn": 0, "total": 0}
                 ps = phase_stats[phase]
                 ps["total"] += 1
-                if predicted and actual:
-                    ps["tp"] += 1
-                elif predicted and not actual:
-                    ps["fp"] += 1
-                elif not predicted and actual:
-                    ps["fn"] += 1
-                else:
-                    ps["tn"] += 1
+                self._bump_confusion(ps, predicted, actual)
 
         # Compute per-phase accuracy
         for ps in phase_stats.values():
@@ -182,10 +184,10 @@ class CompetitionEvaluator:
 
         elapsed = time.time() - t0
         return EvalResult.from_counts(
-            tp=tp,
-            fp=fp,
-            tn=tn,
-            fn=fn,
+            tp=global_counts["tp"],
+            fp=global_counts["fp"],
+            tn=global_counts["tn"],
+            fn=global_counts["fn"],
             elapsed_seconds=elapsed,
             phase_breakdown=phase_stats,
         )
@@ -243,25 +245,12 @@ class CompetitionEvaluator:
 
             row_start = time.time()
             for j, t_id in enumerate(self.oracle._col_eq_ids):
-                actual_val = int(self.oracle._matrix[i, j])
-                if actual_val in (3, 4):
-                    actual = True
-                elif actual_val in (-3, -4):
-                    actual = False
-                else:
+                actual = self.oracle.decode_truth(int(self.oracle._matrix[i, j]))
+                if actual is None:
                     continue
 
                 predicted = self.procedure.predict_bool(h_id, t_id)
-                cc = category_counts[cat]
-
-                if predicted and actual:
-                    cc["tp"] += 1
-                elif predicted and not actual:
-                    cc["fp"] += 1
-                elif not predicted and actual:
-                    cc["fn"] += 1
-                else:
-                    cc["tn"] += 1
+                self._bump_confusion(category_counts[cat], predicted, actual)
             category_elapsed[cat] += time.time() - row_start
 
         results: dict[str, EvalResult] = {}

@@ -17,22 +17,28 @@ import time
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Literal
 
 from decision_procedure import DecisionProcedure, PredictionResult
 from etp_equations import ETPEquations
 from implication_oracle import ImplicationOracle
 
 
-@dataclass
+@dataclass(frozen=True)
 class ErrorRecord:
-    """A single misclassification."""
+    """A single misclassification.
+
+    Frozen so an error list is structurally immutable once collected
+    (regression #43/I4). ``error_type`` is typed as ``Literal["FP", "FN"]``
+    to make the invariant explicit (#43/I5).
+    """
 
     h_id: int
     t_id: int
     predicted: bool
     actual: bool
     phase: str
-    error_type: str  # "FP" or "FN"
+    error_type: Literal["FP", "FN"]
     h_depth: int
     t_depth: int
     h_vars: int
@@ -45,9 +51,14 @@ class ErrorRecord:
         return asdict(self)
 
 
-@dataclass
+@dataclass(frozen=True)
 class ErrorReport:
-    """Full error analysis report."""
+    """Full error analysis report.
+
+    Frozen so downstream consumers can't accidentally mutate the aggregated
+    buckets. Internal ``dict``/``list`` fields remain mutable by Python
+    semantics — the freeze is on the enclosing record, not its children.
+    """
 
     total_pairs: int
     total_errors: int
@@ -161,12 +172,8 @@ class ErrorAnalyzer:
             pairs = self._all_pairs()
 
         for h_idx, t_idx, h_id, t_id in pairs:
-            actual_val = int(self.oracle._matrix[h_idx, t_idx])
-            if actual_val in (3, 4):
-                actual = True
-            elif actual_val in (-3, -4):
-                actual = False
-            else:
+            actual = self.oracle.decode_truth(int(self.oracle._matrix[h_idx, t_idx]))
+            if actual is None:
                 continue
 
             result: PredictionResult = self.proc.predict(h_id, t_id)
@@ -174,7 +181,7 @@ class ErrorAnalyzer:
             if result.prediction == actual:
                 continue
 
-            error_type = "FP" if result.prediction and not actual else "FN"
+            error_type: Literal["FP", "FN"] = "FP" if result.prediction and not actual else "FN"
 
             h_depth = 0
             t_depth = 0

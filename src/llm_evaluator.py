@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import os
 import random
 import sys
@@ -21,6 +22,8 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 EVAL_PROMPT = """\
 You are a mathematician specializing in equational theories of magmas.
@@ -60,16 +63,32 @@ class EvalCache:
         self._load()
 
     def _load(self) -> None:
-        """Load existing cache from disk, or start fresh."""
+        """Load existing cache from disk, or start fresh.
+
+        Emits a warning via ``logging`` when a file is present but unreadable
+        (corrupt JSON or missing keys) or version-mismatched. Silently discarding
+        the cache was a debugging foot-gun (regression #43/I3).
+        """
         if not self._path.exists():
             return
         try:
             data = json.loads(self._path.read_text(encoding="utf-8"))
             if data.get("version") != CACHE_VERSION:
-                return  # version mismatch, start fresh
+                logger.warning(
+                    "Eval cache at %s has version %r, expected %r; discarding.",
+                    self._path,
+                    data.get("version"),
+                    CACHE_VERSION,
+                )
+                return
             self._entries = data.get("entries", {})
-        except (json.JSONDecodeError, KeyError):
-            return  # corrupt file, start fresh
+        except (json.JSONDecodeError, KeyError) as exc:
+            logger.warning(
+                "Eval cache at %s is corrupt (%s); starting fresh.",
+                self._path,
+                exc.__class__.__name__,
+            )
+            return
 
     def get(self, key: str) -> dict | None:
         """Retrieve a cached entry, or None on miss."""
@@ -91,14 +110,21 @@ class EvalCache:
         }
 
     def save(self) -> None:
-        """Persist cache to disk."""
+        """Persist cache to disk atomically.
+
+        Writes to a sibling ``.tmp`` file first and then ``os.replace``s it
+        into place. That way a crash mid-write leaves the previous good cache
+        intact instead of truncating it (regression #43/S1).
+        """
         self._path.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "version": CACHE_VERSION,
             "entries": self._entries,
             "stats": self.get_stats(),
         }
-        self._path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        tmp_path = self._path.with_suffix(self._path.suffix + ".tmp")
+        tmp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(tmp_path, self._path)
 
 
 def load_cheatsheet(path: str = "cheatsheet/competition-v1.txt") -> str:

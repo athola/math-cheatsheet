@@ -167,11 +167,21 @@ class ImplicationOracle:
 
         row = self._eq_to_row[hypothesis_id]
         col = self._eq_to_col[target_id]
-        val = int(self._matrix[row, col])
+        return self.decode_truth(int(self._matrix[row, col]))
 
+    @staticmethod
+    def decode_truth(val: int) -> bool | None:
+        """Decode a raw matrix value into a tri-state truth.
+
+        Returns ``True`` for proven or conjectured TRUE (3, 4),
+        ``False`` for proven or conjectured FALSE (-3, -4),
+        and ``None`` for any other value (no prior art). Centralising this
+        decoding removes the duplicated ``if val in (3, 4) ...`` ladder that
+        lived in five call sites (regression #43/I1).
+        """
         if val in (3, 4):
             return True
-        elif val in (-3, -4):
+        if val in (-3, -4):
             return False
         return None
 
@@ -226,12 +236,8 @@ class ImplicationOracle:
 
         for i, h_id in enumerate(self._eq_ids):
             for j, t_id in enumerate(self._col_eq_ids):
-                actual_val = int(self._matrix[i, j])
-                if actual_val in (3, 4):
-                    actual = True
-                elif actual_val in (-3, -4):
-                    actual = False
-                else:
+                actual = self.decode_truth(int(self._matrix[i, j]))
+                if actual is None:
                     continue
 
                 predicted = predict_fn(h_id, t_id)

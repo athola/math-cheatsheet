@@ -35,8 +35,14 @@ from etp_equations import ETPEquations
 from implication_oracle import ImplicationOracle
 
 
-@dataclass
+@dataclass(frozen=True)
 class PredictionResult:
+    """Outcome of one decision-procedure call.
+
+    Frozen so downstream consumers (error analysis, reporters) cannot mutate
+    a prediction after the fact (regression #43/I4).
+    """
+
     prediction: bool
     phase: str
     reason: str
@@ -158,12 +164,8 @@ class DecisionProcedure:
 
         for i, h_id in enumerate(self.oracle._eq_ids):
             for j, t_id in enumerate(self.oracle._col_eq_ids):
-                actual_val = int(self.oracle._matrix[i, j])
-                if actual_val in (3, 4):
-                    actual = True
-                elif actual_val in (-3, -4):
-                    actual = False
-                else:
+                actual = self.oracle.decode_truth(int(self.oracle._matrix[i, j]))
+                if actual is None:
                     continue
 
                 result = self.predict(h_id, t_id)

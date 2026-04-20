@@ -18,6 +18,8 @@ from __future__ import annotations
 import argparse
 import itertools
 import sys
+import time
+from collections.abc import Callable
 
 from equation_analyzer import (
     CounterexampleMagma,
@@ -65,6 +67,8 @@ class CounterexampleFinder:
         hypothesis: Equation,
         target: Equation,
         max_size: int = 3,
+        timeout_seconds: float | None = None,
+        progress_callback: Callable[[int, int, int], None] | None = None,
     ) -> CounterexampleMagma | None:
         """Search for a magma where hypothesis holds but target does not.
 
@@ -75,14 +79,27 @@ class CounterexampleFinder:
         Args:
             hypothesis: The equation that must hold.
             target: The equation that must fail.
-            max_size: Maximum carrier size to search.
+            max_size: Maximum carrier size to search. Size 3 iterates
+                ``3**9 = 19683`` magmas; size 4 would blow up to ~4 billion.
+            timeout_seconds: Optional wall-clock limit. When exceeded the
+                search returns ``None`` early (regression #43/S5). A ``None``
+                value disables the limit.
+            progress_callback: Optional ``callback(size, index, total)`` invoked
+                every 256 tables so long-running calls can surface progress
+                instead of hanging silently at size 3.
 
         Returns:
             A CounterexampleMagma if found, otherwise None.
         """
+        deadline = None if timeout_seconds is None else time.monotonic() + timeout_seconds
         for size in range(2, max_size + 1):
             tables = MagmaGenerator.generate_all(size)
+            total = len(tables)
             for i, table in enumerate(tables):
+                if deadline is not None and time.monotonic() > deadline:
+                    return None
+                if progress_callback is not None and i and i % 256 == 0:
+                    progress_callback(size, i, total)
                 if hypothesis.holds_in(table, size) and not target.holds_in(table, size):
                     return CounterexampleMagma(
                         name=f"size-{size} magma #{i}",
