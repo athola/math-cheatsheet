@@ -546,6 +546,56 @@ class TestEquationStructureAnalysis:
         assert info["num_variables"] == 2
 
 
+class TestPhase5DeterminedOperations:
+    """Regression #29: exercise all six determined-operation patterns.
+
+    Phase 5 in ``equation_analyzer`` detects left/right absorption and
+    constant law in both forward and reversed forms, then derives a known
+    magma table to test implications. The original suite only covered the
+    forward-left-absorption path; this block pins all six.
+    """
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "hypothesis,label",
+        [
+            ("x = x * y", "left-abs-forward"),
+            ("x * y = x", "left-abs-reversed"),
+            ("x = y * x", "right-abs-forward"),
+            ("y * x = x", "right-abs-reversed"),
+        ],
+    )
+    def test_absorption_implies_idempotency(self, hypothesis: str, label: str):
+        """Left/right absorption forces a projection magma, which is idempotent."""
+        h = parse_equation(hypothesis)
+        t = parse_equation("x * x = x")
+        result = analyze_implication(h, t)
+        assert result.verdict == ImplicationVerdict.TRUE, (
+            f"[{label}] expected TRUE for {hypothesis} => x*x=x, got"
+            f" {result.verdict} via {result.phase}"
+        )
+        assert "Phase 5" in result.phase, f"[{label}] expected Phase 5, got {result.phase}"
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "hypothesis,label",
+        [
+            ("x * y = z * w", "constant-forward"),
+            ("z * w = x * y", "constant-reversed"),
+        ],
+    )
+    def test_constant_implies_commutativity(self, hypothesis: str, label: str):
+        """Constant law ``x*y=c`` forces all products equal, hence commutativity."""
+        h = parse_equation(hypothesis)
+        t = parse_equation("x * y = y * x")
+        result = analyze_implication(h, t)
+        assert result.verdict == ImplicationVerdict.TRUE, (
+            f"[{label}] expected TRUE for {hypothesis} => comm, got"
+            f" {result.verdict} via {result.phase}"
+        )
+        assert "Phase 5" in result.phase, f"[{label}] expected Phase 5, got {result.phase}"
+
+
 class TestPhase4bExhaustiveSearch:
     """Regression for #38 — assert verdict AND phase origin."""
 

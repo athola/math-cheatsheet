@@ -34,7 +34,7 @@ llm = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "tests"]
+pythonpath = ["src", "tests", "tla/python"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "property: property-based invariant tests",
