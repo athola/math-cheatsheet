@@ -6,6 +6,7 @@ representative synthetic equations and implication problems.
 """
 
 import json
+import os
 import random
 
 from data_models import SYNTHETIC_EQUATIONS, Equation, Problem, Property
@@ -123,8 +124,6 @@ def generate_synthetic_problems(
 
 def save_synthetic_data():
     """Save synthetic data to files."""
-    import os
-
     # Create directories
     os.makedirs("research/data/original", exist_ok=True)
     os.makedirs("research/data/processed", exist_ok=True)

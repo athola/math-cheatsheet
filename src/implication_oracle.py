@@ -19,6 +19,7 @@ Usage:
 from __future__ import annotations
 
 import csv
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -239,8 +240,6 @@ if __name__ == "__main__":
         print(f"  E{h} => E{t}: {result}")
 
     # Classification distribution
-    from collections import Counter
-
     classes: Counter[str] = Counter()
     for eq_id in oracle._col_eq_ids:
         classes[oracle.classify(eq_id)] += 1

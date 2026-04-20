@@ -5,10 +5,13 @@ Parses equations.txt and train_problems.json into structured data.
 """
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
 from data_models import Equation, Problem, Property
+
+logger = logging.getLogger(__name__)
 
 
 class ParseError(Exception):
@@ -56,9 +59,7 @@ def _parse_equations_json(path: Path) -> list[Equation]:
             try:
                 properties.append(Property(prop_str))
             except ValueError:
-                import logging
-
-                logging.getLogger(__name__).debug("Unknown property value: %s", prop_str)
+                logger.debug("Unknown property value: %s", prop_str)
 
         equation = Equation(
             id=eq_data["id"],
@@ -109,11 +110,7 @@ def _parse_equations_txt(path: Path) -> list[Equation]:
                             try:
                                 properties.append(Property(prop_str))
                             except ValueError:
-                                import logging
-
-                                logging.getLogger(__name__).debug(
-                                    "Unknown property value: %s", prop_str
-                                )
+                                logger.debug("Unknown property value: %s", prop_str)
 
                 equation = Equation(
                     id=eq_id, latex=latex, name=name, properties=properties, description=""
@@ -121,9 +118,7 @@ def _parse_equations_txt(path: Path) -> list[Equation]:
                 equations.append(equation)
 
             except (ValueError, IndexError) as exc:
-                import logging
-
-                logging.getLogger(__name__).debug("Skipping malformed line %d: %s", line_num, exc)
+                logger.debug("Skipping malformed line %d: %s", line_num, exc)
                 continue
 
     return equations

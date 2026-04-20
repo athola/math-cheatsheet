@@ -13,6 +13,7 @@ Structural features extracted:
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -339,8 +340,6 @@ class ETPDataset:
 
     def summary(self) -> dict:
         """Return dataset-level summary statistics."""
-        from collections import Counter
-
         oracle_counts: Counter[str] = Counter()
         structural_counts: Counter[str] = Counter()
         for eq_id in self.equations.ids():
@@ -370,8 +369,6 @@ if __name__ == "__main__":
     print(f"\nStructural collapse detection: {structural_collapse}")
 
     # Structural classification distribution
-    from collections import Counter
-
     struct_classes: Counter[str] = Counter()
     for eq_id in eqs.ids():
         struct_classes[eqs.classify_structural(eq_id)] += 1

@@ -17,6 +17,9 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
+
+TLCStatus = Literal["pass", "fail", "error", "skip", "unknown"]
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TLA_DIR = PROJECT_ROOT / "tla" / "MagmaSpecifications"
@@ -26,7 +29,7 @@ TOOLS_JAR = PROJECT_ROOT / "tla" / "tools" / "tla2tools.jar"
 @dataclass
 class TLCResult:
     module: str
-    status: str  # "pass", "fail", "error", "skip"
+    status: TLCStatus
     elapsed_seconds: float = 0.0
     message: str = ""
     states_found: int = 0
