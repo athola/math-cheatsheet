@@ -219,7 +219,12 @@ class TestQueryTiming:
 
     @pytest.fixture(scope="class")
     def oracle(self):
-        return ImplicationOracle("research/data/etp/implications.csv")
+        import pathlib
+
+        csv_path = pathlib.Path("research/data/etp/implications.csv")
+        if not csv_path.exists():
+            pytest.skip("implications.csv not available")
+        return ImplicationOracle(str(csv_path))
 
     @pytest.mark.unit
     def test_single_query_under_1ms(self, oracle):
@@ -323,11 +328,16 @@ class TestETPDataset:
 
     @pytest.fixture(scope="class")
     def dataset(self):
+        import pathlib
+
         from etp_equations import ETPDataset
 
+        csv_path = pathlib.Path("research/data/etp/implications.csv")
+        if not csv_path.exists():
+            pytest.skip("implications.csv not available")
         return ETPDataset(
             equations_path="research/data/etp/equations.txt",
-            implications_path="research/data/etp/implications.csv",
+            implications_path=str(csv_path),
         )
 
     @pytest.mark.unit
@@ -391,7 +401,12 @@ class TestOracleClassificationCompleteness:
 
     @pytest.fixture(scope="class")
     def oracle(self):
-        return ImplicationOracle("research/data/etp/implications.csv")
+        import pathlib
+
+        csv_path = pathlib.Path("research/data/etp/implications.csv")
+        if not csv_path.exists():
+            pytest.skip("implications.csv not available")
+        return ImplicationOracle(str(csv_path))
 
     @pytest.mark.unit
     def test_all_categories_present(self, oracle):

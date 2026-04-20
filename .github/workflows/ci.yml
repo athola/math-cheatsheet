@@ -26,6 +26,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
+      - name: Download ETP data
+        run: python scripts/download_etp_data.py
       - run: PYTHONPATH=src:tla/python pytest tests/ -v -m "not cross_language and not slow"
 
   rust-test:
