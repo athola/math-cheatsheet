@@ -1,0 +1,47 @@
+{
+  "total_equations": 4694,
+  "first_5": [
+    {
+      "id": 1,
+      "raw": "x = x"
+    },
+    {
+      "id": 2,
+      "raw": "x = y"
+    },
+    {
+      "id": 3,
+      "raw": "x = x \u25c7 x"
+    },
+    {
+      "id": 4,
+      "raw": "x = x \u25c7 y"
+    },
+    {
+      "id": 5,
+      "raw": "x = y \u25c7 x"
+    }
+  ],
+  "last_5": [
+    {
+      "id": 4690,
+      "raw": "(x \u25c7 y) \u25c7 z = (w \u25c7 y) \u25c7 u"
+    },
+    {
+      "id": 4691,
+      "raw": "(x \u25c7 y) \u25c7 z = (w \u25c7 z) \u25c7 y"
+    },
+    {
+      "id": 4692,
+      "raw": "(x \u25c7 y) \u25c7 z = (w \u25c7 z) \u25c7 u"
+    },
+    {
+      "id": 4693,
+      "raw": "(x \u25c7 y) \u25c7 z = (w \u25c7 u) \u25c7 z"
+    },
+    {
+      "id": 4694,
+      "raw": "(x \u25c7 y) \u25c7 z = (w \u25c7 u) \u25c7 v"
+    }
+  ]
+}

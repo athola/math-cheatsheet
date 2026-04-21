@@ -82,9 +82,9 @@ class TestUpdateConfusion:
 
         counts = {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
         pairs = [
-            (True, True),   # tp
-            (True, True),   # tp
-            (False, False), # tn
+            (True, True),  # tp
+            (True, True),  # tp
+            (False, False),  # tn
             (True, False),  # fp
             (False, True),  # fn
         ]

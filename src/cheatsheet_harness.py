@@ -24,12 +24,12 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+from src.config import MAX_CHEATSHEET_BYTES
 from src.equation_analyzer import (
     ImplicationVerdict,
     analyze_implication,
     parse_equation,
 )
-from src.config import MAX_CHEATSHEET_BYTES
 
 CHEATSHEET_DIR = Path(__file__).parent.parent / "cheatsheet"
 
@@ -235,15 +235,13 @@ _MAGMA_ALIASES = {
 def _check_phases(content: str, lines: list[str], result: StructureResult) -> None:
     content_upper = content.upper()
     for i in range(1, 9):
-        if any(
-            f"{kw} {i}" in content_upper
-            for kw in ("PHASE", "RULE", "STRATEGY")
-        ):
+        if any(f"{kw} {i}" in content_upper for kw in ("PHASE", "RULE", "STRATEGY")):
             result.phases_found.append(f"PHASE {i}")
 
     if len(result.phases_found) < 4:
         section_headings = [
-            ln.strip() for ln in lines
+            ln.strip()
+            for ln in lines
             if ln.strip().startswith("##") and not ln.strip().startswith("###")
         ]
         if len(section_headings) >= 4:
@@ -259,8 +257,7 @@ def _check_reference_and_examples(content: str, result: StructureResult) -> None
     content_upper = content.upper()
     result.has_quick_reference = "QUICK REFERENCE" in content_upper
     result.has_worked_examples = any(
-        kw in content_upper
-        for kw in ("WORKED EXAMPLE", "EXAMPLE", "PROOF STRATEGY")
+        kw in content_upper for kw in ("WORKED EXAMPLE", "EXAMPLE", "PROOF STRATEGY")
     )
 
 

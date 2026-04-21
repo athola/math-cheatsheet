@@ -185,7 +185,6 @@ class DecisionProcedure:
         return result
 
 
-
 if __name__ == "__main__":
     import time
 

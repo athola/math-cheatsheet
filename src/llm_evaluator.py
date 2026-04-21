@@ -38,7 +38,13 @@ COUNTEREXAMPLE: required if VERDICT is FALSE, empty otherwise.
 """
 
 
-from config import EVAL_CACHE_VERSION as CACHE_VERSION, PRICE_INPUT_PER_TOKEN, PRICE_OUTPUT_PER_TOKEN
+from config import (
+    EVAL_CACHE_VERSION as CACHE_VERSION,
+)
+from config import (
+    PRICE_INPUT_PER_TOKEN,
+    PRICE_OUTPUT_PER_TOKEN,
+)
 
 
 def compute_cache_key(cheatsheet: str, equation_1: str, equation_2: str) -> str:
@@ -165,21 +171,22 @@ def _llm_call(
     in_tok = response.usage.input_tokens
     out_tok = response.usage.output_tokens
     if cache is not None:
-        cache.put(cache_key, {
-            "predicted": predicted,
-            "response_text": text,
-            "model": model,
-            "timestamp": datetime.now(UTC).isoformat(),
-            "input_tokens": in_tok,
-            "output_tokens": out_tok,
-        })
+        cache.put(
+            cache_key,
+            {
+                "predicted": predicted,
+                "response_text": text,
+                "model": model,
+                "timestamp": datetime.now(UTC).isoformat(),
+                "input_tokens": in_tok,
+                "output_tokens": out_tok,
+            },
+        )
     time.sleep(0.5)
     return predicted, text, in_tok, out_tok
 
 
-def _resolve_from_cache(
-    cache: EvalCache | None, cache_key: str
-) -> tuple[bool | None, str] | None:
+def _resolve_from_cache(cache: EvalCache | None, cache_key: str) -> tuple[bool | None, str] | None:
     """Return (predicted, text) from cache, or None on miss."""
     if cache is None:
         return None
@@ -224,6 +231,7 @@ def evaluate_with_llm(
         problems = problems[:max_problems]
 
     from metrics_utils import update_confusion
+
     counts: dict[str, int] = {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
     errors = 0
     cache_hits = 0
@@ -256,15 +264,17 @@ def evaluate_with_llm(
             run_output_tokens += out_tok
 
         actual = prob["answer"]
-        results_log.append({
-            "id": prob["id"],
-            "equation_1": prob["equation_1"],
-            "equation_2": prob["equation_2"],
-            "actual": actual,
-            "predicted": predicted,
-            "correct": predicted == actual,
-            "difficulty": prob.get("difficulty", "unknown"),
-        })
+        results_log.append(
+            {
+                "id": prob["id"],
+                "equation_1": prob["equation_1"],
+                "equation_2": prob["equation_2"],
+                "actual": actual,
+                "predicted": predicted,
+                "correct": predicted == actual,
+                "difficulty": prob.get("difficulty", "unknown"),
+            }
+        )
 
         if predicted is None:
             errors += 1
@@ -284,7 +294,10 @@ def evaluate_with_llm(
 
     return {
         "accuracy": accuracy,
-        "tp": tp, "fp": fp, "tn": tn, "fn": fn,
+        "tp": tp,
+        "fp": fp,
+        "tn": tn,
+        "fn": fn,
         "errors": errors,
         "total": total,
         "model": model,

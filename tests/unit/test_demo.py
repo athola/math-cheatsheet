@@ -18,7 +18,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "tla" / "
 
 from demo import count_properties, find_counterexamples  # noqa: E402
 
-
 # ──────────────────────────────────────────────────────────────────────────────
 # count_properties
 # ──────────────────────────────────────────────────────────────────────────────

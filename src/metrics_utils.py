@@ -19,18 +19,12 @@ def update_confusion(counts: dict[str, int], predicted: bool, actual: bool) -> N
         counts["tn"] += 1
 
 
-def compute_accuracy_metrics(
-    tp: int, fp: int, tn: int, fn: int
-) -> dict[str, float]:
+def compute_accuracy_metrics(tp: int, fp: int, tn: int, fn: int) -> dict[str, float]:
     """Derive accuracy, precision, recall, and F1 from raw confusion counts."""
     total = tp + fp + tn + fn
     return {
         "accuracy": (tp + tn) / total if total > 0 else 0.0,
         "precision": tp / (tp + fp) if (tp + fp) > 0 else 0.0,
         "recall": tp / (tp + fn) if (tp + fn) > 0 else 0.0,
-        "f1": (
-            2 * tp / (2 * tp + fp + fn)
-            if (2 * tp + fp + fn) > 0
-            else 0.0
-        ),
+        "f1": (2 * tp / (2 * tp + fp + fn) if (2 * tp + fp + fn) > 0 else 0.0),
     }

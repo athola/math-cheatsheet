@@ -12,19 +12,16 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-from data_models import Counterexample, Magma
 from tla_bridge import (
-    COUNTEREXAMPLES,
     TLAModelChecker,
     evaluate_equation,
     get_counterexample,
     search_counterexample,
 )
 
-_ETP_PATH = (
-    Path(__file__).resolve().parent.parent / "research" / "data" / "etp" / "equations.txt"
-)
+from data_models import Counterexample, Magma
+
+_ETP_PATH = Path(__file__).resolve().parent.parent / "research" / "data" / "etp" / "equations.txt"
 _HAS_ETP = _ETP_PATH.exists()
 
 
@@ -107,7 +104,10 @@ class TestEvaluateEquation:
         """
         trivial = Magma(size=1, operation=[[0]])
         assert evaluate_equation(trivial, "x ◇ y = y ◇ x", {"x": 0, "y": 0}) is True
-        assert evaluate_equation(trivial, "x ◇ (y ◇ z) = (x ◇ y) ◇ z", {"x": 0, "y": 0, "z": 0}) is True
+        assert (
+            evaluate_equation(trivial, "x ◇ (y ◇ z) = (x ◇ y) ◇ z", {"x": 0, "y": 0, "z": 0})
+            is True
+        )
 
 
 # ──────────────────────────────────────────────────────────────────────────────

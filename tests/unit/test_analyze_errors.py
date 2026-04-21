@@ -24,10 +24,10 @@ from analyze_errors import (  # noqa: E402
     ErrorReport,
     _suggestion_for_phase,
 )
+
 from decision_procedure import DecisionProcedure  # noqa: E402
 from etp_equations import ETPEquations  # noqa: E402
 from implication_oracle import ImplicationOracle  # noqa: E402
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Fixtures
@@ -50,11 +50,11 @@ def oracle_csv(tmp_path: Path) -> Path:
     """5x5 implication matrix (3=True, -3=False)."""
     csv_path = tmp_path / "implications.csv"
     matrix = [
-        [3, -3, -3, -3, -3],   # Eq1 (tautology): implies only itself
-        [3,  3,  3,  3,  3],   # Eq2 (collapse): implies everything
-        [3, -3,  3, -3, -3],   # Eq3 (comm): implies 1, 3
-        [3, -3, -3,  3, -3],   # Eq4 (proj): implies 1, 4
-        [3,  3, -3, -3,  3],   # Eq5 (3-var): implies 1, 2, 5
+        [3, -3, -3, -3, -3],  # Eq1 (tautology): implies only itself
+        [3, 3, 3, 3, 3],  # Eq2 (collapse): implies everything
+        [3, -3, 3, -3, -3],  # Eq3 (comm): implies 1, 3
+        [3, -3, -3, 3, -3],  # Eq4 (proj): implies 1, 4
+        [3, 3, -3, -3, 3],  # Eq5 (3-var): implies 1, 2, 5
     ]
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         csv.writer(f).writerows(matrix)
@@ -77,7 +77,9 @@ def proc(eqs: ETPEquations, oracle: ImplicationOracle) -> DecisionProcedure:
 
 
 @pytest.fixture
-def analyzer(proc: DecisionProcedure, oracle: ImplicationOracle, eqs: ETPEquations) -> ErrorAnalyzer:
+def analyzer(
+    proc: DecisionProcedure, oracle: ImplicationOracle, eqs: ETPEquations
+) -> ErrorAnalyzer:
     return ErrorAnalyzer(proc, oracle, eqs)
 
 
@@ -98,9 +100,16 @@ class TestErrorRecord:
         Then they match what was set
         """
         rec = ErrorRecord(
-            h_id=3, t_id=4, predicted=True, actual=False,
-            phase="P2-collapse", error_type="FP",
-            h_depth=1, t_depth=1, h_vars=2, t_vars=2,
+            h_id=3,
+            t_id=4,
+            predicted=True,
+            actual=False,
+            phase="P2-collapse",
+            error_type="FP",
+            h_depth=1,
+            t_depth=1,
+            h_vars=2,
+            t_vars=2,
             new_vars_in_target=False,
         )
         assert rec.error_type == "FP"
@@ -116,9 +125,16 @@ class TestErrorRecord:
         Then all field values appear in the output
         """
         rec = ErrorRecord(
-            h_id=1, t_id=2, predicted=False, actual=True,
-            phase="P6-default", error_type="FN",
-            h_depth=0, t_depth=0, h_vars=1, t_vars=2,
+            h_id=1,
+            t_id=2,
+            predicted=False,
+            actual=True,
+            phase="P6-default",
+            error_type="FN",
+            h_depth=0,
+            t_depth=0,
+            h_vars=1,
+            t_vars=2,
             new_vars_in_target=True,
         )
         d = rec.to_dict()
@@ -136,9 +152,16 @@ class TestErrorRecord:
         Then AttributeError is raised
         """
         rec = ErrorRecord(
-            h_id=1, t_id=2, predicted=True, actual=False,
-            phase="P6-default", error_type="FP",
-            h_depth=0, t_depth=0, h_vars=1, t_vars=1,
+            h_id=1,
+            t_id=2,
+            predicted=True,
+            actual=False,
+            phase="P6-default",
+            error_type="FP",
+            h_depth=0,
+            t_depth=0,
+            h_vars=1,
+            t_vars=1,
             new_vars_in_target=False,
         )
         with pytest.raises((AttributeError, TypeError)):
@@ -464,32 +487,39 @@ class TestKnownErrors:
 
     @pytest.fixture
     def fn_oracle_csv(self, tmp_path: Path) -> Path:
-        """Matrix where Eq5 implies Eq3 (actual=True) but proc will say False.
+        """Matrix where Eq3 implies Eq4 (actual=True) but proc will say False.
 
-        This creates a predictable FN at (5, 3).
+        This creates a predictable FN at (3, 4).
         """
         csv_path = tmp_path / "fn_implications.csv"
+        # Eq3 (commutativity) is designed to imply Eq4 (left projection) in this
+        # oracle — which is mathematically false (C0 satisfies comm but not LP).
+        # The procedure correctly returns FALSE, creating a predictable FN at (3, 4).
         matrix = [
             [3, -3, -3, -3, -3],
-            [3,  3,  3,  3,  3],
-            [3, -3,  3, -3, -3],
-            [3, -3, -3,  3, -3],
-            [3,  3,  3, -3,  3],  # Eq5 now implies Eq3 — proc will miss it (new var z)
+            [3, 3, 3, 3, 3],
+            [3, -3, 3, 3, -3],  # Eq3 now implies Eq4 — proc will miss it (C0 counterexample)
+            [3, -3, -3, 3, -3],
+            [3, 3, -3, -3, 3],
         ]
         with open(csv_path, "w", newline="", encoding="utf-8") as f:
             csv.writer(f).writerows(matrix)
         return csv_path
 
     @pytest.mark.unit
-    def test_known_fn_at_5_3_detected(self, eqs: ETPEquations, fn_oracle_csv: Path):
+    def test_known_fn_at_3_4_detected(self, eqs: ETPEquations, fn_oracle_csv: Path):
         """
         Scenario: A designed false negative is found in the error list
-        Given a matrix where Eq5 => Eq3 but the procedure says False
+        Given a matrix where Eq3 (comm) => Eq4 (LP) but the procedure says False
         When collect_errors() is called
-        Then (5, 3) appears in the FN list
+        Then (3, 4) appears in the FN list
+
+        Note: commutativity does not imply left projection — C0 (x*y=0) satisfies
+        commutativity but violates LP for x=1. The procedure correctly returns FALSE,
+        making this a reliable FN test fixture.
         """
         oracle = ImplicationOracle(fn_oracle_csv)
         proc = DecisionProcedure(eqs, oracle)
         analyzer = ErrorAnalyzer(proc, oracle, eqs)
         fn_pairs = [(e.h_id, e.t_id) for e in analyzer.collect_errors() if e.error_type == "FN"]
-        assert (5, 3) in fn_pairs
+        assert (3, 4) in fn_pairs

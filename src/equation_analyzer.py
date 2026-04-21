@@ -333,28 +333,69 @@ def _is_tautology(eq: Equation) -> bool:
 
 
 def _is_collapse(eq: Equation) -> bool:
-    """Check if the equation is a variable equality (e.g., x = y), which forces |M|=1."""
-    if eq.lhs.node_type == NodeType.VAR and eq.rhs.node_type == NodeType.VAR:
-        return eq.lhs.name != eq.rhs.name
+    """Check if the equation forces |M|=1 (singleton/collapse).
+
+    Covers both "x = y" and extended forms like "x = f(y,z,...)" where x
+    does not appear in f.  Proof: fix any p,q ∈ M; assign the "fresh"
+    variable to p and all others to q — the equation gives p = q.
+    """
+    if eq.lhs.node_type == NodeType.VAR and eq.lhs.name not in eq.rhs.variables():
+        return True
+    if eq.rhs.node_type == NodeType.VAR and eq.rhs.name not in eq.lhs.variables():
+        return True
     return False
 
 
 def _check_simple_substitutions(h: Equation, t: Equation) -> AnalysisResult | None:
-    """Check if T can be obtained from H by setting variables equal."""
+    """Check if T can be obtained from H by setting variables equal.
+
+    Tries both merge directions (v→u and u→v) at each step, plus two-step
+    chaining (apply a second merge after the first).  All these specialisations
+    are universally sound: if H[σ] = T then H implies T.
+    """
     h_vars = sorted(h.variables())
     if len(h_vars) < 2:
         return None
 
-    # Try all pairwise variable merges
     for i, v1 in enumerate(h_vars):
         for v2 in h_vars[i + 1 :]:
-            mapping = {v2: Term(NodeType.VAR, name=v1)}
-            specialized = h.substitute(mapping)
-            if specialized == t:
-                return AnalysisResult(
-                    ImplicationVerdict.TRUE, "Phase 3", f"T obtained from H by setting {v2}:={v1}"
-                )
+            for merged, survivor in ((v2, v1), (v1, v2)):
+                step1 = h.substitute({merged: Term(NodeType.VAR, name=survivor)})
+                if step1 == t:
+                    return AnalysisResult(
+                        ImplicationVerdict.TRUE,
+                        "Phase 3",
+                        f"T obtained from H by setting {merged}:={survivor}",
+                    )
+                # Two-step chaining: apply one more merge/rename to step1.
+                # The target may be any var from step1 OR from T (enabling
+                # renames like z→y after y was merged into x).
+                step1_vars = sorted(step1.variables())
+                t_vars = sorted(t.variables())
+                candidate_targets = sorted(set(step1_vars) | set(t_vars))
+                for m2 in step1_vars:
+                    for s2 in candidate_targets:
+                        if m2 == s2:
+                            continue
+                        step2 = step1.substitute({m2: Term(NodeType.VAR, name=s2)})
+                        if step2 == t:
+                            return AnalysisResult(
+                                ImplicationVerdict.TRUE,
+                                "Phase 3",
+                                f"T obtained from H by {merged}:={survivor} then {m2}:={s2}",
+                            )
     return None
+
+
+def _iter_vars(term: Term) -> Iterator[str]:
+    """Yield variable names in a term, including duplicates."""
+
+    if term.node_type == NodeType.VAR:
+        yield term.name
+    else:
+        lt, rt = term._lr()
+        yield from _iter_vars(lt)
+        yield from _iter_vars(rt)
 
 
 def _detect_determined_operation(eq: Equation) -> tuple[list[list[int]], str] | None:
@@ -427,22 +468,18 @@ def _detect_determined_operation(eq: Equation) -> tuple[list[list[int]], str] | 
         ):
             return [[0, 1], [0, 1]], "right projection (x*y=y)"
 
-    # Constant law: x * y = z * w (3+ distinct vars, all in OP nodes)
-    # This forces all products to be the same constant.
+    # Generalized constant law: LHS and RHS are both OP trees with disjoint variable sets,
+    # AND each variable appears exactly once in the equation (no repeats).
+    # When variables repeat (e.g. (x*y)*x), the disjoint condition alone is insufficient —
+    # a 3-element counterexample exists. With unique variables, x*y=z*w style reasoning holds.
     if eq.lhs.node_type == NodeType.OP and eq.rhs.node_type == NodeType.OP:
         lhs_vars = eq.lhs.variables()
         rhs_vars = eq.rhs.variables()
         all_vars = lhs_vars | rhs_vars
-        # If leaf variables are distinct across sides (3+ total) and both sides are single ops
-        if (
-            eq.lhs.size() == 1
-            and eq.rhs.size() == 1
-            and len(all_vars) >= 3
-            and len(lhs_vars & rhs_vars) == 0
-        ):
-            # Constant operation: all products = 0
+        lhs_var_count = sum(1 for _ in _iter_vars(eq.lhs))
+        rhs_var_count = sum(1 for _ in _iter_vars(eq.rhs))
+        no_repeats = (lhs_var_count == len(lhs_vars)) and (rhs_var_count == len(rhs_vars))
+        if len(lhs_vars & rhs_vars) == 0 and no_repeats:
             return [[0, 0], [0, 0]], "constant operation (x*y=c)"
 
     return None
-
-

@@ -1,12 +1,9 @@
 EQUATIONAL IMPLICATION SOLVER
 ==============================
-TASK: Given hypothesis H and target T (universally quantified equations
-about binary operation * on set M), decide: does H imply T?
-H implies T = EVERY magma satisfying H must also satisfy T.
-
-CRITICAL: ~63% of implications are FALSE. Default FALSE when unsure.
-TRUE: derive T from H via substitution/rewriting.
-FALSE: find ONE magma satisfying H but not T.
+H: {{ equation1 }}
+T: {{ equation2 }}
+Does H imply T over all magmas? Follow phases below IN ORDER.
+CRITICAL: 50% TRUE, 50% FALSE. TRUE: derive T from H. FALSE: find counterexample.
 
 ================================================================
 PHASE 1: INSTANT DECISIONS
@@ -17,9 +14,9 @@ Answer TRUE immediately if:
     x*(y*z)=(x*y)*z is the same as a*(b*c)=(a*b)*c.
 (b) T is a tautology — both sides are syntactically identical.
     Example target: x*y = x*y, or x = x. Every magma satisfies these.
-(c) H forces |M|=1 (the singleton/collapse law):
-    H is "x = y" or equivalent — forces all elements equal.
-    A 1-element magma satisfies every equation. TRUE for any T.
+(c) H forces |M|=1 (singleton/collapse law) — TRUE for ANY T:
+    Forms: x=y (distinct vars), OR x=f(y,z,...) where x∉{y,z,...}.
+    Proof: set fresh var=p, rest=q → p=q. "x=y*z"→collapse; "x=x*y"→NOT.
 
 Answer FALSE immediately if:
 (d) T forces |M|=1 (like x=y) but H allows larger magmas.
@@ -32,15 +29,9 @@ PHASE 2: VARIABLE ANALYSIS (very powerful)
 Let vars(H) = set of distinct variables in H.
 Let vars(T) = set of distinct variables in T.
 
-RULE: If T contains a variable NOT in H → almost always FALSE.
-(Only exception: H is a collapse law forcing |M|=1.)
-
-Why: H constrains relationships among its own variables only.
-A variable absent from H represents an unconstrained element.
-Non-trivial magmas will have elements violating T's extra claims.
-
-Example: H: x*(x*x)=x [1 variable], T: x*y=y*x [2 variables]
-Variable y is not in H. H says nothing about distinct elements → FALSE.
+RULE: If T has new var not in H → FALSE unless H forces LP/RP/constant (→ Phase 5).
+Why: new vars are unconstrained; non-trivial magmas can assign them to violate T.
+Example: H: x*(x*x)=x (1 var), T: x*y=y*x (2 vars): y unconstrained → FALSE.
 
 GUIDELINE: If |vars(T)| > |vars(H)| → strongly lean FALSE.
 If |vars(T)| <= |vars(H)| → proceed to Phase 3.
@@ -64,24 +55,16 @@ EXAMPLE (TRUE):
   H: x*(y*z) = (x*y)*z     T: x*(x*z) = (x*x)*z
   Set y:=x in H → x*(x*z) = (x*x)*z → matches T exactly. TRUE.
 
-EXAMPLE (TRUE - chained):
-  H: x*(y*z) = (x*y)*z     T: (a*b)*(c*d) = a*(b*(c*d))
-  Apply H to right side: a*(b*(c*d)) = a*((b*c)*d) = (a*(b*c))*d
-  Apply H: = ((a*b)*c)*d. Apply H to left: (a*b)*(c*d) = ((a*b)*c)*d.
-  Both sides equal → TRUE.
+CHAINED: Apply H multiple times as a rewrite. If both sides of T reduce
+  to the same expression → TRUE. Also try: derive intermediate identity
+  from H via substitution, then use it to simplify further substitutions.
 
 ================================================================
 PHASE 4: COUNTEREXAMPLE TESTING
 ================================================================
 
-Test these canonical magmas. If any satisfies H but violates T → FALSE.
-
-How to test on {0,1}: enumerate all variable assignments.
-  2 variables → 4 cases: (0,0),(0,1),(1,0),(1,1)
-  3 variables → 8 cases
-  4 variables → 16 cases
-Compute each side using the multiplication table. If all assignments
-satisfy H, then check T the same way.
+Test on {0,1}: 2 vars→4 cases, 3 vars→8, 4 vars→16. Compute both sides;
+if H holds for all assignments, then check T. H-holds but T-fails → FALSE.
 
 --- MAGMA LP (Left Projection): x*y = x ---
   0*0=0  0*1=0  |  1*0=1  1*1=1
@@ -114,11 +97,19 @@ satisfy H, then check T the same way.
   Check: (0*0)*1 = 1*1 = 0, but 0*(0*1) = 0*1 = 1. Not equal.
   USE TO REFUTE: associativity targets when H needs commutativity.
 
---- MAGMA Z3 (addition mod 3) on {0,1,2} ---
-  0*0=0  0*1=1  0*2=2 | 1*0=1  1*1=2  1*2=0 | 2*0=2  2*1=0  2*2=1
-  Key: commutative, associative, identity=0, NOT idempotent (1*1=2)
-  USE TO REFUTE: harder cases needing 3 elements. Many equations hold
-  in all 2-element magmas but fail here.
+--- MAGMA Z3 (mod3 add): x*y=(x+y)mod3 ---
+  0*1=1,1*1=2,1*2=0,2*2=1 (symmetric). NOT idempotent.
+  Refutes equations passing all 2-element tests.
+
+--- MAGMA RC3 (Right-Cycle mod3): x*y=(y+1)mod3 on {0,1,2} ---
+  0*0=1,0*1=2,0*2=0 | 1*0=1,1*1=2,1*2=0 | 2*0=1,2*1=2,2*2=0
+  Right arg cycles up: x*(y*z)=(z+2)mod3; x*(x*(x*y))=y (period 3).
+  USE TO REFUTE: equations satisfied by Z3 but failing cycle structure.
+
+--- MAGMA LC3 (Left-Cycle mod3): x*y=(x+1)mod3 on {0,1,2} ---
+  0*0=1,0*1=1,0*2=1 | 1*0=2,1*1=2,1*2=2 | 2*0=0,2*1=0,2*2=0
+  Left arg cycles up: (x*y)*z=(x+2)mod3; ((x*y)*z)*w=(x+3)mod3=x.
+  USE TO REFUTE: equations satisfied by Z3 but left-chain depth fails.
 
 ================================================================
 PHASE 5: ABSORPTION AND DETERMINATION
@@ -128,18 +119,21 @@ Some hypotheses COMPLETELY DETERMINE the operation:
 
 If H says x = x*y → forces LEFT PROJECTION: x*y = x for all x,y.
 If H says x = y*x → forces RIGHT PROJECTION: x*y = y for all x,y.
-If H says x*y = z*w (4 distinct vars) → forces CONSTANT: x*y = c.
+Also: x=x*(f)→LP; x=f*x→RP — f must NOT contain x.
+GENERALIZED CONSTANT: LHS(H) and RHS(H) share ZERO variables, no var repeats, neither bare → constant x*y=c → TRUE for any T.
+STRICT: if LHS/RHS share even one var (e.g. x*(y*z)=(z*w)*w shares z) → NOT constant.
+TRAP: var only in RHS (e.g. x*y=z*f(x,y)) feels constant but is NOT — partial argument invalid.
 
 Once the operation is determined, DIRECTLY EVALUATE T:
 
-Example: H: x = x*y → operation is LP. Check T: x*y = y*x?
-  0*1 = 0, 1*0 = 1. Not equal → FALSE.
+LP eval: any expr = its leftmost var. TRUE iff same leftmost on both sides.
+RP eval: any expr = its rightmost var. TRUE iff same rightmost on both sides.
+New-var OK with LP: x=x*y, T: x*(y*z)=x*w → leftmost both=x → TRUE.
+New-var OK with RP: x=y*x, T: (x*y)*z=u*z → rightmost both=z → TRUE.
 
-Example: H: x = x*y → LP. Check T: (x*y)*z = x*(y*z)?
-  LP: (x*y)*z = x*z = x. And x*(y*z) = x*y = x. Both = x → TRUE.
+Example: H: x*y = z*w → constant c → TRUE (c=c for any T).
 
-Example: H: x*y = z*w → constant c. Check T: x*y = y*x?
-  c = c → TRUE (all products are the same constant).
+Example: x*(y*z)=(w*u)*v: all 6 vars unique, disjoint → constant → TRUE.
 
 ================================================================
 PHASE 6: REWRITE ANALYSIS
@@ -184,13 +178,8 @@ DUALITY: Swapping all left/right arguments gives the "dual" equation.
 PHASE 8: ADVANCED COUNTEREXAMPLE TECHNIQUES
 ================================================================
 
-LINEAR MODELS: Try x*y = a*x + b*y over integers mod n.
-  Subtraction (a=1,b=-1): x*y = x-y. NOT commutative, NOT associative.
-  If H holds under subtraction but T does not → FALSE.
-
-SELECTIVE TESTING: When LP/RP/C0/XR all violate H,
-  try all 16 possible 2-element magma tables on {0,1}
-  (2^4 = 16 choices for 0*0, 0*1, 1*0, 1*1). Check each against H.
+LINEAR: x*y=x-y (non-comm, non-assoc); if H holds but T fails → FALSE.
+EXHAUSTIVE: try all 16 two-element tables (2^4) when standard magmas fail H.
 
 ================================================================
 QUICK REFERENCE PATTERNS
@@ -199,8 +188,11 @@ QUICK REFERENCE PATTERNS
 ALWAYS TRUE:
   Same equation (rename vars) → TRUE
   Tautology target (x=x) → TRUE
-  Collapse hypothesis (x=y) → TRUE for any T
+  Collapse hypothesis (x=y or x=f(y,z) where x fresh) → TRUE for any T
   Valid substitution of H gives T → TRUE
+  Generalized constant (disjoint vars, no repeats, neither bare) → TRUE
+  LP hyp (x=x*y): TRUE iff leftmost(LHS_T)=leftmost(RHS_T)
+  RP hyp (x=y*x): TRUE iff rightmost(LHS_T)=rightmost(RHS_T)
 
 ALMOST ALWAYS FALSE:
   New variable in T not in H → FALSE
@@ -209,9 +201,10 @@ ALMOST ALWAYS FALSE:
   Commutativity target + LP satisfies H → FALSE
   Idempotency target + C0 satisfies H → FALSE
   Associativity target + CM satisfies H → FALSE
+  RC3 or LC3 satisfies H but fails T → FALSE
   More complex T than H → FALSE
 
-DEFAULT: If all phases are inconclusive → FALSE (63% base rate).
+DEFAULT: If all phases inconclusive → lean FALSE (eval is 50/50, not 63%).
 
 ================================================================
 COMPLETE WORKED EXAMPLES

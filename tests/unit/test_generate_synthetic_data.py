@@ -22,8 +22,8 @@ from generate_synthetic_data import (  # noqa: E402
     generate_synthetic_problems,
     save_synthetic_data,
 )
-from data_models import SYNTHETIC_EQUATIONS  # noqa: E402
 
+from data_models import SYNTHETIC_EQUATIONS  # noqa: E402
 
 # ──────────────────────────────────────────────────────────────────────────────
 # generate_extended_equations
@@ -216,7 +216,7 @@ class TestGenerateSyntheticProblems:
         """
         known = generate_implication_knowledge()
         problems = generate_synthetic_problems(num_problems=len(known) + 50, num_equations=50)
-        for p in problems[len(known):]:
+        for p in problems[len(known) :]:
             assert p.equation_1_id != p.equation_2_id
 
 

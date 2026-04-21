@@ -38,7 +38,9 @@ class BatchCounterexampleSearch:
                 unique_eqs[id(t)] = t
             for eq_id, eq in unique_eqs.items():
                 if eq_id not in sat_cache:
-                    sat_cache[eq_id] = {ti for ti, table in enumerate(tables) if eq.holds_in(table, size)}
+                    sat_cache[eq_id] = {
+                        ti for ti, table in enumerate(tables) if eq.holds_in(table, size)
+                    }
             for idx in unsolved:
                 h, t = pairs[idx]
                 witnesses = sat_cache[id(h)] - sat_cache[id(t)]
@@ -67,10 +69,14 @@ class OptimalMagmaDiscovery:
             for idx in needed
         }
         scored = [
-            (table, sum(
-                1 for h, t in false_pairs
-                if ti in eq_sat.get(h, set()) and ti not in eq_sat.get(t, set())
-            ))
+            (
+                table,
+                sum(
+                    1
+                    for h, t in false_pairs
+                    if ti in eq_sat.get(h, set()) and ti not in eq_sat.get(t, set())
+                ),
+            )
             for ti, table in enumerate(tables)
         ]
         scored = [(table, count) for table, count in scored if count > 0]
