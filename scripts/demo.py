@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tla" / "python"))
 
-from tla_bridge import generate_all_magmas  # noqa: E402
+from tla_bridge import generate_all_magmas
 
 
 def count_properties(size: int) -> dict[str, int]:

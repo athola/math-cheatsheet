@@ -19,6 +19,7 @@ from pathlib import Path
 from decision_procedure import DecisionProcedure
 from etp_equations import ETPEquations
 from implication_oracle import ImplicationOracle
+from metrics_utils import update_confusion
 
 
 @dataclass(frozen=True)
@@ -136,22 +137,6 @@ class CompetitionEvaluator:
         self.oracle = ImplicationOracle(oracle_path)
         self.procedure = DecisionProcedure(self.equations, self.oracle)
 
-    @staticmethod
-    def _bump_confusion(counts: dict[str, int], predicted: bool, actual: bool) -> None:
-        """Increment the right tp/fp/tn/fn cell on ``counts``.
-
-        Factored out so the full-matrix and per-phase breakdowns stay in sync
-        when the classification logic changes (regression #43/S2).
-        """
-        if predicted and actual:
-            counts["tp"] += 1
-        elif predicted and not actual:
-            counts["fp"] += 1
-        elif not predicted and actual:
-            counts["fn"] += 1
-        else:
-            counts["tn"] += 1
-
     def evaluate_full_matrix(self) -> EvalResult:
         """Evaluate against the full implication matrix with phase breakdown."""
         t0 = time.time()
@@ -169,13 +154,13 @@ class CompetitionEvaluator:
                 predicted = result.prediction
                 phase = result.phase
 
-                self._bump_confusion(global_counts, predicted, actual)
+                update_confusion(global_counts, predicted, actual)
 
                 if phase not in phase_stats:
                     phase_stats[phase] = {"tp": 0, "fp": 0, "tn": 0, "fn": 0, "total": 0}
                 ps = phase_stats[phase]
                 ps["total"] += 1
-                self._bump_confusion(ps, predicted, actual)
+                update_confusion(ps, predicted, actual)
 
         # Compute per-phase accuracy
         for ps in phase_stats.values():
@@ -203,26 +188,17 @@ class CompetitionEvaluator:
         problems = _load_problems(path)
 
         t0 = time.time()
-        tp = fp = tn = fn = 0
+        counts: dict[str, int] = {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
 
         for prob in problems:
             h_id = prob["hypothesis_id"]
             t_id = prob["target_id"]
             actual = prob["answer"]
-
             predicted = self.procedure.predict_bool(h_id, t_id)
-
-            if predicted and actual:
-                tp += 1
-            elif predicted and not actual:
-                fp += 1
-            elif not predicted and actual:
-                fn += 1
-            else:
-                tn += 1
+            update_confusion(counts, predicted, actual)
 
         elapsed = time.time() - t0
-        return EvalResult.from_counts(tp=tp, fp=fp, tn=tn, fn=fn, elapsed_seconds=elapsed)
+        return EvalResult.from_counts(**counts, elapsed_seconds=elapsed)
 
     def evaluate_by_category(self) -> dict[str, EvalResult]:
         """Evaluate full matrix, broken down by hypothesis equation category.
@@ -250,7 +226,7 @@ class CompetitionEvaluator:
                     continue
 
                 predicted = self.procedure.predict_bool(h_id, t_id)
-                self._bump_confusion(category_counts[cat], predicted, actual)
+                update_confusion(category_counts[cat], predicted, actual)
             category_elapsed[cat] += time.time() - row_start
 
         results: dict[str, EvalResult] = {}

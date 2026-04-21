@@ -35,53 +35,49 @@ class Term:
     left: Term | None = None  # left child if OP
     right: Term | None = None  # right child if OP
 
+    def _lr(self) -> tuple[Term, Term]:
+        """Return (left, right) for OP nodes; raises if children are missing."""
+        if self.left is None or self.right is None:
+            raise ValueError("OP node must have left and right children")
+        return self.left, self.right
+
     def variables(self) -> set[str]:
         if self.node_type == NodeType.VAR:
             return {self.name}
-        if self.left is None or self.right is None:
-            raise ValueError("OP node must have left and right children")
-        return self.left.variables() | self.right.variables()
+        lt, rt = self._lr()
+        return lt.variables() | rt.variables()
 
     def depth(self) -> int:
         if self.node_type == NodeType.VAR:
             return 0
-        if self.left is None or self.right is None:
-            raise ValueError("OP node must have left and right children")
-        return 1 + max(self.left.depth(), self.right.depth())
+        lt, rt = self._lr()
+        return 1 + max(lt.depth(), rt.depth())
 
     def size(self) -> int:
         """Count the number of * operations."""
         if self.node_type == NodeType.VAR:
             return 0
-        if self.left is None or self.right is None:
-            raise ValueError("OP node must have left and right children")
-        return 1 + self.left.size() + self.right.size()
+        lt, rt = self._lr()
+        return 1 + lt.size() + rt.size()
 
     def substitute(self, mapping: dict[str, Term]) -> Term:
         if self.node_type == NodeType.VAR:
             return mapping.get(self.name, self)
-        if self.left is None or self.right is None:
-            raise ValueError("OP node must have left and right children")
-        return Term(
-            NodeType.OP, left=self.left.substitute(mapping), right=self.right.substitute(mapping)
-        )
+        lt, rt = self._lr()
+        return Term(NodeType.OP, left=lt.substitute(mapping), right=rt.substitute(mapping))
 
     def evaluate(self, table: list[list[int]], assignment: dict[str, int]) -> int:
         """Evaluate this term in a finite magma given variable assignments."""
         if self.node_type == NodeType.VAR:
             return assignment[self.name]
-        if self.left is None or self.right is None:
-            raise ValueError("OP node must have left and right children")
-        left_val = self.left.evaluate(table, assignment)
-        right_val = self.right.evaluate(table, assignment)
-        return table[left_val][right_val]
+        lt, rt = self._lr()
+        return table[lt.evaluate(table, assignment)][rt.evaluate(table, assignment)]
 
     def __str__(self) -> str:
         if self.node_type == NodeType.VAR:
             return self.name
-        if self.left is None or self.right is None:
-            raise ValueError("OP node must have left and right children")
-        return f"({self.left} * {self.right})"
+        lt, rt = self._lr()
+        return f"({lt} * {rt})"
 
 
 @dataclass(frozen=True)
@@ -119,30 +115,7 @@ class Equation:
 # --- Parsing ---
 
 
-def _tokenize(s: str) -> list[str]:
-    """Tokenize an equation string like 'x * (y * z) = (x * y) * z'."""
-    tokens = []
-    i = 0
-    while i < len(s):
-        c = s[i]
-        if c.isspace():
-            i += 1
-            continue
-        if c in "(*=)":
-            tokens.append(c)
-            i += 1
-        elif c == "◇" or c == "⋄":
-            tokens.append("*")
-            i += 1
-        elif c.isalpha():
-            name = ""
-            while i < len(s) and s[i].isalpha():
-                name += s[i]
-                i += 1
-            tokens.append(name)
-        else:
-            i += 1
-    return tokens
+from equation_parser_utils import tokenize_equation as _tokenize
 
 
 def _parse_expr(tokens: list[str], pos: int) -> tuple[Term, int]:

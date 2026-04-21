@@ -23,7 +23,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from data_models import SYNTHETIC_EQUATIONS, Equation, Problem, Property  # noqa: E402
+from data_models import SYNTHETIC_EQUATIONS, Equation, Problem, Property
 
 _DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "research" / "data" / "original"
 

@@ -84,74 +84,93 @@ class DecisionProcedure:
 
     def _predict(self, h_id: int, t_id: int) -> PredictionResult:
         """Actual decision logic; public ``predict`` wraps with logging."""
-        # Phase 0: Self-implication
+        phases = [
+            self._phase_0_self,
+            self._phase_1_taut_target,
+            self._phase_2_collapse,
+            self._phase_3_taut_hyp,
+            self._phase_4_new_vars,
+            self._phase_5_substitution,
+            self._phase_5a_equiv_class,
+            self._phase_5bc_structural,
+        ]
+        for phase_fn in phases:
+            result = phase_fn(h_id, t_id)
+            if result is not None:
+                return result
+        return PredictionResult(False, "P6-default", "No rule matched, default FALSE")
+
+    def _phase_0_self(self, h_id: int, t_id: int) -> PredictionResult | None:
         if h_id == t_id:
             return PredictionResult(True, "P0-self", "Identical equations")
+        return None
 
-        # Phase 1: Tautology target (x=x is implied by everything)
+    def _phase_1_taut_target(self, h_id: int, t_id: int) -> PredictionResult | None:
         if t_id in self.equations and self.equations[t_id].is_tautology:
             return PredictionResult(True, "P1-taut-target", "Target is tautology")
+        return None
 
-        # Phase 2: Collapse hypothesis (implies everything)
+    def _phase_2_collapse(self, h_id: int, t_id: int) -> PredictionResult | None:
         if h_id in self._collapse_ids:
             return PredictionResult(True, "P2-collapse", "Hypothesis is collapse")
+        return None
 
-        # Phase 3: Tautology hypothesis (implies only itself)
+    def _phase_3_taut_hyp(self, h_id: int, t_id: int) -> PredictionResult | None:
         if h_id in self.equations and self.equations[h_id].is_tautology:
             return PredictionResult(False, "P3-taut-hyp", "Tautology implies only itself")
+        return None
 
-        # Phase 4: Variable analysis
+    def _phase_4_new_vars(self, h_id: int, t_id: int) -> PredictionResult | None:
         if h_id in self.equations and t_id in self.equations:
             new_vars = self.equations.vars_in_target_not_in_hypothesis(h_id, t_id)
             if new_vars:
                 return PredictionResult(
                     False, "P4-new-vars", f"Target has new variable(s): {new_vars}"
                 )
+        return None
 
-        # Phase 5: Substitution detection
-        if h_id in self.equations and t_id in self.equations:
-            if self.equations.is_substitution_instance(h_id, t_id):
-                return PredictionResult(
-                    True, "P5-substitution", "Target is substitution instance of hypothesis"
-                )
+    def _phase_5_substitution(self, h_id: int, t_id: int) -> PredictionResult | None:
+        if (
+            h_id in self.equations
+            and t_id in self.equations
+            and self.equations.is_substitution_instance(h_id, t_id)
+        ):
+            return PredictionResult(
+                True, "P5-substitution", "Target is substitution instance of hypothesis"
+            )
+        return None
 
-        # Phase 5a: Equivalence class lookup
+    def _phase_5a_equiv_class(self, h_id: int, t_id: int) -> PredictionResult | None:
         # Equations with identical implication row profiles mutually imply each other.
         # Proof: if rows are identical then matrix[h,t] == matrix[t,t] == TRUE (diagonal).
-        if self.oracle is not None:
-            h_class = self.oracle.equivalence_class(h_id)
-            t_class = self.oracle.equivalence_class(t_id)
-            if h_class is not None and t_class is not None and h_class == t_class:
+        if self.oracle is None:
+            return None
+        h_class = self.oracle.equivalence_class(h_id)
+        t_class = self.oracle.equivalence_class(t_id)
+        if h_class is not None and t_class is not None and h_class == t_class:
+            return PredictionResult(
+                True, "P5a-equiv-class", "Same equivalence class (identical row profiles)"
+            )
+        return None
+
+    def _phase_5bc_structural(self, h_id: int, t_id: int) -> PredictionResult | None:
+        if h_id not in self.equations or t_id not in self.equations:
+            return None
+        try:
+            h_eq = ea_parse_equation(self.equations[h_id].text)
+            t_eq = ea_parse_equation(self.equations[t_id].text)
+            ea_result = analyze_implication(h_eq, t_eq)
+            if ea_result.verdict == ImplicationVerdict.TRUE:
                 return PredictionResult(
-                    True,
-                    "P5a-equiv-class",
-                    "Same equivalence class (identical row profiles)",
+                    True, f"P5b-structural({ea_result.phase})", ea_result.reason
                 )
-
-        # Phase 5b/5c: Structural analysis via equation_analyzer
-        # Delegates to the richer analysis in equation_analyzer.py which has:
-        # - Determined operation detection (left/right projection, constant law)
-        # - Counterexample testing (canonical + exhaustive 2-element magmas)
-        # - Structural heuristics (depth comparison)
-        if h_id in self.equations and t_id in self.equations:
-            try:
-                h_eq = ea_parse_equation(self.equations[h_id].text)
-                t_eq = ea_parse_equation(self.equations[t_id].text)
-                ea_result = analyze_implication(h_eq, t_eq)
-                if ea_result.verdict == ImplicationVerdict.TRUE:
-                    return PredictionResult(
-                        True, f"P5b-structural({ea_result.phase})", ea_result.reason
-                    )
-                elif ea_result.verdict == ImplicationVerdict.FALSE:
-                    return PredictionResult(
-                        False, f"P5c-structural({ea_result.phase})", ea_result.reason
-                    )
-                # UNKNOWN falls through to default
-            except (ValueError, KeyError) as exc:
-                logger.debug("Structural analysis failed for E%d=>E%d: %s", h_id, t_id, exc)
-
-        # Phase 6: Default FALSE (base rate favors FALSE)
-        return PredictionResult(False, "P6-default", "No rule matched, default FALSE")
+            if ea_result.verdict == ImplicationVerdict.FALSE:
+                return PredictionResult(
+                    False, f"P5c-structural({ea_result.phase})", ea_result.reason
+                )
+        except (ValueError, KeyError) as exc:
+            logger.debug("Structural analysis failed for E%d=>E%d: %s", h_id, t_id, exc)
+        return None
 
     def predict_bool(self, h_id: int, t_id: int) -> bool:
         """Simple bool prediction for accuracy evaluation."""

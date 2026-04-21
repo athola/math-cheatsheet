@@ -99,6 +99,12 @@ def evaluate_equation(magma: Magma, equation: str, assignment: dict[str, int]) -
     from equation_analyzer import parse_equation as _parse
 
     eq = _parse(equation)
+    required = eq.lhs.variables() | eq.rhs.variables()
+    missing = required - set(assignment)
+    if missing:
+        raise ValueError(
+            f"Assignment missing variable(s) {sorted(missing)}; required: {sorted(required)}"
+        )
     lhs_val = eq.lhs.evaluate(magma.operation, assignment)
     rhs_val = eq.rhs.evaluate(magma.operation, assignment)
     return lhs_val == rhs_val

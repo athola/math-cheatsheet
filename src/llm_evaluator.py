@@ -38,10 +38,7 @@ COUNTEREXAMPLE: required if VERDICT is FALSE, empty otherwise.
 """
 
 
-CACHE_VERSION = 1
-# Approximate pricing for cost estimates (USD per token)
-PRICE_INPUT_PER_TOKEN = 3.0 / 1_000_000  # $3 per 1M input tokens
-PRICE_OUTPUT_PER_TOKEN = 15.0 / 1_000_000  # $15 per 1M output tokens
+from config import EVAL_CACHE_VERSION as CACHE_VERSION, PRICE_INPUT_PER_TOKEN, PRICE_OUTPUT_PER_TOKEN
 
 
 def compute_cache_key(cheatsheet: str, equation_1: str, equation_2: str) -> str:
@@ -144,6 +141,54 @@ def parse_verdict(response: str) -> bool | None:
     return None
 
 
+def _llm_call(
+    client: Any,
+    model: str,
+    prob: dict,
+    cheatsheet: str,
+    cache: EvalCache | None,
+    cache_key: str,
+) -> tuple[bool | None, str, int, int]:
+    """Call the LLM API, store in cache, rate-limit. Returns (predicted, text, in_tok, out_tok)."""
+    prompt = EVAL_PROMPT.format(
+        equation1=prob["equation_1"],
+        equation2=prob["equation_2"],
+        cheatsheet=cheatsheet,
+    )
+    response = client.messages.create(
+        model=model,
+        max_tokens=1024,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    text = response.content[0].text
+    predicted = parse_verdict(text)
+    in_tok = response.usage.input_tokens
+    out_tok = response.usage.output_tokens
+    if cache is not None:
+        cache.put(cache_key, {
+            "predicted": predicted,
+            "response_text": text,
+            "model": model,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "input_tokens": in_tok,
+            "output_tokens": out_tok,
+        })
+    time.sleep(0.5)
+    return predicted, text, in_tok, out_tok
+
+
+def _resolve_from_cache(
+    cache: EvalCache | None, cache_key: str
+) -> tuple[bool | None, str] | None:
+    """Return (predicted, text) from cache, or None on miss."""
+    if cache is None:
+        return None
+    entry = cache.get(cache_key)
+    if entry is None:
+        return None
+    return entry["predicted"], entry["response_text"]
+
+
 def evaluate_with_llm(
     problems: list[dict],
     cheatsheet: str,
@@ -164,23 +209,22 @@ def evaluate_with_llm(
     """
     if client is None:
         try:
-            import anthropic  # noqa: F811
+            import anthropic
         except ImportError:
             print("ERROR: pip install anthropic")
             sys.exit(1)
-
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key or api_key.startswith("your_"):
             print("ERROR: Set ANTHROPIC_API_KEY environment variable")
             print("  export ANTHROPIC_API_KEY=sk-ant-...")
             sys.exit(1)
-
         client = anthropic.Anthropic(api_key=api_key)
 
     if max_problems:
         problems = problems[:max_problems]
 
-    tp = fp = tn = fn = 0
+    from metrics_utils import update_confusion
+    counts: dict[str, int] = {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
     errors = 0
     cache_hits = 0
     cache_misses = 0
@@ -191,61 +235,28 @@ def evaluate_with_llm(
     for i, prob in enumerate(problems):
         cache_key = compute_cache_key(cheatsheet, prob["equation_1"], prob["equation_2"])
 
-        # Check cache first
-        cached_entry = cache.get(cache_key) if cache is not None else None
-        if cached_entry is not None:
+        cached = _resolve_from_cache(cache, cache_key)
+        if cached is not None:
             cache_hits += 1
-            text = cached_entry["response_text"]
-            predicted = cached_entry["predicted"]
+            predicted, text = cached
             source = "CACHE"
+            in_tok = out_tok = 0
         else:
             cache_misses += 1
-            prompt = EVAL_PROMPT.format(
-                equation1=prob["equation_1"],
-                equation2=prob["equation_2"],
-                cheatsheet=cheatsheet,
-            )
-
             try:
-                response = client.messages.create(
-                    model=model,
-                    max_tokens=1024,
-                    messages=[{"role": "user", "content": prompt}],
+                predicted, text, in_tok, out_tok = _llm_call(
+                    client, model, prob, cheatsheet, cache, cache_key
                 )
-                text = response.content[0].text
-                predicted = parse_verdict(text)
-
-                # Track token usage
-                in_tok = response.usage.input_tokens
-                out_tok = response.usage.output_tokens
-                run_input_tokens += in_tok
-                run_output_tokens += out_tok
-
-                # Store in cache
-                if cache is not None:
-                    cache.put(
-                        cache_key,
-                        {
-                            "predicted": predicted,
-                            "response_text": text,
-                            "model": model,
-                            "timestamp": datetime.now(UTC).isoformat(),
-                            "input_tokens": in_tok,
-                            "output_tokens": out_tok,
-                        },
-                    )
             except Exception as e:
                 print(f"  Error on problem {prob['id']}: {e}")
                 errors += 1
                 continue
-
             source = "API"
-
-            # Rate limiting (only for API calls)
-            time.sleep(0.5)
+            run_input_tokens += in_tok
+            run_output_tokens += out_tok
 
         actual = prob["answer"]
-        entry = {
+        results_log.append({
             "id": prob["id"],
             "equation_1": prob["equation_1"],
             "equation_2": prob["equation_2"],
@@ -253,19 +264,12 @@ def evaluate_with_llm(
             "predicted": predicted,
             "correct": predicted == actual,
             "difficulty": prob.get("difficulty", "unknown"),
-        }
-        results_log.append(entry)
+        })
 
         if predicted is None:
             errors += 1
-        elif predicted and actual:
-            tp += 1
-        elif predicted and not actual:
-            fp += 1
-        elif not predicted and actual:
-            fn += 1
         else:
-            tn += 1
+            update_confusion(counts, predicted, actual)
 
         status = "OK" if predicted == actual else "WRONG" if predicted is not None else "ERR"
         print(
@@ -274,15 +278,13 @@ def evaluate_with_llm(
             f"actual={actual} pred={predicted} ({source})"
         )
 
+    tp, fp, tn, fn = counts["tp"], counts["fp"], counts["tn"], counts["fn"]
     total = tp + fp + tn + fn
     accuracy = (tp + tn) / total if total > 0 else 0.0
 
     return {
         "accuracy": accuracy,
-        "tp": tp,
-        "fp": fp,
-        "tn": tn,
-        "fn": fn,
+        "tp": tp, "fp": fp, "tn": tn, "fn": fn,
         "errors": errors,
         "total": total,
         "model": model,
@@ -303,15 +305,16 @@ def generate_problems(n_normal: int = 50, n_hard: int = 10) -> list[dict]:
 
     eqs = ETPEquations("research/data/etp/equations.txt")
     oracle = ImplicationOracle("research/data/etp/implications.csv")
-    collapse_ids = set(i for i in range(1, 4695) if oracle.is_collapse(i))
+    n_eq = oracle.num_equations
+    collapse_ids = set(i for i in range(1, n_eq + 1) if oracle.is_collapse(i))
 
     problems: list[dict] = []
     random.seed(2026)
 
     # Normal problems
     while len(problems) < n_normal:
-        h = random.randint(1, 4694)
-        t = random.randint(1, 4694)
+        h = random.randint(1, n_eq)
+        t = random.randint(1, n_eq)
         if h == t:
             continue
         actual = oracle.query(h, t)
@@ -331,8 +334,8 @@ def generate_problems(n_normal: int = 50, n_hard: int = 10) -> list[dict]:
 
     # Hard problems (non-collapse, similar structure)
     while len(problems) < n_normal + n_hard:
-        h = random.randint(1, 4694)
-        t = random.randint(1, 4694)
+        h = random.randint(1, n_eq)
+        t = random.randint(1, n_eq)
         if h == t or h in collapse_ids or h == 1:
             continue
         actual = oracle.query(h, t)

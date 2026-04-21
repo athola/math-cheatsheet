@@ -107,7 +107,8 @@ class ImplicationOracle:
                 " Run `make download-etp` to fetch it from the ETP repository."
             )
 
-        self._verify_digest()
+        if self._expected_sha256 is not None:
+            self._verify_digest()
 
         rows: list[list[int]] = []
         row_len: int | None = None
@@ -197,10 +198,10 @@ class ImplicationOracle:
 
         row = self._eq_to_row[hypothesis_id]
         col = self._eq_to_col[target_id]
-        return self.decode_truth(int(self._matrix[row, col]))
+        return self.decode_truth(self._matrix[row, col])
 
     @staticmethod
-    def decode_truth(val: int) -> bool | None:
+    def decode_truth(val: int | np.integer) -> bool | None:
         """Decode a raw matrix value into a tri-state truth.
 
         Returns ``True`` for proven or conjectured TRUE (3, 4),
@@ -237,14 +238,14 @@ class ImplicationOracle:
         row = self._eq_to_row.get(eq_id)
         if row is None:
             return 0
-        return int(np.sum((self._matrix[row] == 3) | (self._matrix[row] == 4)))
+        return int(np.count_nonzero((self._matrix[row] == 3) | (self._matrix[row] == 4)))
 
     def col_true_count(self, eq_id: int) -> int:
         """How many equations imply eq_id?"""
         col = self._eq_to_col.get(eq_id)
         if col is None:
             return 0
-        return int(np.sum((self._matrix[:, col] == 3) | (self._matrix[:, col] == 4)))
+        return int(np.count_nonzero((self._matrix[:, col] == 3) | (self._matrix[:, col] == 4)))
 
     def is_collapse(self, eq_id: int) -> bool:
         """Does this equation imply ALL others (force |M|=1)?"""
