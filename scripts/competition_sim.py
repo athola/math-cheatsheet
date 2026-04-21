@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """End-to-end competition simulation (#24).
 
-Loads the competition cheatsheet, samples N random equation pairs from the
-oracle, runs each through the LLM evaluator, and compares verdicts against
-ground truth. Reports accuracy with a Wilson 95% confidence interval and
-saves results to ``experiments/competition_sim_results.json``.
+Samples N random equation pairs from the oracle, runs each through the
+Python decision procedure, and compares verdicts against ground truth.
+Reports accuracy with a Wilson 95% confidence interval and saves results
+to ``experiments/competition_sim_results.json``.
 
 Usage:
     python scripts/competition_sim.py [--n 50] [--cheatsheet PATH] [--out PATH]
@@ -89,11 +89,6 @@ def main(argv: list[str] | None = None) -> int:
         "--equations",
         type=Path,
         default=PROJECT_ROOT / "research" / "data" / "etp" / "equations.txt",
-    )
-    parser.add_argument(
-        "--decision-only",
-        action="store_true",
-        help="Skip the LLM and use the Python decision procedure directly.",
     )
     args = parser.parse_args(argv)
 

@@ -24,8 +24,8 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-from src.config import MAX_CHEATSHEET_BYTES
-from src.equation_analyzer import (
+from config import MAX_CHEATSHEET_BYTES
+from equation_analyzer import (
     ImplicationVerdict,
     analyze_implication,
     parse_equation,

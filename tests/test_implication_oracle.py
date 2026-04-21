@@ -109,8 +109,10 @@ class TestRowColCounts:
         assert oracle.row_true_count(3) == 2
         assert oracle.row_true_count(4) == 2
 
-    def test_out_of_range_row_count(self, oracle: ImplicationOracle):
-        assert oracle.row_true_count(99) == 0
+    def test_out_of_range_row_count_raises(self, oracle: ImplicationOracle):
+        """Unknown ID raises KeyError, consistent with query_raw (regression #31)."""
+        with pytest.raises(KeyError, match="99"):
+            oracle.row_true_count(99)
 
     def test_tautology_col_count(self, oracle: ImplicationOracle):
         """Everything implies the tautology."""
@@ -120,8 +122,10 @@ class TestRowColCounts:
         """Only collapse implies itself here."""
         assert oracle.col_true_count(2) == 1
 
-    def test_out_of_range_col_count(self, oracle: ImplicationOracle):
-        assert oracle.col_true_count(99) == 0
+    def test_out_of_range_col_count_raises(self, oracle: ImplicationOracle):
+        """Unknown ID raises KeyError, consistent with query_raw (regression #31)."""
+        with pytest.raises(KeyError, match="99"):
+            oracle.col_true_count(99)
 
 
 class TestClassification:

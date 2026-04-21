@@ -76,7 +76,7 @@ class DecisionProcedure:
 
         Logs the deciding phase at ``DEBUG`` level for every call
         (regression #30). Enable via ``logging.getLogger('decision_procedure')
-        .setLevel(logging.DEBUG)`` or the project's ``--verbose`` CLI flag.
+        .setLevel(logging.DEBUG)``.
         """
         result = self._predict(h_id, t_id)
         logger.debug("E%d => E%d : %s (%s)", h_id, t_id, result.prediction, result.phase)
@@ -169,7 +169,13 @@ class DecisionProcedure:
                     False, f"P5c-structural({ea_result.phase})", ea_result.reason
                 )
         except (ValueError, KeyError) as exc:
-            logger.debug("Structural analysis failed for E%d=>E%d: %s", h_id, t_id, exc)
+            logger.warning(
+                "Structural analysis failed for E%d=>E%d — equation text may be malformed: %s",
+                h_id,
+                t_id,
+                exc,
+            )
+            return PredictionResult(False, "P5bc-parse-error", f"Parser failed: {exc}")
         return None
 
     def predict_bool(self, h_id: int, t_id: int) -> bool:

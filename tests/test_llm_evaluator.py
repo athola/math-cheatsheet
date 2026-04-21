@@ -422,8 +422,12 @@ class TestEvaluateWithLLMAPIErrors:
         """A raised Anthropic SDK error on one problem doesn't break the loop."""
         import llm_evaluator
 
+        # Use a mock exception class whose __name__ matches an Anthropic SDK error
+        # so that the exception handler classifies it as a recoverable API error.
+        _MockAPIError = type("APIStatusError", (Exception,), {})
+
         mock_client = MagicMock()
-        mock_client.messages.create.side_effect = RuntimeError("simulated upstream 503")
+        mock_client.messages.create.side_effect = _MockAPIError("simulated upstream 503")
 
         cache = EvalCache(tmp_path / "cache.json")
         problems = self._make_problems()
@@ -443,8 +447,10 @@ class TestEvaluateWithLLMAPIErrors:
         """Failed API calls must not write a partial/garbage entry to the cache."""
         import llm_evaluator
 
+        _MockAPIError = type("APIConnectionError", (Exception,), {})
+
         mock_client = MagicMock()
-        mock_client.messages.create.side_effect = RuntimeError("boom")
+        mock_client.messages.create.side_effect = _MockAPIError("boom")
 
         cache_path = tmp_path / "cache.json"
         cache = EvalCache(cache_path)

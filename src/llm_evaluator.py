@@ -69,13 +69,15 @@ class EvalCache:
         """Load existing cache from disk, or start fresh.
 
         Emits a warning via ``logging`` when a file is present but unreadable
-        (corrupt JSON or missing keys) or version-mismatched. Silently discarding
-        the cache was a debugging foot-gun (regression #43/I3).
+        (corrupt JSON) or version-mismatched. Silently discarding the cache
+        was a debugging foot-gun (regression #43/I3).
         """
         if not self._path.exists():
             return
         try:
             data = json.loads(self._path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise TypeError(f"Expected a JSON object, got {type(data).__name__}")
             if data.get("version") != CACHE_VERSION:
                 logger.warning(
                     "Eval cache at %s has version %r, expected %r; discarding.",
@@ -84,8 +86,14 @@ class EvalCache:
                     CACHE_VERSION,
                 )
                 return
-            self._entries = data.get("entries", {})
-        except (json.JSONDecodeError, KeyError) as exc:
+            entries = data.get("entries")
+            if entries is None:
+                logger.warning(
+                    "Eval cache at %s has no 'entries' key; starting fresh.", self._path
+                )
+                return
+            self._entries = entries
+        except (json.JSONDecodeError, TypeError) as exc:
             logger.warning(
                 "Eval cache at %s is corrupt (%s); starting fresh.",
                 self._path,
@@ -94,8 +102,9 @@ class EvalCache:
             return
 
     def get(self, key: str) -> dict | None:
-        """Retrieve a cached entry, or None on miss."""
-        return self._entries.get(key)
+        """Retrieve a copy of a cached entry, or None on miss."""
+        entry = self._entries.get(key)
+        return dict(entry) if entry is not None else None
 
     def put(self, key: str, entry: dict) -> None:
         """Store an entry in the cache (in memory)."""
@@ -170,7 +179,7 @@ def _llm_call(
     predicted = parse_verdict(text)
     in_tok = response.usage.input_tokens
     out_tok = response.usage.output_tokens
-    if cache is not None:
+    if cache is not None and predicted is not None:
         cache.put(
             cache_key,
             {
@@ -255,10 +264,22 @@ def evaluate_with_llm(
                 predicted, text, in_tok, out_tok = _llm_call(
                     client, model, prob, cheatsheet, cache, cache_key
                 )
-            except Exception as e:
-                print(f"  Error on problem {prob['id']}: {e}")
-                errors += 1
-                continue
+            except Exception as exc:
+                exc_type = type(exc).__name__
+                if exc_type in (
+                    "APIStatusError",
+                    "APIConnectionError",
+                    "RateLimitError",
+                    "APITimeoutError",
+                ):
+                    logger.error("LLM API error on problem %s: %s", prob["id"], exc)
+                    errors += 1
+                    continue
+                logger.exception(
+                    "Unexpected error evaluating problem %s — this is a bug, not an API failure",
+                    prob["id"],
+                )
+                raise
             source = "API"
             run_input_tokens += in_tok
             run_output_tokens += out_tok

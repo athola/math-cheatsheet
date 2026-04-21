@@ -18,7 +18,7 @@ Encoding
 
 Validation
 ----------
-At construction time the oracle enforces three integrity checks and raises
+At construction time the oracle enforces four integrity checks and raises
 ``ValueError`` (or ``FileNotFoundError``) with remediation hints if any fail:
 
 1. The file must exist (hint: ``make download-etp``).
@@ -154,7 +154,7 @@ class ImplicationOracle:
 
     @functools.cached_property
     def _equiv_data(self) -> tuple[dict[int, int], dict[int, set[int]]]:
-        """Build equivalence class maps lazily (O(n) row hashing, deferred until first use)."""
+        """Build equivalence class maps lazily (O(n²) row hashing, deferred until first use)."""
         eq_to_equiv: dict[int, int] = {}
         equiv_classes: dict[int, set[int]] = {}
         row_hash_to_class: dict[bytes, int] = {}
@@ -234,17 +234,32 @@ class ImplicationOracle:
         return int(self._matrix[row, col])
 
     def row_true_count(self, eq_id: int) -> int:
-        """How many equations does eq_id imply?"""
+        """How many equations does eq_id imply?
+
+        Raises ``KeyError`` when ``eq_id`` is not in the matrix (consistent
+        with ``query_raw``, regression #31). Callers that need a default of
+        zero can wrap in ``try/except KeyError``.
+        """
         row = self._eq_to_row.get(eq_id)
         if row is None:
-            return 0
+            raise KeyError(
+                f"row_true_count: equation {eq_id} not in range"
+                f" [{min(self._eq_ids)}, {max(self._eq_ids)}]."
+            )
         return int(np.count_nonzero((self._matrix[row] == 3) | (self._matrix[row] == 4)))
 
     def col_true_count(self, eq_id: int) -> int:
-        """How many equations imply eq_id?"""
+        """How many equations imply eq_id?
+
+        Raises ``KeyError`` when ``eq_id`` is not in the matrix (consistent
+        with ``query_raw``, regression #31).
+        """
         col = self._eq_to_col.get(eq_id)
         if col is None:
-            return 0
+            raise KeyError(
+                f"col_true_count: equation {eq_id} not in range"
+                f" [{min(self._col_eq_ids)}, {max(self._col_eq_ids)}]."
+            )
         return int(np.count_nonzero((self._matrix[:, col] == 3) | (self._matrix[:, col] == 4)))
 
     def is_collapse(self, eq_id: int) -> bool:
