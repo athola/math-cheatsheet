@@ -16,6 +16,7 @@ and Birkhoff's completeness theorem for equational logic.
 
 from __future__ import annotations
 
+import functools
 import itertools
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -147,6 +148,21 @@ ALL_SIZE_2_MAGMAS: tuple[CounterexampleMagma, ...] = tuple(
 )
 
 
+@functools.cache
+def _size_2_satisfactions(eq: Equation) -> frozenset[int]:
+    """Indices of ``ALL_SIZE_2_MAGMAS`` that satisfy ``eq``.
+
+    Cached per Equation (the dataclass is frozen and hashable) so that
+    Phase 4b does not re-evaluate the same equation against the 16 size-2
+    magmas on every pair it appears in. For a full-corpus run over
+    ~4.7K equations, this turns the cost from O(n_pairs × 16 × evals)
+    into O(n_equations × 16 × evals + n_pairs).
+    """
+    return frozenset(
+        i for i, magma in enumerate(ALL_SIZE_2_MAGMAS) if eq.holds_in(magma.table, magma.size)
+    )
+
+
 # --- Analysis Functions ---
 
 
@@ -224,15 +240,20 @@ def analyze_implication(h: Equation, t: Equation) -> AnalysisResult:
                 ImplicationVerdict.FALSE, "Phase 4", f"Counterexample: {magma.name}", magma
             )
 
-    # Phase 4b: Exhaustive 2-element search
-    for magma in ALL_SIZE_2_MAGMAS:
-        if magma.satisfies(h) and not magma.satisfies(t):
-            return AnalysisResult(
-                ImplicationVerdict.FALSE,
-                "Phase 4b",
-                f"Counterexample: {magma.name} table={magma.table}",
-                magma,
-            )
+    # Phase 4b: Exhaustive 2-element search (cached per equation — #34).
+    # Look up the set of size-2 magmas satisfying H and T once each, then
+    # subtract: any magma satisfying H but not T is a counterexample.
+    h_sat = _size_2_satisfactions(h)
+    t_sat = _size_2_satisfactions(t)
+    diff = h_sat - t_sat
+    if diff:
+        magma = ALL_SIZE_2_MAGMAS[min(diff)]  # deterministic: smallest index
+        return AnalysisResult(
+            ImplicationVerdict.FALSE,
+            "Phase 4b",
+            f"Counterexample: {magma.name} table={magma.table}",
+            magma,
+        )
 
     # Phase 6: Rewrite analysis — orient H as a rewrite rule and reduce T
     rewrite_proof = _phase6_rewrite(h, t)
