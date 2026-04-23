@@ -19,68 +19,25 @@ from __future__ import annotations
 import itertools
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from enum import Enum, auto
+from enum import Enum
 
-from equation_parser_utils import tokenize_equation as _tokenize
+from term import (
+    NodeType,
+    Term,
+    op,
+    parse_equation_terms,
+    var,
+)
 
-
-class NodeType(Enum):
-    VAR = auto()
-    OP = auto()
-
-
-@dataclass(frozen=True)
-class Term:
-    """A term in the free magma: either a variable or an application of *."""
-
-    node_type: NodeType
-    name: str = ""  # variable name if VAR
-    left: Term | None = None  # left child if OP
-    right: Term | None = None  # right child if OP
-
-    def _lr(self) -> tuple[Term, Term]:
-        """Return (left, right) for OP nodes; raises if children are missing."""
-        if self.left is None or self.right is None:
-            raise ValueError("OP node must have left and right children")
-        return self.left, self.right
-
-    def variables(self) -> set[str]:
-        if self.node_type == NodeType.VAR:
-            return {self.name}
-        lt, rt = self._lr()
-        return lt.variables() | rt.variables()
-
-    def depth(self) -> int:
-        if self.node_type == NodeType.VAR:
-            return 0
-        lt, rt = self._lr()
-        return 1 + max(lt.depth(), rt.depth())
-
-    def size(self) -> int:
-        """Count the number of * operations."""
-        if self.node_type == NodeType.VAR:
-            return 0
-        lt, rt = self._lr()
-        return 1 + lt.size() + rt.size()
-
-    def substitute(self, mapping: dict[str, Term]) -> Term:
-        if self.node_type == NodeType.VAR:
-            return mapping.get(self.name, self)
-        lt, rt = self._lr()
-        return Term(NodeType.OP, left=lt.substitute(mapping), right=rt.substitute(mapping))
-
-    def evaluate(self, table: list[list[int]], assignment: dict[str, int]) -> int:
-        """Evaluate this term in a finite magma given variable assignments."""
-        if self.node_type == NodeType.VAR:
-            return assignment[self.name]
-        lt, rt = self._lr()
-        return table[lt.evaluate(table, assignment)][rt.evaluate(table, assignment)]
-
-    def __str__(self) -> str:
-        if self.node_type == NodeType.VAR:
-            return self.name
-        lt, rt = self._lr()
-        return f"({lt} * {rt})"
+# Re-export canonical names for existing callers.
+__all__ = [
+    "NodeType",
+    "Term",
+    "Equation",
+    "parse_equation",
+    "var",
+    "op",
+]
 
 
 @dataclass(frozen=True)
@@ -115,48 +72,9 @@ class Equation:
         return f"{self.lhs} = {self.rhs}"
 
 
-# --- Parsing ---
-
-
-def _parse_expr(tokens: list[str], pos: int) -> tuple[Term, int]:
-    """Parse an expression: primary (* primary)* with left-to-right associativity."""
-    if pos >= len(tokens):
-        raise ValueError("Unexpected end of expression")
-    left, pos = _parse_primary(tokens, pos)
-    while pos < len(tokens) and tokens[pos] == "*":
-        right, pos = _parse_primary(tokens, pos + 1)
-        left = Term(NodeType.OP, left=left, right=right)
-    return left, pos
-
-
-def _parse_primary(tokens: list[str], pos: int) -> tuple[Term, int]:
-    """Parse an atom: variable or parenthesized expression."""
-    if pos >= len(tokens):
-        raise ValueError("Unexpected end of expression")
-    if tokens[pos] == "(":
-        expr, pos = _parse_expr(tokens, pos + 1)
-        if pos >= len(tokens) or tokens[pos] != ")":
-            raise ValueError(f"Expected ')' at position {pos}")
-        return expr, pos + 1
-    elif tokens[pos].isalpha() and tokens[pos] != "*":
-        return Term(NodeType.VAR, name=tokens[pos]), pos + 1
-    else:
-        raise ValueError(f"Unexpected token '{tokens[pos]}' at position {pos}")
-
-
 def parse_equation(s: str) -> Equation:
-    """Parse an equation string like 'x * (y * z) = (x * y) * z'."""
-    s = s.strip()
-    s = s.replace("◇", "*").replace("⋄", "*")
-    parts = s.split("=", 1)
-    if len(parts) != 2:
-        raise ValueError(f"No '=' found in equation: {s}")
-
-    lhs_tokens = _tokenize(parts[0])
-    rhs_tokens = _tokenize(parts[1])
-
-    lhs, _ = _parse_expr(lhs_tokens, 0)
-    rhs, _ = _parse_expr(rhs_tokens, 0)
+    """Parse an equation string like ``x * (y * z) = (x * y) * z``."""
+    lhs, rhs = parse_equation_terms(s)
     return Equation(lhs, rhs)
 
 

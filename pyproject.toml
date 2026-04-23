@@ -53,6 +53,8 @@ select = ["E", "F", "W", "I", "UP"]
 python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
+mypy_path = ["src", "tla/python"]
+explicit_package_bases = true
 
 [dependency-groups]
 dev = [
