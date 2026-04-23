@@ -22,14 +22,14 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
 from config import MAX_CHEATSHEET_BYTES
 from equation_analyzer import (
     ImplicationVerdict,
     analyze_implication,
     parse_equation,
 )
+
+logger = logging.getLogger(__name__)
 
 CHEATSHEET_DIR = Path(__file__).parent.parent / "cheatsheet"
 
@@ -653,6 +653,7 @@ def _print_accuracy(r: AccuracyResult) -> None:
     print(f"{'=' * 60}")
     print(f"  Total:    {r.total}")
     print(f"  Correct:  {r.correct} ({r.accuracy:.1%})")
+    print(f"  Accuracy: {r.accuracy:.2%}")
     print(f"  Incorrect:{r.incorrect}")
     print(f"  Errors:   {r.errors}")
     if r.by_phase:

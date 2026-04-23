@@ -198,7 +198,13 @@ class CompetitionEvaluator:
             update_confusion(counts, predicted, actual)
 
         elapsed = time.time() - t0
-        return EvalResult.from_counts(**counts, elapsed_seconds=elapsed)
+        return EvalResult.from_counts(
+            tp=counts["tp"],
+            fp=counts["fp"],
+            tn=counts["tn"],
+            fn=counts["fn"],
+            elapsed_seconds=elapsed,
+        )
 
     def evaluate_by_category(self) -> dict[str, EvalResult]:
         """Evaluate full matrix, broken down by hypothesis equation category.

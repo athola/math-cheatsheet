@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from equation_parser_utils import tokenize_equation as _tokenize
+
 StructuralClass = Literal["tautology", "collapse", "trivial_lhs", "trivial_rhs", "balanced"]
 
 
@@ -103,9 +105,6 @@ class Equation:
         self.lhs_is_var = self.lhs.is_var
         self.rhs_is_var = self.rhs.is_var
         self.is_tautology = self.lhs == self.rhs
-
-
-from equation_parser_utils import tokenize_equation as _tokenize
 
 
 def _parse_expr(tokens: list[str], pos: int) -> tuple[Term, int]:

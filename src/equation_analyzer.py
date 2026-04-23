@@ -17,8 +17,11 @@ and Birkhoff's completeness theorem for equational logic.
 from __future__ import annotations
 
 import itertools
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from enum import Enum, auto
+
+from equation_parser_utils import tokenize_equation as _tokenize
 
 
 class NodeType(Enum):
@@ -113,9 +116,6 @@ class Equation:
 
 
 # --- Parsing ---
-
-
-from equation_parser_utils import tokenize_equation as _tokenize
 
 
 def _parse_expr(tokens: list[str], pos: int) -> tuple[Term, int]:
@@ -475,7 +475,6 @@ def _detect_determined_operation(eq: Equation) -> tuple[list[list[int]], str] | 
     if eq.lhs.node_type == NodeType.OP and eq.rhs.node_type == NodeType.OP:
         lhs_vars = eq.lhs.variables()
         rhs_vars = eq.rhs.variables()
-        all_vars = lhs_vars | rhs_vars
         lhs_var_count = sum(1 for _ in _iter_vars(eq.lhs))
         rhs_var_count = sum(1 for _ in _iter_vars(eq.rhs))
         no_repeats = (lhs_var_count == len(lhs_vars)) and (rhs_var_count == len(rhs_vars))

@@ -23,6 +23,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from config import (
+    EVAL_CACHE_VERSION as CACHE_VERSION,
+)
+from config import (
+    PRICE_INPUT_PER_TOKEN,
+    PRICE_OUTPUT_PER_TOKEN,
+)
+
 logger = logging.getLogger(__name__)
 
 EVAL_PROMPT = """\
@@ -36,15 +44,6 @@ REASONING: must be non-empty.
 PROOF: required if VERDICT is TRUE, empty otherwise.
 COUNTEREXAMPLE: required if VERDICT is FALSE, empty otherwise.
 """
-
-
-from config import (
-    EVAL_CACHE_VERSION as CACHE_VERSION,
-)
-from config import (
-    PRICE_INPUT_PER_TOKEN,
-    PRICE_OUTPUT_PER_TOKEN,
-)
 
 
 def compute_cache_key(cheatsheet: str, equation_1: str, equation_2: str) -> str:
@@ -88,9 +87,7 @@ class EvalCache:
                 return
             entries = data.get("entries")
             if entries is None:
-                logger.warning(
-                    "Eval cache at %s has no 'entries' key; starting fresh.", self._path
-                )
+                logger.warning("Eval cache at %s has no 'entries' key; starting fresh.", self._path)
                 return
             self._entries = entries
         except (json.JSONDecodeError, TypeError) as exc:
