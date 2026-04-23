@@ -240,11 +240,34 @@ def analyze_implication(h: Equation, t: Equation) -> AnalysisResult:
         return rewrite_proof
 
     # Phase 7: Structural heuristics
+    # 7a. Side-swap identity: ``a = b`` and ``b = a`` are the same universally
+    # quantified law. If T is H with LHS/RHS swapped, return TRUE. This is not
+    # caught by Phase 1a (which tests h == t strictly) or Phase 3 (which only
+    # merges variables, not sides).
+    if h.lhs == t.rhs and h.rhs == t.lhs:
+        return AnalysisResult(
+            ImplicationVerdict.TRUE,
+            "Phase 7",
+            "T is H with LHS/RHS swapped — same equational law",
+        )
+
+    # 7b. Depth divergence: target is too deep to be reached by substitution.
     if t.max_depth() > h.max_depth() + 1:
         return AnalysisResult(
             ImplicationVerdict.FALSE,
             "Phase 7",
             f"Target depth ({t.max_depth()}) >> hypothesis depth ({h.max_depth()})",
+        )
+
+    # 7c. Op-count divergence: analog of depth for wide-but-shallow terms.
+    # Substitution of a variable with a k-op subterm can at most double op
+    # count per step; with one step allowed, ``T.ops > 2*H.ops + 2`` exceeds
+    # what any single substitution can produce, so H cannot imply T.
+    if t.total_ops() > 2 * h.total_ops() + 2:
+        return AnalysisResult(
+            ImplicationVerdict.FALSE,
+            "Phase 7",
+            f"Target op count ({t.total_ops()}) >> hypothesis op count ({h.total_ops()})",
         )
 
     return AnalysisResult(ImplicationVerdict.UNKNOWN, "Phase 8", "Inconclusive - default FALSE")
