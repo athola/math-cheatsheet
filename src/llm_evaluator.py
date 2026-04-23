@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import os
 import random
 import sys
@@ -21,6 +22,16 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from config import (
+    EVAL_CACHE_VERSION as CACHE_VERSION,
+)
+from config import (
+    PRICE_INPUT_PER_TOKEN,
+    PRICE_OUTPUT_PER_TOKEN,
+)
+
+logger = logging.getLogger(__name__)
 
 EVAL_PROMPT = """\
 You are a mathematician specializing in equational theories of magmas.
@@ -33,12 +44,6 @@ REASONING: must be non-empty.
 PROOF: required if VERDICT is TRUE, empty otherwise.
 COUNTEREXAMPLE: required if VERDICT is FALSE, empty otherwise.
 """
-
-
-CACHE_VERSION = 1
-# Approximate pricing for cost estimates (USD per token)
-PRICE_INPUT_PER_TOKEN = 3.0 / 1_000_000  # $3 per 1M input tokens
-PRICE_OUTPUT_PER_TOKEN = 15.0 / 1_000_000  # $15 per 1M output tokens
 
 
 def compute_cache_key(cheatsheet: str, equation_1: str, equation_2: str) -> str:
@@ -60,20 +65,43 @@ class EvalCache:
         self._load()
 
     def _load(self) -> None:
-        """Load existing cache from disk, or start fresh."""
+        """Load existing cache from disk, or start fresh.
+
+        Emits a warning via ``logging`` when a file is present but unreadable
+        (corrupt JSON) or version-mismatched. Silently discarding the cache
+        was a debugging foot-gun (regression #43/I3).
+        """
         if not self._path.exists():
             return
         try:
             data = json.loads(self._path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise TypeError(f"Expected a JSON object, got {type(data).__name__}")
             if data.get("version") != CACHE_VERSION:
-                return  # version mismatch, start fresh
-            self._entries = data.get("entries", {})
-        except (json.JSONDecodeError, KeyError):
-            return  # corrupt file, start fresh
+                logger.warning(
+                    "Eval cache at %s has version %r, expected %r; discarding.",
+                    self._path,
+                    data.get("version"),
+                    CACHE_VERSION,
+                )
+                return
+            entries = data.get("entries")
+            if entries is None:
+                logger.warning("Eval cache at %s has no 'entries' key; starting fresh.", self._path)
+                return
+            self._entries = entries
+        except (json.JSONDecodeError, TypeError) as exc:
+            logger.warning(
+                "Eval cache at %s is corrupt (%s); starting fresh.",
+                self._path,
+                exc.__class__.__name__,
+            )
+            return
 
     def get(self, key: str) -> dict | None:
-        """Retrieve a cached entry, or None on miss."""
-        return self._entries.get(key)
+        """Retrieve a copy of a cached entry, or None on miss."""
+        entry = self._entries.get(key)
+        return dict(entry) if entry is not None else None
 
     def put(self, key: str, entry: dict) -> None:
         """Store an entry in the cache (in memory)."""
@@ -91,14 +119,21 @@ class EvalCache:
         }
 
     def save(self) -> None:
-        """Persist cache to disk."""
+        """Persist cache to disk atomically.
+
+        Writes to a sibling ``.tmp`` file first and then ``os.replace``s it
+        into place. That way a crash mid-write leaves the previous good cache
+        intact instead of truncating it (regression #43/S1).
+        """
         self._path.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "version": CACHE_VERSION,
             "entries": self._entries,
             "stats": self.get_stats(),
         }
-        self._path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        tmp_path = self._path.with_suffix(self._path.suffix + ".tmp")
+        tmp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(tmp_path, self._path)
 
 
 def load_cheatsheet(path: str = "cheatsheet/competition-v1.txt") -> str:
@@ -116,6 +151,55 @@ def parse_verdict(response: str) -> bool | None:
             if "FALSE" in verdict_str:
                 return False
     return None
+
+
+def _llm_call(
+    client: Any,
+    model: str,
+    prob: dict,
+    cheatsheet: str,
+    cache: EvalCache | None,
+    cache_key: str,
+) -> tuple[bool | None, str, int, int]:
+    """Call the LLM API, store in cache, rate-limit. Returns (predicted, text, in_tok, out_tok)."""
+    prompt = EVAL_PROMPT.format(
+        equation1=prob["equation_1"],
+        equation2=prob["equation_2"],
+        cheatsheet=cheatsheet,
+    )
+    response = client.messages.create(
+        model=model,
+        max_tokens=1024,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    text = response.content[0].text
+    predicted = parse_verdict(text)
+    in_tok = response.usage.input_tokens
+    out_tok = response.usage.output_tokens
+    if cache is not None and predicted is not None:
+        cache.put(
+            cache_key,
+            {
+                "predicted": predicted,
+                "response_text": text,
+                "model": model,
+                "timestamp": datetime.now(UTC).isoformat(),
+                "input_tokens": in_tok,
+                "output_tokens": out_tok,
+            },
+        )
+    time.sleep(0.5)
+    return predicted, text, in_tok, out_tok
+
+
+def _resolve_from_cache(cache: EvalCache | None, cache_key: str) -> tuple[bool | None, str] | None:
+    """Return (predicted, text) from cache, or None on miss."""
+    if cache is None:
+        return None
+    entry = cache.get(cache_key)
+    if entry is None:
+        return None
+    return entry["predicted"], entry["response_text"]
 
 
 def evaluate_with_llm(
@@ -138,23 +222,23 @@ def evaluate_with_llm(
     """
     if client is None:
         try:
-            import anthropic  # noqa: F811
+            import anthropic
         except ImportError:
             print("ERROR: pip install anthropic")
             sys.exit(1)
-
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key or api_key.startswith("your_"):
             print("ERROR: Set ANTHROPIC_API_KEY environment variable")
             print("  export ANTHROPIC_API_KEY=sk-ant-...")
             sys.exit(1)
-
         client = anthropic.Anthropic(api_key=api_key)
 
     if max_problems:
         problems = problems[:max_problems]
 
-    tp = fp = tn = fn = 0
+    from metrics_utils import update_confusion
+
+    counts: dict[str, int] = {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
     errors = 0
     cache_hits = 0
     cache_misses = 0
@@ -165,81 +249,55 @@ def evaluate_with_llm(
     for i, prob in enumerate(problems):
         cache_key = compute_cache_key(cheatsheet, prob["equation_1"], prob["equation_2"])
 
-        # Check cache first
-        cached_entry = cache.get(cache_key) if cache is not None else None
-        if cached_entry is not None:
+        cached = _resolve_from_cache(cache, cache_key)
+        if cached is not None:
             cache_hits += 1
-            text = cached_entry["response_text"]
-            predicted = cached_entry["predicted"]
+            predicted, text = cached
             source = "CACHE"
+            in_tok = out_tok = 0
         else:
             cache_misses += 1
-            prompt = EVAL_PROMPT.format(
-                equation1=prob["equation_1"],
-                equation2=prob["equation_2"],
-                cheatsheet=cheatsheet,
-            )
-
             try:
-                response = client.messages.create(
-                    model=model,
-                    max_tokens=1024,
-                    messages=[{"role": "user", "content": prompt}],
+                predicted, text, in_tok, out_tok = _llm_call(
+                    client, model, prob, cheatsheet, cache, cache_key
                 )
-                text = response.content[0].text
-                predicted = parse_verdict(text)
-
-                # Track token usage
-                in_tok = response.usage.input_tokens
-                out_tok = response.usage.output_tokens
-                run_input_tokens += in_tok
-                run_output_tokens += out_tok
-
-                # Store in cache
-                if cache is not None:
-                    cache.put(
-                        cache_key,
-                        {
-                            "predicted": predicted,
-                            "response_text": text,
-                            "model": model,
-                            "timestamp": datetime.now(UTC).isoformat(),
-                            "input_tokens": in_tok,
-                            "output_tokens": out_tok,
-                        },
-                    )
-            except Exception as e:
-                print(f"  Error on problem {prob['id']}: {e}")
-                errors += 1
-                continue
-
+            except Exception as exc:
+                exc_type = type(exc).__name__
+                if exc_type in (
+                    "APIStatusError",
+                    "APIConnectionError",
+                    "RateLimitError",
+                    "APITimeoutError",
+                ):
+                    logger.error("LLM API error on problem %s: %s", prob["id"], exc)
+                    errors += 1
+                    continue
+                logger.exception(
+                    "Unexpected error evaluating problem %s — this is a bug, not an API failure",
+                    prob["id"],
+                )
+                raise
             source = "API"
-
-            # Rate limiting (only for API calls)
-            time.sleep(0.5)
+            run_input_tokens += in_tok
+            run_output_tokens += out_tok
 
         actual = prob["answer"]
-        entry = {
-            "id": prob["id"],
-            "equation_1": prob["equation_1"],
-            "equation_2": prob["equation_2"],
-            "actual": actual,
-            "predicted": predicted,
-            "correct": predicted == actual,
-            "difficulty": prob.get("difficulty", "unknown"),
-        }
-        results_log.append(entry)
+        results_log.append(
+            {
+                "id": prob["id"],
+                "equation_1": prob["equation_1"],
+                "equation_2": prob["equation_2"],
+                "actual": actual,
+                "predicted": predicted,
+                "correct": predicted == actual,
+                "difficulty": prob.get("difficulty", "unknown"),
+            }
+        )
 
         if predicted is None:
             errors += 1
-        elif predicted and actual:
-            tp += 1
-        elif predicted and not actual:
-            fp += 1
-        elif not predicted and actual:
-            fn += 1
         else:
-            tn += 1
+            update_confusion(counts, predicted, actual)
 
         status = "OK" if predicted == actual else "WRONG" if predicted is not None else "ERR"
         print(
@@ -248,6 +306,7 @@ def evaluate_with_llm(
             f"actual={actual} pred={predicted} ({source})"
         )
 
+    tp, fp, tn, fn = counts["tp"], counts["fp"], counts["tn"], counts["fn"]
     total = tp + fp + tn + fn
     accuracy = (tp + tn) / total if total > 0 else 0.0
 
@@ -277,15 +336,16 @@ def generate_problems(n_normal: int = 50, n_hard: int = 10) -> list[dict]:
 
     eqs = ETPEquations("research/data/etp/equations.txt")
     oracle = ImplicationOracle("research/data/etp/implications.csv")
-    collapse_ids = set(i for i in range(1, 4695) if oracle.is_collapse(i))
+    n_eq = oracle.num_equations
+    collapse_ids = set(i for i in range(1, n_eq + 1) if oracle.is_collapse(i))
 
     problems: list[dict] = []
     random.seed(2026)
 
     # Normal problems
     while len(problems) < n_normal:
-        h = random.randint(1, 4694)
-        t = random.randint(1, 4694)
+        h = random.randint(1, n_eq)
+        t = random.randint(1, n_eq)
         if h == t:
             continue
         actual = oracle.query(h, t)
@@ -305,8 +365,8 @@ def generate_problems(n_normal: int = 50, n_hard: int = 10) -> list[dict]:
 
     # Hard problems (non-collapse, similar structure)
     while len(problems) < n_normal + n_hard:
-        h = random.randint(1, 4694)
-        t = random.randint(1, 4694)
+        h = random.randint(1, n_eq)
+        t = random.randint(1, n_eq)
         if h == t or h in collapse_ids or h == 1:
             continue
         actual = oracle.query(h, t)

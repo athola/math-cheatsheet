@@ -26,8 +26,15 @@ TLA_DIR = PROJECT_ROOT / "tla" / "MagmaSpecifications"
 TOOLS_JAR = PROJECT_ROOT / "tla" / "tools" / "tla2tools.jar"
 
 
-@dataclass
+@dataclass(frozen=True)
 class TLCResult:
+    """One TLC run outcome.
+
+    Frozen so aggregated result lists are effectively read-only (#43/I4).
+    The ``warnings`` list remains mutable by Python semantics — the freeze
+    is on the record's identity, not the contents of its list fields.
+    """
+
     module: str
     status: TLCStatus
     elapsed_seconds: float = 0.0
@@ -115,38 +122,44 @@ def run_tlc(
 
 def parse_tlc_output(module: str, output: str, returncode: int, elapsed: float) -> TLCResult:
     """Parse TLC stdout+stderr into a structured result."""
-    result = TLCResult(module=module, status="unknown", elapsed_seconds=elapsed)
-
-    # Check for successful completion
+    # Decide status + human message.
+    status: TLCStatus
+    message: str
     if "Model checking completed. No error has been found." in output:
-        result.status = "pass"
-        result.message = "All properties verified"
+        status = "pass"
+        message = "All properties verified"
     elif "Finished computing initial states" in output and returncode == 0:
-        result.status = "pass"
-        result.message = "Model checking completed"
+        status = "pass"
+        message = "Model checking completed"
     elif "Error:" in output or returncode != 0:
-        result.status = "fail"
-        # Extract error lines
+        status = "fail"
         error_lines = [
             line for line in output.split("\n") if "Error" in line or "error" in line.lower()
         ]
-        result.message = "; ".join(error_lines[:3]) if error_lines else f"Exit code {returncode}"
+        message = "; ".join(error_lines[:3]) if error_lines else f"Exit code {returncode}"
     else:
-        result.status = "pass"
-        result.message = "Completed"
+        status = "pass"
+        message = "Completed"
 
-    # Extract state counts
+    # Extract state counts.
+    states_found = 0
+    distinct_states = 0
     states_match = re.search(r"(\d+) states generated.*?(\d+) distinct states", output)
     if states_match:
-        result.states_found = int(states_match.group(1))
-        result.distinct_states = int(states_match.group(2))
+        states_found = int(states_match.group(1))
+        distinct_states = int(states_match.group(2))
 
-    # Extract warnings
-    for line in output.split("\n"):
-        if "Warning:" in line:
-            result.warnings.append(line.strip())
+    warnings = [line.strip() for line in output.split("\n") if "Warning:" in line]
 
-    return result
+    return TLCResult(
+        module=module,
+        status=status,
+        elapsed_seconds=elapsed,
+        message=message,
+        states_found=states_found,
+        distinct_states=distinct_states,
+        warnings=warnings,
+    )
 
 
 # Modules to check with their corresponding .cfg files (if any)

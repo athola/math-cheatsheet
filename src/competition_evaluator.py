@@ -19,11 +19,18 @@ from pathlib import Path
 from decision_procedure import DecisionProcedure
 from etp_equations import ETPEquations
 from implication_oracle import ImplicationOracle
+from metrics_utils import update_confusion
 
 
-@dataclass
+@dataclass(frozen=True)
 class EvalResult:
-    """Evaluation result with standard classification metrics."""
+    """Evaluation result with standard classification metrics.
+
+    Frozen (#43/I4) so consumer code cannot mutate metrics after a report is
+    produced. Prefer :meth:`from_counts` — the bare constructor requires every
+    derived metric (accuracy, precision, recall, f1, confusion_matrix) to be
+    supplied consistently, which is easy to get wrong (#43/S3).
+    """
 
     accuracy: float
     precision: float
@@ -134,46 +141,26 @@ class CompetitionEvaluator:
         """Evaluate against the full implication matrix with phase breakdown."""
         t0 = time.time()
 
-        tp = fp = tn = fn = 0
+        global_counts: dict[str, int] = {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
         phase_stats: dict[str, dict] = {}
 
         for i, h_id in enumerate(self.oracle._eq_ids):
             for j, t_id in enumerate(self.oracle._col_eq_ids):
-                actual_val = int(self.oracle._matrix[i, j])
-                if actual_val in (3, 4):
-                    actual = True
-                elif actual_val in (-3, -4):
-                    actual = False
-                else:
+                actual = self.oracle.decode_truth(int(self.oracle._matrix[i, j]))
+                if actual is None:
                     continue
 
                 result = self.procedure.predict(h_id, t_id)
                 predicted = result.prediction
                 phase = result.phase
 
-                # Update global counts
-                if predicted and actual:
-                    tp += 1
-                elif predicted and not actual:
-                    fp += 1
-                elif not predicted and actual:
-                    fn += 1
-                else:
-                    tn += 1
+                update_confusion(global_counts, predicted, actual)
 
-                # Update phase stats
                 if phase not in phase_stats:
                     phase_stats[phase] = {"tp": 0, "fp": 0, "tn": 0, "fn": 0, "total": 0}
                 ps = phase_stats[phase]
                 ps["total"] += 1
-                if predicted and actual:
-                    ps["tp"] += 1
-                elif predicted and not actual:
-                    ps["fp"] += 1
-                elif not predicted and actual:
-                    ps["fn"] += 1
-                else:
-                    ps["tn"] += 1
+                update_confusion(ps, predicted, actual)
 
         # Compute per-phase accuracy
         for ps in phase_stats.values():
@@ -182,10 +169,10 @@ class CompetitionEvaluator:
 
         elapsed = time.time() - t0
         return EvalResult.from_counts(
-            tp=tp,
-            fp=fp,
-            tn=tn,
-            fn=fn,
+            tp=global_counts["tp"],
+            fp=global_counts["fp"],
+            tn=global_counts["tn"],
+            fn=global_counts["fn"],
             elapsed_seconds=elapsed,
             phase_breakdown=phase_stats,
         )
@@ -201,64 +188,52 @@ class CompetitionEvaluator:
         problems = _load_problems(path)
 
         t0 = time.time()
-        tp = fp = tn = fn = 0
+        counts: dict[str, int] = {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
 
         for prob in problems:
             h_id = prob["hypothesis_id"]
             t_id = prob["target_id"]
             actual = prob["answer"]
-
             predicted = self.procedure.predict_bool(h_id, t_id)
-
-            if predicted and actual:
-                tp += 1
-            elif predicted and not actual:
-                fp += 1
-            elif not predicted and actual:
-                fn += 1
-            else:
-                tn += 1
+            update_confusion(counts, predicted, actual)
 
         elapsed = time.time() - t0
-        return EvalResult.from_counts(tp=tp, fp=fp, tn=tn, fn=fn, elapsed_seconds=elapsed)
+        return EvalResult.from_counts(
+            tp=counts["tp"],
+            fp=counts["fp"],
+            tn=counts["tn"],
+            fn=counts["fn"],
+            elapsed_seconds=elapsed,
+        )
 
     def evaluate_by_category(self) -> dict[str, EvalResult]:
         """Evaluate full matrix, broken down by hypothesis equation category.
 
         Categories come from oracle.classify(): collapse, tautology, weak, mid, strong.
+
+        Per-category ``elapsed_seconds`` is measured directly by summing the
+        wall-clock span each hypothesis row takes, so categories of different
+        sizes surface their real cost rather than an average.
         """
-        t0 = time.time()
         category_counts: dict[str, dict[str, int]] = {}
+        category_elapsed: dict[str, float] = {}
 
         for i, h_id in enumerate(self.oracle._eq_ids):
             cat = self.oracle.classify(h_id)
 
             if cat not in category_counts:
                 category_counts[cat] = {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
+                category_elapsed[cat] = 0.0
 
+            row_start = time.time()
             for j, t_id in enumerate(self.oracle._col_eq_ids):
-                actual_val = int(self.oracle._matrix[i, j])
-                if actual_val in (3, 4):
-                    actual = True
-                elif actual_val in (-3, -4):
-                    actual = False
-                else:
+                actual = self.oracle.decode_truth(int(self.oracle._matrix[i, j]))
+                if actual is None:
                     continue
 
                 predicted = self.procedure.predict_bool(h_id, t_id)
-                cc = category_counts[cat]
-
-                if predicted and actual:
-                    cc["tp"] += 1
-                elif predicted and not actual:
-                    cc["fp"] += 1
-                elif not predicted and actual:
-                    cc["fn"] += 1
-                else:
-                    cc["tn"] += 1
-
-        elapsed = time.time() - t0
-        per_cat_time = elapsed / len(category_counts) if category_counts else 0.0
+                update_confusion(category_counts[cat], predicted, actual)
+            category_elapsed[cat] += time.time() - row_start
 
         results: dict[str, EvalResult] = {}
         for cat, counts in category_counts.items():
@@ -267,7 +242,7 @@ class CompetitionEvaluator:
                 fp=counts["fp"],
                 tn=counts["tn"],
                 fn=counts["fn"],
-                elapsed_seconds=per_cat_time,
+                elapsed_seconds=category_elapsed[cat],
             )
         return results
 

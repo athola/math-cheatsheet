@@ -1,16 +1,33 @@
 """Implication oracle for the ETP dataset.
 
 Loads the 4694-equation implication matrix and provides fast queries.
-The CSV contains 4693 rows x 4694 columns (equation 1 / x=x is omitted
-as a row since it implies only itself, but appears as column 0).
 
-Encoding:
+Expected CSV format
+-------------------
+- **Shape**: square N x N (N = 4694 for the full ETP dataset).
+- **Dtype**: integer values in the set ``{-4, -3, 3, 4}``; no zeros, no other
+  integers. Row ``i`` describes what equation ``i+1`` implies about the
+  equations in each column.
+
+Encoding
+--------
     3  = proven TRUE (implication holds)
    -3  = proven FALSE (implication does not hold)
     4  = conjectured TRUE
    -4  = conjectured FALSE
 
-Usage:
+Validation
+----------
+At construction time the oracle enforces four integrity checks and raises
+``ValueError`` (or ``FileNotFoundError``) with remediation hints if any fail:
+
+1. The file must exist (hint: ``make download-etp``).
+2. Every row must have the same number of columns (no ragged rows).
+3. The matrix must be square.
+4. All entries must be in the encoding set above.
+
+Usage
+-----
     oracle = ImplicationOracle("research/data/etp/implications.csv")
     result = oracle.query(43, 4512)  # Does eq 43 imply eq 4512?
     # Returns: True, False, or None (unknown)
@@ -19,6 +36,8 @@ Usage:
 from __future__ import annotations
 
 import csv
+import functools
+import hashlib
 from collections import Counter
 from pathlib import Path
 
@@ -28,25 +47,102 @@ import numpy as np
 class ImplicationOracle:
     """Fast lookup for the 22M implication matrix."""
 
-    def __init__(self, csv_path: str | Path):
+    def __init__(self, csv_path: str | Path, *, expected_sha256: str | None = None):
+        """Load and validate an ETP implication CSV.
+
+        Parameters
+        ----------
+        csv_path:
+            Path to the matrix CSV.
+        expected_sha256:
+            Optional SHA-256 hex digest. When provided, the file's digest
+            must match or ``ValueError`` is raised (regression #22). When
+            ``csv_path.with_suffix(csv_path.suffix + ".sha256")`` exists,
+            its contents are used as the expected digest automatically.
+        """
         self.csv_path = Path(csv_path)
         self._matrix: np.ndarray = np.array([], dtype=np.int8)
         self._eq_ids: list[int] = []  # row index → equation ID
         self._eq_to_row: dict[int, int] = {}  # equation ID → row index
         self._col_eq_ids: list[int] = []  # column index → equation ID
         self._eq_to_col: dict[int, int] = {}
+        self._expected_sha256 = expected_sha256 or self._load_sidecar_digest()
         self._load()
 
+    def _load_sidecar_digest(self) -> str | None:
+        """Return the digest from a sibling ``.sha256`` file, if present."""
+        sidecar = self.csv_path.with_suffix(self.csv_path.suffix + ".sha256")
+        if not sidecar.exists():
+            return None
+        raw = sidecar.read_text(encoding="utf-8").strip()
+        # Common sha256sum format: "<hex>  <filename>". Take just the hex.
+        return raw.split()[0] if raw else None
+
+    def _verify_digest(self) -> None:
+        """Raise if the file digest does not match the expected one."""
+        if self._expected_sha256 is None:
+            return
+        hasher = hashlib.sha256()
+        with open(self.csv_path, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                hasher.update(chunk)
+        actual = hasher.hexdigest()
+        if actual.lower() != self._expected_sha256.lower():
+            raise ValueError(
+                f"Implication matrix checksum mismatch for {self.csv_path}:"
+                f" expected {self._expected_sha256[:16]}..., got {actual[:16]}..."
+                " Run `make download-etp` to refetch a clean copy."
+            )
+
+    _VALID_VALUES: tuple[int, ...] = (-4, -3, 3, 4)
+
     def _load(self):
-        """Load the CSV into a numpy array for fast queries."""
-        rows = []
+        """Load the CSV into a numpy array for fast queries.
+
+        Validates shape and encoding. See module docstring for the contract.
+        """
+        if not self.csv_path.exists():
+            raise FileNotFoundError(
+                f"Implication matrix CSV not found at {self.csv_path}."
+                " Run `make download-etp` to fetch it from the ETP repository."
+            )
+
+        if self._expected_sha256 is not None:
+            self._verify_digest()
+
+        rows: list[list[int]] = []
+        row_len: int | None = None
         with open(self.csv_path, encoding="utf-8") as f:
             reader = csv.reader(f)
-            for row in reader:
-                rows.append([int(x) for x in row])
+            for line_no, row in enumerate(reader, start=1):
+                parsed = [int(x) for x in row]
+                if row_len is None:
+                    row_len = len(parsed)
+                elif len(parsed) != row_len:
+                    raise ValueError(
+                        f"Ragged matrix in {self.csv_path}: row {line_no} has"
+                        f" {len(parsed)} columns, expected {row_len}."
+                    )
+                rows.append(parsed)
 
         self._matrix = np.array(rows, dtype=np.int8)
         n_rows, n_cols = self._matrix.shape
+        if n_rows != n_cols:
+            raise ValueError(
+                f"Implication matrix must be square; got shape {n_rows}x{n_cols}"
+                f" from {self.csv_path}. A truncated or mismatched file is the"
+                " most likely cause — try `make download-etp` to refetch."
+            )
+        invalid_mask = ~np.isin(self._matrix, self._VALID_VALUES)
+        if invalid_mask.any():
+            bad_count = int(invalid_mask.sum())
+            sample_idx = tuple(int(v) for v in np.argwhere(invalid_mask)[0])
+            sample_val = int(self._matrix[sample_idx])
+            raise ValueError(
+                f"Implication matrix has {bad_count} entr{'y' if bad_count == 1 else 'ies'}"
+                f" with invalid encoding (first: value {sample_val} at {sample_idx});"
+                f" expected one of {self._VALID_VALUES}."
+            )
 
         # Matrix is 4694x4694. Row i = Col i = Equation (i+1).
         # Verified: diagonal is all TRUE (self-implication),
@@ -56,18 +152,11 @@ class ImplicationOracle:
         self._eq_to_row = {eq_id: i for i, eq_id in enumerate(self._eq_ids)}
         self._eq_to_col = {eq_id: j for j, eq_id in enumerate(self._col_eq_ids)}
 
-        # Build equivalence classes: equations with identical row profiles
-        self._eq_to_equiv: dict[int, int] = {}
-        self._equiv_classes: dict[int, set[int]] = {}
-        self._build_equivalence_classes()
-
-    def _build_equivalence_classes(self):
-        """Group equations by identical row profiles.
-
-        Equations with the same row in the implication matrix imply exactly
-        the same targets. By the diagonal argument (self-implication is TRUE),
-        same-row equations mutually imply each other.
-        """
+    @functools.cached_property
+    def _equiv_data(self) -> tuple[dict[int, int], dict[int, set[int]]]:
+        """Build equivalence class maps lazily (O(n²) row hashing, deferred until first use)."""
+        eq_to_equiv: dict[int, int] = {}
+        equiv_classes: dict[int, set[int]] = {}
         row_hash_to_class: dict[bytes, int] = {}
         class_id = 0
         for i, eq_id in enumerate(self._eq_ids):
@@ -76,23 +165,18 @@ class ImplicationOracle:
                 row_hash_to_class[row_bytes] = class_id
                 class_id += 1
             cid = row_hash_to_class[row_bytes]
-            self._eq_to_equiv[eq_id] = cid
-            if cid not in self._equiv_classes:
-                self._equiv_classes[cid] = set()
-            self._equiv_classes[cid].add(eq_id)
+            eq_to_equiv[eq_id] = cid
+            equiv_classes.setdefault(cid, set()).add(eq_id)
+        return eq_to_equiv, equiv_classes
 
     def equivalence_class(self, eq_id: int) -> int | None:
-        """Return the equivalence class ID for an equation.
-
-        Equations in the same class have identical implication row profiles
-        and mutually imply each other. Returns None if eq_id is out of range.
-        """
-        return self._eq_to_equiv.get(eq_id)
+        """Return the equivalence class ID for an equation, or None if out of range."""
+        return self._equiv_data[0].get(eq_id)
 
     @property
     def equivalence_classes(self) -> dict[int, set[int]]:
         """Return all equivalence classes: class_id -> set of equation IDs."""
-        return self._equiv_classes
+        return self._equiv_data[1]
 
     @property
     def num_equations(self) -> int:
@@ -114,35 +198,69 @@ class ImplicationOracle:
 
         row = self._eq_to_row[hypothesis_id]
         col = self._eq_to_col[target_id]
-        val = int(self._matrix[row, col])
+        return self.decode_truth(self._matrix[row, col])
 
+    @staticmethod
+    def decode_truth(val: int | np.integer) -> bool | None:
+        """Decode a raw matrix value into a tri-state truth.
+
+        Returns ``True`` for proven or conjectured TRUE (3, 4),
+        ``False`` for proven or conjectured FALSE (-3, -4),
+        and ``None`` for any other value (no prior art). Centralising this
+        decoding removes the duplicated ``if val in (3, 4) ...`` ladder that
+        lived in five call sites (regression #43/I1).
+        """
         if val in (3, 4):
             return True
-        elif val in (-3, -4):
+        if val in (-3, -4):
             return False
         return None
 
     def query_raw(self, hypothesis_id: int, target_id: int) -> int:
-        """Return raw matrix value (3, -3, 4, -4)."""
+        """Return raw matrix value (3, -3, 4, -4).
+
+        Raises ``KeyError`` when either id is out of range. Previously this
+        returned ``0`` silently (which is not a valid encoding), masking bugs
+        in the caller (regression #31).
+        """
         row = self._eq_to_row.get(hypothesis_id)
         col = self._eq_to_col.get(target_id)
         if row is None or col is None:
-            return 0
+            raise KeyError(
+                f"Equation id out of range in query_raw: hypothesis_id={hypothesis_id},"
+                f" target_id={target_id}; valid range is"
+                f" [{min(self._eq_ids)}, {max(self._eq_ids)}]."
+            )
         return int(self._matrix[row, col])
 
     def row_true_count(self, eq_id: int) -> int:
-        """How many equations does eq_id imply?"""
+        """How many equations does eq_id imply?
+
+        Raises ``KeyError`` when ``eq_id`` is not in the matrix (consistent
+        with ``query_raw``, regression #31). Callers that need a default of
+        zero can wrap in ``try/except KeyError``.
+        """
         row = self._eq_to_row.get(eq_id)
         if row is None:
-            return 0
-        return int(np.sum((self._matrix[row] == 3) | (self._matrix[row] == 4)))
+            raise KeyError(
+                f"row_true_count: equation {eq_id} not in range"
+                f" [{min(self._eq_ids)}, {max(self._eq_ids)}]."
+            )
+        return int(np.count_nonzero((self._matrix[row] == 3) | (self._matrix[row] == 4)))
 
     def col_true_count(self, eq_id: int) -> int:
-        """How many equations imply eq_id?"""
+        """How many equations imply eq_id?
+
+        Raises ``KeyError`` when ``eq_id`` is not in the matrix (consistent
+        with ``query_raw``, regression #31).
+        """
         col = self._eq_to_col.get(eq_id)
         if col is None:
-            return 0
-        return int(np.sum((self._matrix[:, col] == 3) | (self._matrix[:, col] == 4)))
+            raise KeyError(
+                f"col_true_count: equation {eq_id} not in range"
+                f" [{min(self._col_eq_ids)}, {max(self._col_eq_ids)}]."
+            )
+        return int(np.count_nonzero((self._matrix[:, col] == 3) | (self._matrix[:, col] == 4)))
 
     def is_collapse(self, eq_id: int) -> bool:
         """Does this equation imply ALL others (force |M|=1)?"""
@@ -173,12 +291,8 @@ class ImplicationOracle:
 
         for i, h_id in enumerate(self._eq_ids):
             for j, t_id in enumerate(self._col_eq_ids):
-                actual_val = int(self._matrix[i, j])
-                if actual_val in (3, 4):
-                    actual = True
-                elif actual_val in (-3, -4):
-                    actual = False
-                else:
+                actual = self.decode_truth(int(self._matrix[i, j]))
+                if actual is None:
                     continue
 
                 predicted = predict_fn(h_id, t_id)

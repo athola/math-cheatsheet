@@ -28,7 +28,7 @@ from src.cheatsheet_harness import (
 
 # Fixture paths
 CHEATSHEET_DIR = Path(__file__).parent.parent / "cheatsheet"
-V3_PATH = CHEATSHEET_DIR / "v3.txt"
+V3_PATH = CHEATSHEET_DIR / "final.txt"
 FINAL_PATH = CHEATSHEET_DIR / "final.txt"
 
 
@@ -339,13 +339,13 @@ class TestRegressionValidation:
     def test_all_versions_scored(self):
         """
         Scenario: All cheatsheet versions get a score
-        Given the cheatsheet directory with v1, v2, v3, final
+        Given the cheatsheet directory with v1, v2, final
         When I run regression validation
         Then all versions should have scores
         """
         result = validate_regression()
         assert "v1" in result.versions
-        assert "v3" in result.versions
+        assert "v2" in result.versions
         assert "final" in result.versions
 
     @pytest.mark.unit

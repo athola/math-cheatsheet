@@ -49,3 +49,21 @@ jobs:
       - run: pip install -e ".[dev]" maturin
       - run: cd rust && maturin build --release && pip install target/wheels/*.whl
       - run: PYTHONPATH=src:tla/python pytest tests/ -v -m cross_language
+
+  accuracy-gate:
+    # Regression #23: fail the build if the decision procedure accuracy
+    # drops below the configured threshold (default 98.0%). The parsing
+    # and threshold logic live in scripts/check_accuracy_gate.py and are
+    # unit-tested under tests/unit/test_check_accuracy_gate.py.
+    runs-on: ubuntu-latest
+    needs: [python-test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - name: Download ETP data
+        run: python scripts/download_etp_data.py
+      - name: Enforce accuracy threshold
+        run: PYTHONPATH=src:tla/python python scripts/check_accuracy_gate.py --threshold 98.0

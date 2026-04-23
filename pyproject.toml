@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "math-cheatsheet"
-version = "0.1.1"
+version = "0.2.0"
 description = "Equational theories competition cheatsheet with formal verification"
 requires-python = ">=3.12"
 dependencies = [
@@ -34,7 +34,7 @@ llm = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "tests"]
+pythonpath = ["src", "tests", "tla/python"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "property: property-based invariant tests",
@@ -53,3 +53,8 @@ select = ["E", "F", "W", "I", "UP"]
 python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
+
+[dependency-groups]
+dev = [
+    "maturin>=1.13.1",
+]

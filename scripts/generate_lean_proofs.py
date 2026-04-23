@@ -30,9 +30,9 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from etp_equations import ETPEquations  # noqa: E402
-from implication_oracle import ImplicationOracle  # noqa: E402
-from decision_procedure import DecisionProcedure  # noqa: E402
+from etp_equations import ETPEquations
+from implication_oracle import ImplicationOracle
+from decision_procedure import DecisionProcedure
 
 
 def generate_true_proof_template(h_id: int, t_id: int, phase: str, reason: str) -> str:

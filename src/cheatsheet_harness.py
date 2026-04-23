@@ -17,18 +17,20 @@ Usage:
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from src.equation_analyzer import (
+from config import MAX_CHEATSHEET_BYTES
+from equation_analyzer import (
     ImplicationVerdict,
     analyze_implication,
     parse_equation,
 )
 
-# Competition constants
-MAX_CHEATSHEET_BYTES = 10_240
+logger = logging.getLogger(__name__)
+
 CHEATSHEET_DIR = Path(__file__).parent.parent / "cheatsheet"
 
 # Known-answer problems: (hypothesis, target, expected, label)
@@ -230,6 +232,67 @@ _MAGMA_ALIASES = {
 }
 
 
+def _check_phases(content: str, lines: list[str], result: StructureResult) -> None:
+    content_upper = content.upper()
+    for i in range(1, 9):
+        if any(f"{kw} {i}" in content_upper for kw in ("PHASE", "RULE", "STRATEGY")):
+            result.phases_found.append(f"PHASE {i}")
+
+    if len(result.phases_found) < 4:
+        section_headings = [
+            ln.strip()
+            for ln in lines
+            if ln.strip().startswith("##") and not ln.strip().startswith("###")
+        ]
+        if len(section_headings) >= 4:
+            seen = set(result.phases_found)
+            for heading in section_headings[:8]:
+                marker = f"SECTION: {heading.lstrip('#').strip().upper()[:30]}"
+                if marker and marker not in seen:
+                    result.phases_found.append(marker)
+                    seen.add(marker)
+
+
+def _check_reference_and_examples(content: str, result: StructureResult) -> None:
+    content_upper = content.upper()
+    result.has_quick_reference = "QUICK REFERENCE" in content_upper
+    result.has_worked_examples = any(
+        kw in content_upper for kw in ("WORKED EXAMPLE", "EXAMPLE", "PROOF STRATEGY")
+    )
+
+
+def _check_magmas(content: str, result: StructureResult) -> None:
+    content_lower = content.lower()
+    for name in _MAGMA_NAMES:
+        if name in content:
+            result.magmas_found.append(name)
+        elif any(alias in content_lower for alias in _MAGMA_ALIASES.get(name, [])):
+            result.magmas_found.append(name)
+
+
+def _check_key_terms(content: str, result: StructureResult) -> None:
+    content_lower = content.lower()
+    for term, aliases in _KEY_TERMS.items():
+        if any(alias in content_lower for alias in aliases):
+            result.key_terms_found.append(term)
+        else:
+            result.key_terms_missing.append(term)
+
+
+def _add_structure_warnings(result: StructureResult) -> None:
+    if len(result.phases_found) < result.phases_expected:
+        missing = result.phases_expected - len(result.phases_found)
+        result.warnings.append(f"Missing {missing} phase/section(s)")
+    if not result.has_quick_reference:
+        result.warnings.append("No QUICK REFERENCE section found")
+    if not result.has_worked_examples:
+        result.warnings.append("No worked examples or proof strategy section found")
+    if len(result.magmas_found) < 4:
+        result.warnings.append(
+            f"Only {len(result.magmas_found)} canonical magmas referenced (expected 4+)"
+        )
+
+
 def validate_structure(cheatsheet_path: Path) -> StructureResult:
     """Validate cheatsheet has expected sections and content."""
     result = StructureResult(path=str(cheatsheet_path))
@@ -241,79 +304,13 @@ def validate_structure(cheatsheet_path: Path) -> StructureResult:
     content = cheatsheet_path.read_text(encoding="utf-8")
     lines = content.split("\n")
     result.line_count = len(lines)
-    content_upper = content.upper()
-    content_lower = content.lower()
 
-    # Check for phase/section markers (two conventions)
-    # Convention 1: "PHASE N" (v3 format)
-    # Convention 2: "Rule N" / "Strategy N" / "## SECTION" (final/v2 format)
-    for i in range(1, 9):
-        phase_marker = f"PHASE {i}"
-        rule_marker = f"RULE {i}"
-        strategy_marker = f"STRATEGY {i}"
-        if (
-            phase_marker in content_upper
-            or rule_marker in content_upper
-            or strategy_marker in content_upper
-        ):
-            result.phases_found.append(phase_marker)
+    _check_phases(content, lines, result)
+    _check_reference_and_examples(content, result)
+    _check_magmas(content, result)
+    _check_key_terms(content, result)
+    _add_structure_warnings(result)
 
-    # Also count markdown heading sections (## HEADING) as structural elements
-    section_headings = [
-        line.strip()
-        for line in lines
-        if line.strip().startswith("##") and not line.strip().startswith("###")
-    ]
-    # If we found few PHASE markers but many ## headings, count headings
-    if len(result.phases_found) < 4 and len(section_headings) >= 4:
-        for heading in section_headings[:8]:
-            marker = heading.lstrip("#").strip().upper()[:30]
-            if marker and marker not in [p for p in result.phases_found]:
-                result.phases_found.append(f"SECTION: {marker}")
-
-    # Quick reference and worked examples
-    result.has_quick_reference = "QUICK REFERENCE" in content_upper
-    result.has_worked_examples = (
-        "WORKED EXAMPLE" in content_upper
-        or "EXAMPLE" in content_upper
-        or "PROOF STRATEGY" in content_upper
-    )
-
-    # Magma definitions — check both short codes and descriptive aliases
-    for name in _MAGMA_NAMES:
-        if name in content:
-            result.magmas_found.append(name)
-            continue
-        # Check aliases
-        for alias in _MAGMA_ALIASES.get(name, []):
-            if alias in content_lower:
-                result.magmas_found.append(name)
-                break
-
-    # Key terms (check each term against its aliases)
-    for term, aliases in _KEY_TERMS.items():
-        if any(alias in content_lower for alias in aliases):
-            result.key_terms_found.append(term)
-        else:
-            result.key_terms_missing.append(term)
-
-    # Warnings
-    if len(result.phases_found) < result.phases_expected:
-        missing = result.phases_expected - len(result.phases_found)
-        result.warnings.append(f"Missing {missing} phase/section(s)")
-
-    if not result.has_quick_reference:
-        result.warnings.append("No QUICK REFERENCE section found")
-
-    if not result.has_worked_examples:
-        result.warnings.append("No worked examples or proof strategy section found")
-
-    if len(result.magmas_found) < 4:
-        result.warnings.append(
-            f"Only {len(result.magmas_found)} canonical magmas referenced (expected 4+)"
-        )
-
-    # Pass if core structure is present
     result.passed = (
         len(result.phases_found) >= 4
         and result.has_worked_examples
@@ -328,12 +325,79 @@ def validate_structure(cheatsheet_path: Path) -> StructureResult:
 # ---------------------------------------------------------------------------
 
 
+def load_training_set(
+    path: Path | str = Path("research/data/etp/competition-training.jsonl"),
+) -> list[tuple[str, str, bool, str]] | None:
+    """Load the full training set from the ETP data directory, if present.
+
+    Returns ``None`` when the file does not exist so callers can fall back to
+    the curated ``KNOWN_PROBLEMS``. Supports JSONL or JSON array format with
+    the same shape as the competition problems (``equation_1``, ``equation_2``,
+    ``answer``, optional ``difficulty`` / ``id``).
+
+    Regression #33: previously the harness was limited to 24 hand-curated
+    problems, which was too small a sample to catch accuracy regressions on
+    the broader matrix.
+    """
+    import json as _json
+
+    p = Path(path)
+    if not p.exists():
+        logger.debug("Training set not found at %s; using KNOWN_PROBLEMS fallback", p)
+        return None
+
+    problems: list[tuple[str, str, bool, str]] = []
+    content = p.read_text(encoding="utf-8").strip()
+    if content.startswith("["):
+        raw_records = _json.loads(content)
+    else:
+        raw_records = []
+        for line in content.splitlines():
+            line = line.strip()
+            if line:
+                raw_records.append(_json.loads(line))
+    for rec in raw_records:
+        h = rec.get("equation_1") or rec.get("hypothesis")
+        t = rec.get("equation_2") or rec.get("target")
+        ans = rec.get("answer")
+        if h is None or t is None or ans is None:
+            continue
+        label = str(rec.get("id") or rec.get("label") or rec.get("difficulty") or "training")
+        problems.append((h, t, bool(ans), label))
+    return problems or None
+
+
 def validate_accuracy(
     problems: list[tuple[str, str, bool, str]] | None = None,
+    *,
+    use_training_set: bool = False,
+    training_set_path: Path | str | None = None,
 ) -> AccuracyResult:
-    """Test the decision procedure against known-answer problems."""
+    """Test the decision procedure against known-answer problems.
+
+    Parameters
+    ----------
+    problems:
+        Explicit problem list. If ``None`` and ``use_training_set`` is
+        ``True``, the full training set is loaded from
+        ``training_set_path`` (or the default ETP location). Otherwise the
+        curated ``KNOWN_PROBLEMS`` list is used.
+    use_training_set:
+        When true, load the full training set. Falls back to
+        ``KNOWN_PROBLEMS`` if the training file is missing.
+    training_set_path:
+        Optional override for the training set location.
+    """
     if problems is None:
-        problems = KNOWN_PROBLEMS
+        if use_training_set:
+            loaded = load_training_set(
+                training_set_path
+                if training_set_path is not None
+                else Path("research/data/etp/competition-training.jsonl")
+            )
+            problems = loaded if loaded is not None else KNOWN_PROBLEMS
+        else:
+            problems = KNOWN_PROBLEMS
 
     result = AccuracyResult(total=len(problems))
 
@@ -513,10 +577,7 @@ def run_harness(
 ) -> HarnessReport:
     """Run the full validation harness or selected angles."""
     all_angles = {"compliance", "structure", "accuracy", "regression", "competition"}
-    if angles is None:
-        angles_set = all_angles
-    else:
-        angles_set = set(angles) & all_angles
+    angles_set = all_angles if angles is None else set(angles) & all_angles
 
     report = HarnessReport()
 
@@ -592,6 +653,7 @@ def _print_accuracy(r: AccuracyResult) -> None:
     print(f"{'=' * 60}")
     print(f"  Total:    {r.total}")
     print(f"  Correct:  {r.correct} ({r.accuracy:.1%})")
+    print(f"  Accuracy: {r.accuracy:.2%}")
     print(f"  Incorrect:{r.incorrect}")
     print(f"  Errors:   {r.errors}")
     if r.by_phase:
@@ -660,10 +722,7 @@ def main(argv: list[str] | None = None) -> int:
     cheatsheet = args[1] if len(args) > 1 else str(CHEATSHEET_DIR / "final.txt")
     path = Path(cheatsheet)
 
-    if angle == "all":
-        angles = None
-    else:
-        angles = [angle]
+    angles = None if angle == "all" else [angle]
 
     report = run_harness(path, angles)
     print_report(report)

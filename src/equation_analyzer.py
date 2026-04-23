@@ -17,8 +17,11 @@ and Birkhoff's completeness theorem for equational logic.
 from __future__ import annotations
 
 import itertools
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from enum import Enum, auto
+
+from equation_parser_utils import tokenize_equation as _tokenize
 
 
 class NodeType(Enum):
@@ -35,53 +38,49 @@ class Term:
     left: Term | None = None  # left child if OP
     right: Term | None = None  # right child if OP
 
+    def _lr(self) -> tuple[Term, Term]:
+        """Return (left, right) for OP nodes; raises if children are missing."""
+        if self.left is None or self.right is None:
+            raise ValueError("OP node must have left and right children")
+        return self.left, self.right
+
     def variables(self) -> set[str]:
         if self.node_type == NodeType.VAR:
             return {self.name}
-        if self.left is None or self.right is None:
-            raise ValueError("OP node must have left and right children")
-        return self.left.variables() | self.right.variables()
+        lt, rt = self._lr()
+        return lt.variables() | rt.variables()
 
     def depth(self) -> int:
         if self.node_type == NodeType.VAR:
             return 0
-        if self.left is None or self.right is None:
-            raise ValueError("OP node must have left and right children")
-        return 1 + max(self.left.depth(), self.right.depth())
+        lt, rt = self._lr()
+        return 1 + max(lt.depth(), rt.depth())
 
     def size(self) -> int:
         """Count the number of * operations."""
         if self.node_type == NodeType.VAR:
             return 0
-        if self.left is None or self.right is None:
-            raise ValueError("OP node must have left and right children")
-        return 1 + self.left.size() + self.right.size()
+        lt, rt = self._lr()
+        return 1 + lt.size() + rt.size()
 
     def substitute(self, mapping: dict[str, Term]) -> Term:
         if self.node_type == NodeType.VAR:
             return mapping.get(self.name, self)
-        if self.left is None or self.right is None:
-            raise ValueError("OP node must have left and right children")
-        return Term(
-            NodeType.OP, left=self.left.substitute(mapping), right=self.right.substitute(mapping)
-        )
+        lt, rt = self._lr()
+        return Term(NodeType.OP, left=lt.substitute(mapping), right=rt.substitute(mapping))
 
     def evaluate(self, table: list[list[int]], assignment: dict[str, int]) -> int:
         """Evaluate this term in a finite magma given variable assignments."""
         if self.node_type == NodeType.VAR:
             return assignment[self.name]
-        if self.left is None or self.right is None:
-            raise ValueError("OP node must have left and right children")
-        left_val = self.left.evaluate(table, assignment)
-        right_val = self.right.evaluate(table, assignment)
-        return table[left_val][right_val]
+        lt, rt = self._lr()
+        return table[lt.evaluate(table, assignment)][rt.evaluate(table, assignment)]
 
     def __str__(self) -> str:
         if self.node_type == NodeType.VAR:
             return self.name
-        if self.left is None or self.right is None:
-            raise ValueError("OP node must have left and right children")
-        return f"({self.left} * {self.right})"
+        lt, rt = self._lr()
+        return f"({lt} * {rt})"
 
 
 @dataclass(frozen=True)
@@ -117,32 +116,6 @@ class Equation:
 
 
 # --- Parsing ---
-
-
-def _tokenize(s: str) -> list[str]:
-    """Tokenize an equation string like 'x * (y * z) = (x * y) * z'."""
-    tokens = []
-    i = 0
-    while i < len(s):
-        c = s[i]
-        if c.isspace():
-            i += 1
-            continue
-        if c in "(*=)":
-            tokens.append(c)
-            i += 1
-        elif c == "◇" or c == "⋄":
-            tokens.append("*")
-            i += 1
-        elif c.isalpha():
-            name = ""
-            while i < len(s) and s[i].isalpha():
-                name += s[i]
-                i += 1
-            tokens.append(name)
-        else:
-            i += 1
-    return tokens
 
 
 def _parse_expr(tokens: list[str], pos: int) -> tuple[Term, int]:
@@ -201,8 +174,10 @@ class CounterexampleMagma:
         return eq.holds_in(self.table, self.size)
 
 
-# The 7 canonical magmas from the v3 cheatsheet
-CANONICAL_MAGMAS = [
+# The 7 canonical magmas from the v3 cheatsheet.
+# Exposed as a tuple so the module-level constant cannot be mutated by callers
+# (regression #41). Iteration semantics are identical to the former list.
+CANONICAL_MAGMAS: tuple[CounterexampleMagma, ...] = (
     CounterexampleMagma(
         "LP (Left Projection)",
         2,
@@ -245,13 +220,13 @@ CANONICAL_MAGMAS = [
         [[0, 1, 2], [1, 2, 0], [2, 0, 1]],
         ["commutative", "associative", "has identity", "NOT idempotent"],
     ),
-]
+)
 
-# All 16 possible 2-element magma tables
-ALL_SIZE_2_MAGMAS = [
+# All 16 possible 2-element magma tables (tuple to prevent mutation — #41).
+ALL_SIZE_2_MAGMAS: tuple[CounterexampleMagma, ...] = tuple(
     CounterexampleMagma(f"M2_{i:04b}", 2, [[i >> 3 & 1, i >> 2 & 1], [i >> 1 & 1, i & 1]])
     for i in range(16)
-]
+)
 
 
 # --- Analysis Functions ---
@@ -358,28 +333,69 @@ def _is_tautology(eq: Equation) -> bool:
 
 
 def _is_collapse(eq: Equation) -> bool:
-    """Check if the equation is a variable equality (e.g., x = y), which forces |M|=1."""
-    if eq.lhs.node_type == NodeType.VAR and eq.rhs.node_type == NodeType.VAR:
-        return eq.lhs.name != eq.rhs.name
+    """Check if the equation forces |M|=1 (singleton/collapse).
+
+    Covers both "x = y" and extended forms like "x = f(y,z,...)" where x
+    does not appear in f.  Proof: fix any p,q ∈ M; assign the "fresh"
+    variable to p and all others to q — the equation gives p = q.
+    """
+    if eq.lhs.node_type == NodeType.VAR and eq.lhs.name not in eq.rhs.variables():
+        return True
+    if eq.rhs.node_type == NodeType.VAR and eq.rhs.name not in eq.lhs.variables():
+        return True
     return False
 
 
 def _check_simple_substitutions(h: Equation, t: Equation) -> AnalysisResult | None:
-    """Check if T can be obtained from H by setting variables equal."""
+    """Check if T can be obtained from H by setting variables equal.
+
+    Tries both merge directions (v→u and u→v) at each step, plus two-step
+    chaining (apply a second merge after the first).  All these specialisations
+    are universally sound: if H[σ] = T then H implies T.
+    """
     h_vars = sorted(h.variables())
     if len(h_vars) < 2:
         return None
 
-    # Try all pairwise variable merges
     for i, v1 in enumerate(h_vars):
         for v2 in h_vars[i + 1 :]:
-            mapping = {v2: Term(NodeType.VAR, name=v1)}
-            specialized = h.substitute(mapping)
-            if specialized == t:
-                return AnalysisResult(
-                    ImplicationVerdict.TRUE, "Phase 3", f"T obtained from H by setting {v2}:={v1}"
-                )
+            for merged, survivor in ((v2, v1), (v1, v2)):
+                step1 = h.substitute({merged: Term(NodeType.VAR, name=survivor)})
+                if step1 == t:
+                    return AnalysisResult(
+                        ImplicationVerdict.TRUE,
+                        "Phase 3",
+                        f"T obtained from H by setting {merged}:={survivor}",
+                    )
+                # Two-step chaining: apply one more merge/rename to step1.
+                # The target may be any var from step1 OR from T (enabling
+                # renames like z→y after y was merged into x).
+                step1_vars = sorted(step1.variables())
+                t_vars = sorted(t.variables())
+                candidate_targets = sorted(set(step1_vars) | set(t_vars))
+                for m2 in step1_vars:
+                    for s2 in candidate_targets:
+                        if m2 == s2:
+                            continue
+                        step2 = step1.substitute({m2: Term(NodeType.VAR, name=s2)})
+                        if step2 == t:
+                            return AnalysisResult(
+                                ImplicationVerdict.TRUE,
+                                "Phase 3",
+                                f"T obtained from H by {merged}:={survivor} then {m2}:={s2}",
+                            )
     return None
+
+
+def _iter_vars(term: Term) -> Iterator[str]:
+    """Yield variable names in a term, including duplicates."""
+
+    if term.node_type == NodeType.VAR:
+        yield term.name
+    else:
+        lt, rt = term._lr()
+        yield from _iter_vars(lt)
+        yield from _iter_vars(rt)
 
 
 def _detect_determined_operation(eq: Equation) -> tuple[list[list[int]], str] | None:
@@ -452,51 +468,17 @@ def _detect_determined_operation(eq: Equation) -> tuple[list[list[int]], str] | 
         ):
             return [[0, 1], [0, 1]], "right projection (x*y=y)"
 
-    # Constant law: x * y = z * w (3+ distinct vars, all in OP nodes)
-    # This forces all products to be the same constant.
+    # Generalized constant law: LHS and RHS are both OP trees with disjoint variable sets,
+    # AND each variable appears exactly once in the equation (no repeats).
+    # When variables repeat (e.g. (x*y)*x), the disjoint condition alone is insufficient —
+    # a 3-element counterexample exists. With unique variables, x*y=z*w style reasoning holds.
     if eq.lhs.node_type == NodeType.OP and eq.rhs.node_type == NodeType.OP:
         lhs_vars = eq.lhs.variables()
         rhs_vars = eq.rhs.variables()
-        all_vars = lhs_vars | rhs_vars
-        # If leaf variables are distinct across sides (3+ total) and both sides are single ops
-        if (
-            eq.lhs.size() == 1
-            and eq.rhs.size() == 1
-            and len(all_vars) >= 3
-            and len(lhs_vars & rhs_vars) == 0
-        ):
-            # Constant operation: all products = 0
+        lhs_var_count = sum(1 for _ in _iter_vars(eq.lhs))
+        rhs_var_count = sum(1 for _ in _iter_vars(eq.rhs))
+        no_repeats = (lhs_var_count == len(lhs_vars)) and (rhs_var_count == len(rhs_vars))
+        if len(lhs_vars & rhs_vars) == 0 and no_repeats:
             return [[0, 0], [0, 0]], "constant operation (x*y=c)"
 
     return None
-
-
-def batch_analyze(problems: list[tuple[str, str]]) -> list[AnalysisResult]:
-    """Analyze a batch of (hypothesis, target) equation string pairs."""
-    results = []
-    for h_str, t_str in problems:
-        try:
-            h = parse_equation(h_str)
-            t = parse_equation(t_str)
-            results.append(analyze_implication(h, t))
-        except (ValueError, KeyError) as e:
-            results.append(AnalysisResult(ImplicationVerdict.UNKNOWN, "Error", str(e)))
-    return results
-
-
-def analyze_equation_structure(eq_str: str) -> dict:
-    """Analyze structural properties of a single equation."""
-    eq = parse_equation(eq_str)
-    return {
-        "equation": str(eq),
-        "variables": sorted(eq.variables()),
-        "num_variables": len(eq.variables()),
-        "max_depth": eq.max_depth(),
-        "total_operations": eq.total_ops(),
-        "lhs_depth": eq.lhs.depth(),
-        "rhs_depth": eq.rhs.depth(),
-        "lhs_size": eq.lhs.size(),
-        "rhs_size": eq.rhs.size(),
-        "is_tautology": _is_tautology(eq),
-        "is_collapse": _is_collapse(eq),
-    }

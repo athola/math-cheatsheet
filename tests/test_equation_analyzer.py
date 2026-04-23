@@ -16,9 +16,8 @@ from src.equation_analyzer import (
     ImplicationVerdict,
     NodeType,
     Term,
-    analyze_equation_structure,
+    _check_simple_substitutions,
     analyze_implication,
-    batch_analyze,
     parse_equation,
 )
 
@@ -485,62 +484,221 @@ class TestCanonicalMagmas:
         assert not cm.satisfies(parse_equation("x * (y * z) = (x * y) * z"))
 
 
-class TestBatchAnalysis:
-    """
-    Feature: Batch analysis of multiple implication problems.
+class TestPhase5DeterminedOperations:
+    """Regression #29: exercise all six determined-operation patterns.
 
-    As a competition contestant
-    I want to analyze many problems at once
-    So that I can evaluate cheatsheet accuracy on the full test set.
+    Phase 5 in ``equation_analyzer`` detects left/right absorption and
+    constant law in both forward and reversed forms, then derives a known
+    magma table to test implications. The original suite only covered the
+    forward-left-absorption path; this block pins all six.
     """
 
     @pytest.mark.unit
-    def test_batch_analyze_mixed(self):
+    @pytest.mark.parametrize(
+        "hypothesis,label",
+        [
+            ("x = x * y", "left-abs-forward"),
+            ("x * y = x", "left-abs-reversed"),
+            ("x = y * x", "right-abs-forward"),
+            ("y * x = x", "right-abs-reversed"),
+        ],
+    )
+    def test_absorption_implies_idempotency(self, hypothesis: str, label: str):
+        """Left/right absorption forces a projection magma, which is idempotent."""
+        h = parse_equation(hypothesis)
+        t = parse_equation("x * x = x")
+        result = analyze_implication(h, t)
+        assert result.verdict == ImplicationVerdict.TRUE, (
+            f"[{label}] expected TRUE for {hypothesis} => x*x=x, got"
+            f" {result.verdict} via {result.phase}"
+        )
+        assert "Phase 5" in result.phase, f"[{label}] expected Phase 5, got {result.phase}"
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "hypothesis,label",
+        [
+            ("x * y = z * w", "constant-forward"),
+            ("z * w = x * y", "constant-reversed"),
+        ],
+    )
+    def test_constant_implies_commutativity(self, hypothesis: str, label: str):
+        """Constant law ``x*y=c`` forces all products equal, hence commutativity."""
+        h = parse_equation(hypothesis)
+        t = parse_equation("x * y = y * x")
+        result = analyze_implication(h, t)
+        assert result.verdict == ImplicationVerdict.TRUE, (
+            f"[{label}] expected TRUE for {hypothesis} => comm, got"
+            f" {result.verdict} via {result.phase}"
+        )
+        assert "Phase 5" in result.phase, f"[{label}] expected Phase 5, got {result.phase}"
+
+
+class TestPhase4bExhaustiveSearch:
+    """Regression for #38 — assert verdict AND phase origin."""
+
+    @pytest.mark.unit
+    def test_phase_4b_finds_exhaustive_counterexample(self):
+        """An implication caught by exhaustive 2-element search, not canonical magmas.
+
+        The previous test in ``test_coverage_gaps.py`` only asserted the verdict
+        was FALSE, which could be satisfied by any earlier phase (#38). This
+        version pins the phase to "Phase 4b" so we verify the exhaustive search
+        actually fires.
         """
-        Scenario: Analyze a batch with mixed TRUE/FALSE problems
-        Given several equation pairs
-        When I batch analyze them
-        Then I get correct verdicts for clear-cut cases
+        h = parse_equation("x * (x * y) = x * y")
+        t = parse_equation("(x * y) * y = x * y")
+        result = analyze_implication(h, t)
+        assert result.verdict == ImplicationVerdict.FALSE
+        assert result.phase == "Phase 4b", (
+            f"Expected Phase 4b to discharge this FALSE; got {result.phase}."
+            " Either canonical magmas now cover this case (update the test)"
+            " or Phase 4b regressed."
+        )
+
+
+class TestPhase7StructuralHeuristic:
+    """Regression for #37 — assert phase unconditionally."""
+
+    @pytest.mark.unit
+    def test_extended_collapse_var_not_in_other_side(self):
+        """H: x*y = z (z fresh) is an extended collapse law — forces |M|=1.
+
+        Proof: for any p,q in M, set x=p, y=p, z=q in H → p*p = q.
+        Set z=p → p*p = p. So q = p*p = p for all p,q. Therefore |M|=1,
+        and every equation holds in the singleton magma.
+
+        Previously this was incorrectly treated as a Phase 7 case because
+        the old _is_collapse only detected "x = y" (two bare variables).
         """
-        problems = [
-            ("x * y = y * x", "x * y = y * x"),  # TRUE (identical)
-            ("x * (x * x) = x", "x * y = y * x"),  # FALSE (new var)
-            ("x = y", "x * y = y * x"),  # TRUE (collapse)
-        ]
-        results = batch_analyze(problems)
-        assert len(results) == 3
-        assert results[0].verdict == ImplicationVerdict.TRUE
-        assert results[1].verdict == ImplicationVerdict.FALSE
-        assert results[2].verdict == ImplicationVerdict.TRUE
+        h = parse_equation("x * y = z")
+        t = parse_equation("x * (y * (y * x)) = (x * y) * ((y * x) * x)")
+        result = analyze_implication(h, t)
+        assert result.verdict == ImplicationVerdict.TRUE
+        assert result.phase == "Phase 1c", (
+            f"H='x*y=z' is an extended collapse law; expected Phase 1c TRUE, got {result.phase}."
+        )
+
+    @pytest.mark.unit
+    def test_depth_heuristic_triggers_phase_7(self):
+        """A pair where the depth gap fires after exhaustive 2-element search finds nothing.
+
+        H: (x*y)*x = x*y  (depth 2, not collapse, no determined op)
+        T: x*(x*(y*(x*y))) = (x*y)*(x*y)  (depth 4)
+        Phase 7 condition: depth(T)=4 > depth(H)+1=3 → FALSE.
+
+        No canonical or 2-element counterexample exists for this pair, so
+        only the depth heuristic can discharge it.
+        """
+        h = parse_equation("(x * y) * x = x * y")
+        t = parse_equation("x * (x * (y * (x * y))) = (x * y) * (x * y)")
+        result = analyze_implication(h, t)
+        assert result.verdict == ImplicationVerdict.FALSE
+        assert result.phase == "Phase 7", (
+            f"Expected Phase 7 depth heuristic to fire; got {result.phase}."
+            " Check that neither canonical nor exhaustive search decides this"
+            " pair before Phase 7."
+        )
 
 
-class TestEquationStructureAnalysis:
+class TestCoverageGaps:
+    """Targeted tests for previously-uncovered lines in equation_analyzer.py.
+
+    Each test is named after the exact line it exercises so regressions are
+    immediately traceable.
     """
-    Feature: Analyze structural properties of individual equations.
-
-    As a researcher
-    I want to extract structural features from equations
-    So that I can classify and compare them.
-    """
 
     @pytest.mark.unit
-    def test_analyze_associativity(self):
-        info = analyze_equation_structure("x * (y * z) = (x * y) * z")
-        assert info["num_variables"] == 3
-        assert info["max_depth"] == 2
-        assert info["total_operations"] == 4
-        assert not info["is_tautology"]
-        assert not info["is_collapse"]
+    def test_lr_raises_for_op_node_with_missing_children(self):
+        """Line 41: _lr() defensive guard for malformed OP nodes.
+
+        An OP node constructed without left/right children violates the
+        invariant; _lr() must raise rather than silently return None.
+        """
+        bad = Term(NodeType.OP)
+        with pytest.raises(ValueError, match="OP node must have left and right children"):
+            bad._lr()
 
     @pytest.mark.unit
-    def test_analyze_tautology(self):
-        info = analyze_equation_structure("x = x")
-        assert info["is_tautology"]
-        assert info["num_variables"] == 1
-        assert info["max_depth"] == 0
+    def test_parse_expr_raises_on_empty_rhs(self):
+        """Line 124: _parse_expr raises 'Unexpected end of expression'.
+
+        Input 'x = ' has an empty RHS token list; _parse_expr is called
+        with pos=0 >= len(tokens)=0 and raises immediately.
+        """
+        with pytest.raises(ValueError, match="Unexpected end of expression"):
+            parse_equation("x = ")
 
     @pytest.mark.unit
-    def test_analyze_collapse(self):
-        info = analyze_equation_structure("x = y")
-        assert info["is_collapse"]
-        assert info["num_variables"] == 2
+    def test_parse_primary_raises_after_trailing_operator(self):
+        """Line 135: _parse_primary raises when tokens exhausted after '*'.
+
+        Input 'x = x *' has RHS tokens ['x', '*']; after parsing 'x',
+        the loop sees '*' and calls _parse_primary at pos=2 >= len=2.
+        """
+        with pytest.raises(ValueError, match="Unexpected end of expression"):
+            parse_equation("x = x *")
+
+    @pytest.mark.unit
+    def test_tautology_hypothesis_implies_nothing(self):
+        """Line 266: Phase 1e — tautology H implies only tautology T.
+
+        H: x*y = x*y is universally true and constrains the operation
+        not at all.  Any non-tautological T can be falsified, so the
+        verdict must be FALSE (Phase 1e).
+        """
+        h = parse_equation("x * y = x * y")
+        t = parse_equation("x * y = y * x")
+        result = analyze_implication(h, t)
+        assert result.verdict == ImplicationVerdict.FALSE
+        assert result.phase == "Phase 1e", f"Tautology H should fire Phase 1e; got {result.phase}."
+
+    @pytest.mark.unit
+    def test_phase8_inconclusive_fallthrough(self):
+        """Line 327: Phase 8 UNKNOWN fallthrough for an undecided pair.
+
+        H: x*(y*z) = (x*z)*y  is non-collapse, non-tautology.
+        T: x*(y*z) = (x*y)*z  is associativity.
+        No 2-element counterexample exists for H (every 2-element table
+        satisfies H vacuously for this pairing), and Phase 3–6 find no
+        positive derivation, so the decision procedure reaches Phase 8.
+        """
+        h = parse_equation("x * (y * z) = (x * z) * y")
+        t = parse_equation("x * (y * z) = (x * y) * z")
+        result = analyze_implication(h, t)
+        assert result.phase == "Phase 8", (
+            f"Expected Phase 8 inconclusive fallthrough; got {result.phase}."
+        )
+
+    @pytest.mark.unit
+    def test_substitution_single_var_hypothesis_returns_none(self):
+        """Line 358: _check_simple_substitutions returns None for 1-variable H.
+
+        A single-variable hypothesis has no pair of variables to merge,
+        so the function exits immediately with None.
+        """
+        h = parse_equation("x * x = x")
+        t = parse_equation("x * x = x")
+        result = _check_simple_substitutions(h, t)
+        assert result is None, (
+            f"Single-var H should return None from substitution check; got {result}."
+        )
+
+    @pytest.mark.unit
+    def test_two_step_substitution_chain(self):
+        """Line 382: Phase 3 two-step chaining derives T from H.
+
+        H: x*(y*z) = (x*y)*z (associativity, 3 vars).
+        T: x*(x*x) = (x*x)*x requires y:=x then z:=x — no single-step
+        substitution produces T, so the second-step loop at line 382 fires.
+        """
+        h = parse_equation("x * (y * z) = (x * y) * z")
+        t = parse_equation("x * (x * x) = (x * x) * x")
+        result = analyze_implication(h, t)
+        assert result.verdict == ImplicationVerdict.TRUE
+        assert result.phase == "Phase 3", (
+            f"Two-step y:=x,z:=x chain should fire Phase 3; got {result.phase}."
+        )
+        assert "then" in result.reason, (
+            f"Reason should mention two-step chain; got: {result.reason!r}."
+        )

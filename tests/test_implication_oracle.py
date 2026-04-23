@@ -90,9 +90,12 @@ class TestQueryRaw:
         assert oracle.query_raw(1, 1) == 3
         assert oracle.query_raw(1, 2) == -3
 
-    def test_out_of_range_returns_zero(self, oracle: ImplicationOracle):
-        assert oracle.query_raw(99, 1) == 0
-        assert oracle.query_raw(1, 99) == 0
+    def test_out_of_range_raises_keyerror(self, oracle: ImplicationOracle):
+        """Regression #31: query_raw must raise instead of returning 0."""
+        with pytest.raises(KeyError, match="out of range"):
+            oracle.query_raw(99, 1)
+        with pytest.raises(KeyError, match="out of range"):
+            oracle.query_raw(1, 99)
 
 
 class TestRowColCounts:
@@ -106,8 +109,10 @@ class TestRowColCounts:
         assert oracle.row_true_count(3) == 2
         assert oracle.row_true_count(4) == 2
 
-    def test_out_of_range_row_count(self, oracle: ImplicationOracle):
-        assert oracle.row_true_count(99) == 0
+    def test_out_of_range_row_count_raises(self, oracle: ImplicationOracle):
+        """Unknown ID raises KeyError, consistent with query_raw (regression #31)."""
+        with pytest.raises(KeyError, match="99"):
+            oracle.row_true_count(99)
 
     def test_tautology_col_count(self, oracle: ImplicationOracle):
         """Everything implies the tautology."""
@@ -117,8 +122,10 @@ class TestRowColCounts:
         """Only collapse implies itself here."""
         assert oracle.col_true_count(2) == 1
 
-    def test_out_of_range_col_count(self, oracle: ImplicationOracle):
-        assert oracle.col_true_count(99) == 0
+    def test_out_of_range_col_count_raises(self, oracle: ImplicationOracle):
+        """Unknown ID raises KeyError, consistent with query_raw (regression #31)."""
+        with pytest.raises(KeyError, match="99"):
+            oracle.col_true_count(99)
 
 
 class TestClassification:
@@ -261,3 +268,50 @@ class TestEquivalenceClass:
         eq2_class = oracle.equivalence_class(2)
         assert eq2_class is not None
         assert classes[eq2_class] == {2}
+
+
+class TestShapeValidation:
+    """Feature: ImplicationOracle validates CSV shape on load (regression for #46)."""
+
+    def test_non_square_matrix_raises(self, tmp_path: Path):
+        """A non-square matrix must raise a clear error at construction."""
+        csv_path = tmp_path / "bad.csv"
+        # 3 rows x 4 columns — not square.
+        matrix = [
+            [3, -3, -3, -3],
+            [3, 3, 3, 3],
+            [3, -3, 3, -3],
+        ]
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            for row in matrix:
+                writer.writerow(row)
+        with pytest.raises(ValueError, match="square"):
+            ImplicationOracle(csv_path)
+
+    def test_ragged_matrix_raises(self, tmp_path: Path):
+        """Rows of mismatched lengths must be rejected with a clear error."""
+        csv_path = tmp_path / "ragged.csv"
+        csv_path.write_text("3,-3,-3\n3,3,3,3\n3,-3,3\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="ragged|shape|row"):
+            ImplicationOracle(csv_path)
+
+    def test_out_of_range_value_raises(self, tmp_path: Path):
+        """Values outside the documented {-4,-3,3,4} set must be rejected."""
+        csv_path = tmp_path / "bad_values.csv"
+        matrix = [
+            [3, 0, 3],
+            [3, 3, 3],
+            [3, -3, 3],
+        ]
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            for row in matrix:
+                writer.writerow(row)
+        with pytest.raises(ValueError, match="value|encoding"):
+            ImplicationOracle(csv_path)
+
+    def test_missing_file_raises_clear_error(self, tmp_path: Path):
+        """A missing CSV must raise FileNotFoundError with remediation hint."""
+        with pytest.raises(FileNotFoundError, match="download|make"):
+            ImplicationOracle(tmp_path / "nope.csv")

@@ -73,17 +73,17 @@ class TestMagma:
     @pytest.fixture
     def xor_magma(self):
         """Z/2Z under XOR: associative, commutative, has identity 0."""
-        return Magma(size=2, elements=[0, 1], operation=[[0, 1], [1, 0]])
+        return Magma(size=2, operation=[[0, 1], [1, 0]])
 
     @pytest.fixture
     def and_magma(self):
         """Z/2Z under AND: associative, commutative, has identity 1."""
-        return Magma(size=2, elements=[0, 1], operation=[[0, 0], [0, 1]])
+        return Magma(size=2, operation=[[0, 0], [0, 1]])
 
     @pytest.fixture
     def non_assoc_magma(self):
         """A non-associative magma of size 3."""
-        return Magma(size=3, elements=[0, 1, 2], operation=[[0, 2, 1], [2, 1, 0], [1, 0, 2]])
+        return Magma(size=3, operation=[[0, 2, 1], [2, 1, 0], [1, 0, 2]])
 
     def test_op(self, xor_magma):
         assert xor_magma.op(0, 0) == 0
@@ -106,7 +106,7 @@ class TestMagma:
         assert and_magma.is_idempotent() is True
         # XOR: 0*0=0 but 1*1=0 — not idempotent
         assert xor_magma.is_idempotent() is False
-        idem = Magma(size=1, elements=[0], operation=[[0]])
+        idem = Magma(size=1, operation=[[0]])
         assert idem.is_idempotent() is True
 
     def test_cayley_table_str(self, xor_magma):
@@ -137,6 +137,16 @@ class TestMagma:
         assert "<<0, 0>> |-> 0" in tla
         assert "<<0, 1>> |-> 1" in tla
 
+    def test_elements_is_computed_from_size(self):
+        """Regression #39: elements is derived from size, not a stored field."""
+        m = Magma(size=3, operation=[[0, 1, 2], [1, 2, 0], [2, 0, 1]])
+        assert tuple(m.elements) == (0, 1, 2)
+
+    def test_elements_is_immutable_tuple(self):
+        """Regression #39: elements returns a tuple so callers can't mutate it."""
+        m = Magma(size=2, operation=[[0, 1], [1, 0]])
+        assert isinstance(m.elements, tuple)
+
 
 class TestAlgebraicEquation:
     def test_creation(self):
@@ -146,7 +156,7 @@ class TestAlgebraicEquation:
 
 class TestCounterexample:
     def test_creation(self):
-        magma = Magma(size=2, elements=[0, 1], operation=[[0, 1], [1, 0]])
+        magma = Magma(size=2, operation=[[0, 1], [1, 0]])
         ce = Counterexample(
             premise_id=1, conclusion_id=2, magma=magma, red_flags={"non_commutative"}
         )
@@ -154,7 +164,7 @@ class TestCounterexample:
         assert "non_commutative" in ce.red_flags
 
     def test_to_dict(self):
-        magma = Magma(size=2, elements=[0, 1], operation=[[0, 0], [0, 1]])
+        magma = Magma(size=2, operation=[[0, 0], [0, 1]])
         ce = Counterexample(premise_id=1, conclusion_id=2, magma=magma)
         d = ce.to_dict()
         assert d["premise_id"] == 1

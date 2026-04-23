@@ -397,3 +397,68 @@ class TestEvaluateWithLLMCaching:
 
         assert result["token_usage"]["input_tokens"] == 150
         assert result["token_usage"]["output_tokens"] == 75
+
+
+class TestEvaluateWithLLMAPIErrors:
+    """Regression #43/I6: API errors must increment ``errors`` and not crash."""
+
+    def _make_problems(self):
+        return [
+            {
+                "id": 1,
+                "equation_1": "x * y = y * x",
+                "equation_2": "x * x = x",
+                "equation_1_id": 10,
+                "equation_2_id": 20,
+                "answer": True,
+                "difficulty": "normal",
+            },
+        ]
+
+    @patch("llm_evaluator.time.sleep")
+    def test_api_exception_counts_as_error_and_continues(
+        self, mock_sleep: MagicMock, tmp_path: Path
+    ):
+        """A raised Anthropic SDK error on one problem doesn't break the loop."""
+        import llm_evaluator
+
+        # Use a mock exception class whose __name__ matches an Anthropic SDK error
+        # so that the exception handler classifies it as a recoverable API error.
+        _MockAPIError = type("APIStatusError", (Exception,), {})
+
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = _MockAPIError("simulated upstream 503")
+
+        cache = EvalCache(tmp_path / "cache.json")
+        problems = self._make_problems()
+
+        result = llm_evaluator.evaluate_with_llm(
+            problems, "cheatsheet", cache=cache, client=mock_client
+        )
+
+        # One problem, one API call attempted, exception caught → error tally.
+        assert mock_client.messages.create.call_count == 1
+        assert result["errors"] >= 1
+        # On exception we skip classification, so tp+fp+tn+fn may be zero.
+        assert result["tp"] + result["fp"] + result["tn"] + result["fn"] == 0
+
+    @patch("llm_evaluator.time.sleep")
+    def test_api_exception_does_not_poison_cache(self, mock_sleep: MagicMock, tmp_path: Path):
+        """Failed API calls must not write a partial/garbage entry to the cache."""
+        import llm_evaluator
+
+        _MockAPIError = type("APIConnectionError", (Exception,), {})
+
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = _MockAPIError("boom")
+
+        cache_path = tmp_path / "cache.json"
+        cache = EvalCache(cache_path)
+
+        llm_evaluator.evaluate_with_llm(
+            self._make_problems(), "cheatsheet", cache=cache, client=mock_client
+        )
+        cache.save()
+
+        reloaded = EvalCache(cache_path)
+        assert reloaded._entries == {}, "A failed API call leaked an entry into the persisted cache"

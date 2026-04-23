@@ -6,7 +6,7 @@ in magmas. Built for the
 using Lean 4, TLA+, Rust, and Python.
 
 **98.01% accuracy** on the full 22M implication matrix
-(4,694 equations, 22,028,942 pairs) | 9,911 bytes of 10,240 limit
+(4,694 equations, 22,028,942 pairs) | 10,230 bytes of 10,240 limit
 
 ## Competition Context
 
@@ -30,17 +30,17 @@ counterexamples.
 |-------------------------|---------------|
 | Decision procedure accuracy | 98.01% (22M pairs) |
 | Competition problem accuracy | 94.25% (1,200 problems) |
-| Cheatsheet size         | 9,911 / 10,240 bytes |
+| Cheatsheet size         | 10,230 / 10,240 bytes |
 | Competition submission  | 9,851 bytes (`competition-v1.txt`) |
 | Equations covered       | 4,694         |
 | Decision procedure phases | 9 (P0-P6 + structural) |
-| Test suite              | 480+ tests (83% coverage) |
+| Test suite              | 580+ tests (100% equation_analyzer.py) |
 
 ## Quick Start
 
 ```bash
 make setup            # create venv, install Python deps
-make test             # run Python test suite (480+ tests)
+make test             # run Python test suite (580+ tests)
 make test-rust        # run Rust proptest suite
 make lean-check       # check Lean 4 proofs
 make harness          # 5-angle cheatsheet validation
@@ -74,7 +74,7 @@ The cheatsheet harness validates from five independent angles
 | Regression     | `make harness-regression`  | Cross-version quality comparison        |
 | Competition    | `make harness-competition` | Simulated evaluation format             |
 
-Current cheatsheet: `cheatsheet/final.txt` (9,911 bytes of 10,240 limit).
+Current cheatsheet: `cheatsheet/final.txt` (10,230 bytes of 10,240 limit).
 Competition submission: `cheatsheet/competition.txt` → `competition-v1.txt` (9,851 bytes).
 
 ## Decision Procedure
@@ -114,7 +114,7 @@ math-cheatsheet/
 ├── rust/                 # Rust PyO3 extension (magma_core)
 ├── lean/                 # Lean 4 formal proofs
 ├── tla/                  # TLA+ specs and Python bridge
-├── tests/                # pytest suite (480+ tests)
+├── tests/                # pytest suite (580+ tests)
 ├── cheatsheet/           # Cheatsheet versions (v1 → final, competition)
 ├── scripts/              # CLI utilities, TLA+ automation, Lean scaffolding
 ├── docs/                 # Specification, plans, analysis, bibliography

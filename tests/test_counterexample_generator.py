@@ -10,12 +10,78 @@ Tests the automated counterexample generation for FALSE equational implications:
 import pytest
 
 from src.counterexample_generator import (
-    BatchCounterexampleSearch,
     CounterexampleFinder,
     MagmaGenerator,
-    OptimalMagmaDiscovery,
 )
-from src.equation_analyzer import parse_equation
+from src.equation_analyzer import CounterexampleMagma, Equation, parse_equation
+
+
+class BatchCounterexampleSearch:
+    """Search counterexamples for multiple equation pairs with caching (test helper)."""
+
+    def search_batch(
+        self,
+        pairs: list[tuple[Equation, Equation]],
+        max_size: int = 2,
+    ) -> dict[int, CounterexampleMagma]:
+        results: dict[int, CounterexampleMagma] = {}
+        for size in range(2, max_size + 1):
+            tables = MagmaGenerator.generate_all(size)
+            sat_cache: dict[int, set[int]] = {}
+            unsolved = [i for i in range(len(pairs)) if i not in results]
+            if not unsolved:
+                break
+            unique_eqs: dict[int, Equation] = {}
+            for idx in unsolved:
+                h, t = pairs[idx]
+                unique_eqs[id(h)] = h
+                unique_eqs[id(t)] = t
+            for eq_id, eq in unique_eqs.items():
+                if eq_id not in sat_cache:
+                    sat_cache[eq_id] = {
+                        ti for ti, table in enumerate(tables) if eq.holds_in(table, size)
+                    }
+            for idx in unsolved:
+                h, t = pairs[idx]
+                witnesses = sat_cache[id(h)] - sat_cache[id(t)]
+                if witnesses:
+                    ti = min(witnesses)
+                    results[idx] = CounterexampleMagma(
+                        name=f"size-{size} magma #{ti}", size=size, table=tables[ti]
+                    )
+        return results
+
+
+class OptimalMagmaDiscovery:
+    """Find magmas that witness the most FALSE implication pairs (test helper)."""
+
+    def find_optimal_magmas(
+        self,
+        equations: list[Equation],
+        false_pairs: list[tuple[int, int]],
+        n_magmas: int = 10,
+        size: int = 2,
+    ) -> list[tuple[list[list[int]], int]]:
+        tables = MagmaGenerator.generate_all(size)
+        needed = {idx for pair in false_pairs for idx in pair}
+        eq_sat = {
+            idx: {ti for ti, table in enumerate(tables) if equations[idx].holds_in(table, size)}
+            for idx in needed
+        }
+        scored = [
+            (
+                table,
+                sum(
+                    1
+                    for h, t in false_pairs
+                    if ti in eq_sat.get(h, set()) and ti not in eq_sat.get(t, set())
+                ),
+            )
+            for ti, table in enumerate(tables)
+        ]
+        scored = [(table, count) for table, count in scored if count > 0]
+        scored.sort(key=lambda x: x[1], reverse=True)
+        return scored[:n_magmas]
 
 
 class TestMagmaGenerator:

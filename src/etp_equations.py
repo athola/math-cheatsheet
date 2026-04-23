@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from equation_parser_utils import tokenize_equation as _tokenize
+
 StructuralClass = Literal["tautology", "collapse", "trivial_lhs", "trivial_rhs", "balanced"]
 
 
@@ -105,40 +107,12 @@ class Equation:
         self.is_tautology = self.lhs == self.rhs
 
 
-def _tokenize(s: str) -> list[str]:
-    """Tokenize an equation string with ◇ operator."""
-    tokens = []
-    i = 0
-    while i < len(s):
-        c = s[i]
-        if c.isspace():
-            i += 1
-        elif c in "()=":
-            tokens.append(c)
-            i += 1
-        elif c == "◇" or c == "⋄":
-            tokens.append("◇")
-            i += 1
-        elif c == "*":
-            tokens.append("◇")
-            i += 1
-        elif c.isalpha():
-            name = ""
-            while i < len(s) and s[i].isalpha():
-                name += s[i]
-                i += 1
-            tokens.append(name)
-        else:
-            i += 1
-    return tokens
-
-
 def _parse_expr(tokens: list[str], pos: int) -> tuple[Term, int]:
     """Parse: primary (◇ primary)* with left-to-right associativity."""
     if pos >= len(tokens):
         raise ValueError("Unexpected end of expression")
     left, pos = _parse_primary(tokens, pos)
-    while pos < len(tokens) and tokens[pos] == "◇":
+    while pos < len(tokens) and tokens[pos] == "*":
         right, pos = _parse_primary(tokens, pos + 1)
         left = op(left, right)
     return left, pos

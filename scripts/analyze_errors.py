@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Accuracy error analyzer for the decision procedure.
 
 Analyzes WHERE the decision procedure fails across the implication matrix.
@@ -5,7 +6,8 @@ Groups misclassifications by structural features to identify patterns
 and suggest which phases to improve.
 
 Usage:
-    python src/error_analyzer.py [--output PATH] [--sample N]
+    python scripts/analyze_errors.py [--output PATH] [--sample N]
+    python scripts/analyze_errors.py --sample 10000 --output reports/errors.json
 """
 
 from __future__ import annotations
@@ -13,41 +15,53 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import sys
 import time
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Literal
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from decision_procedure import DecisionProcedure, PredictionResult
 from etp_equations import ETPEquations
 from implication_oracle import ImplicationOracle
 
 
-@dataclass
+@dataclass(frozen=True)
 class ErrorRecord:
-    """A single misclassification."""
+    """A single misclassification.
+
+    Frozen so an error list is structurally immutable once collected.
+    ``error_type`` is Literal["FP", "FN"] to make the invariant explicit.
+    """
 
     h_id: int
     t_id: int
     predicted: bool
     actual: bool
     phase: str
-    error_type: str  # "FP" or "FN"
+    error_type: Literal["FP", "FN"]
     h_depth: int
     t_depth: int
     h_vars: int
     t_vars: int
     new_vars_in_target: bool
-    h_is_collapse: bool
-    t_is_collapse: bool
 
     def to_dict(self) -> dict:
         return asdict(self)
 
 
-@dataclass
+@dataclass(frozen=True)
 class ErrorReport:
-    """Full error analysis report."""
+    """Full error analysis report.
+
+    Frozen so downstream consumers can't accidentally mutate the aggregated
+    buckets. Internal dict/list fields remain mutable by Python semantics.
+    """
 
     total_pairs: int
     total_errors: int
@@ -102,11 +116,39 @@ _PHASE_SUGGESTIONS: dict[str, str] = {
         "Phase 5 errors: substitution detection may miss multi-step"
         " or non-trivial specializations. Consider deeper unification."
     ),
+    "P5a-equiv-class": (
+        "Phase 5a errors: equivalence class lookup disagreed with ground truth."
+        " The row-profile hash may be merging equations that actually differ"
+        " on conjectured cells; re-check oracle value range."
+    ),
+    "P5b-structural": (
+        "Phase 5b errors: structural TRUE via equation_analyzer overshot."
+        " The delegated phase (shown in parens) flagged an implication that"
+        " ground truth rejects; tighten that analyzer phase."
+    ),
+    "P5c-structural": (
+        "Phase 5c errors: structural FALSE via equation_analyzer missed a TRUE."
+        " The delegated counterexample/heuristic phase rejected an implication"
+        " the matrix confirms; widen the analyzer's acceptance criteria."
+    ),
     "P6-default": (
         "Phase 6 errors: the default FALSE catchall misses true implications."
         " This is the main area for new rules."
     ),
 }
+
+
+def _suggestion_for_phase(phase: str) -> str | None:
+    """Look up a phase suggestion, tolerating dynamic parenthesised suffixes.
+
+    Phases like ``P5b-structural(Phase 4b)`` embed the delegated analyzer phase
+    in parentheses. The suggestion table is keyed on the bare prefix so those
+    phases still resolve to a hint.
+    """
+    if phase in _PHASE_SUGGESTIONS:
+        return _PHASE_SUGGESTIONS[phase]
+    bare = phase.split("(", 1)[0]
+    return _PHASE_SUGGESTIONS.get(bare)
 
 
 class ErrorAnalyzer:
@@ -127,18 +169,11 @@ class ErrorAnalyzer:
         errors: list[ErrorRecord] = []
         collapse_ids = self.proc.collapse_ids
 
-        if sample is not None:
-            pairs = self._random_pairs(sample)
-        else:
-            pairs = self._all_pairs()
+        pairs = self._random_pairs(sample) if sample is not None else self._all_pairs()
 
         for h_idx, t_idx, h_id, t_id in pairs:
-            actual_val = int(self.oracle._matrix[h_idx, t_idx])
-            if actual_val in (3, 4):
-                actual = True
-            elif actual_val in (-3, -4):
-                actual = False
-            else:
+            actual = self.oracle.decode_truth(int(self.oracle._matrix[h_idx, t_idx]))
+            if actual is None:
                 continue
 
             result: PredictionResult = self.proc.predict(h_id, t_id)
@@ -146,13 +181,9 @@ class ErrorAnalyzer:
             if result.prediction == actual:
                 continue
 
-            error_type = "FP" if result.prediction and not actual else "FN"
+            error_type: Literal["FP", "FN"] = "FP" if result.prediction and not actual else "FN"
 
-            h_depth = 0
-            t_depth = 0
-            h_vars = 1
-            t_vars = 1
-            new_vars = False
+            h_depth, t_depth, h_vars, t_vars, new_vars = 0, 0, 1, 1, False
 
             if h_id in self.equations:
                 h_eq = self.equations[h_id]
@@ -178,8 +209,6 @@ class ErrorAnalyzer:
                     h_vars=h_vars,
                     t_vars=t_vars,
                     new_vars_in_target=new_vars,
-                    h_is_collapse=h_id in collapse_ids,
-                    t_is_collapse=t_id in collapse_ids,
                 )
             )
 
@@ -196,8 +225,7 @@ class ErrorAnalyzer:
         n_rows = len(self.oracle._eq_ids)
         n_cols = len(self.oracle._col_eq_ids)
         seen: set[tuple[int, int]] = set()
-        max_possible = n_rows * n_cols
-        n = min(n, max_possible)
+        n = min(n, n_rows * n_cols)
 
         while len(seen) < n:
             i = random.randint(0, n_rows - 1)
@@ -206,20 +234,12 @@ class ErrorAnalyzer:
                 seen.add((i, j))
                 yield i, j, self.oracle._eq_ids[i], self.oracle._col_eq_ids[j]
 
-    def group_errors(
-        self,
-        errors: list[ErrorRecord],
-        key: str,
-    ) -> dict[str, list[ErrorRecord]]:
+    def group_errors(self, errors: list[ErrorRecord], key: str) -> dict[str, list[ErrorRecord]]:
         """Group errors by an attribute, sorted by count descending."""
         groups: dict[str, list[ErrorRecord]] = defaultdict(list)
         for err in errors:
-            val = getattr(err, key)
-            groups[str(val)].append(err)
-
-        # Sort by count descending
-        sorted_groups = dict(sorted(groups.items(), key=lambda kv: len(kv[1]), reverse=True))
-        return sorted_groups
+            groups[str(getattr(err, key))].append(err)
+        return dict(sorted(groups.items(), key=lambda kv: len(kv[1]), reverse=True))
 
     def top_patterns(self, errors: list[ErrorRecord], n: int = 10) -> list[dict]:
         """Identify top-n feature combinations with highest error count.
@@ -228,20 +248,11 @@ class ErrorAnalyzer:
         """
         buckets: dict[tuple, list[ErrorRecord]] = defaultdict(list)
         for err in errors:
-            bucket_key = (
-                err.error_type,
-                err.phase,
-                err.h_depth,
-                err.t_depth,
-                err.new_vars_in_target,
-            )
-            buckets[bucket_key].append(err)
+            buckets[(err.error_type, err.phase, err.h_depth, err.t_depth, err.new_vars_in_target)].append(err)
 
         total = len(errors) if errors else 1
-        sorted_buckets = sorted(buckets.items(), key=lambda kv: len(kv[1]), reverse=True)
-
         patterns = []
-        for key, errs in sorted_buckets[:n]:
+        for key, errs in sorted(buckets.items(), key=lambda kv: len(kv[1]), reverse=True)[:n]:
             error_type, phase, h_depth, t_depth, new_vars = key
             example = errs[0]
             patterns.append(
@@ -256,8 +267,9 @@ class ErrorAnalyzer:
                     "count": len(errs),
                     "pct_of_total": round(len(errs) / total * 100, 2),
                     "example": {"h_id": example.h_id, "t_id": example.t_id},
-                    "suggestion": _PHASE_SUGGESTIONS.get(
-                        phase, f"Investigate phase {phase} for improvement opportunities."
+                    "suggestion": (
+                        _suggestion_for_phase(phase)
+                        or f"Investigate phase {phase} for improvement opportunities."
                     ),
                 }
             )
@@ -273,31 +285,22 @@ class ErrorAnalyzer:
         fp_count = sum(1 for e in errors if e.error_type == "FP")
         fn_count = sum(1 for e in errors if e.error_type == "FN")
 
-        # Count total evaluated pairs
-        if sample is not None:
-            total_pairs = sample
-        else:
-            n_rows = len(self.oracle._eq_ids)
-            n_cols = len(self.oracle._col_eq_ids)
-            total_pairs = n_rows * n_cols
+        total_pairs = (
+            sample
+            if sample is not None
+            else len(self.oracle._eq_ids) * len(self.oracle._col_eq_ids)
+        )
 
-        # Group by phase
         by_phase_grouped = self.group_errors(errors, "phase")
         by_phase = {k: len(v) for k, v in by_phase_grouped.items()}
 
-        # Group by error type
-        by_error_type = {"FP": fp_count, "FN": fn_count}
-
-        # Top patterns
         patterns = self.top_patterns(errors, n=10)
 
-        # Phase suggestions: only for phases with errors
-        suggestions = []
-        for phase in by_phase:
-            if phase in _PHASE_SUGGESTIONS:
-                suggestions.append(
-                    f"[{phase}] ({by_phase[phase]} errors): {_PHASE_SUGGESTIONS[phase]}"
-                )
+        suggestions = [
+            f"[{phase}] ({by_phase[phase]} errors): {msg}"
+            for phase in by_phase
+            if (msg := _suggestion_for_phase(phase)) is not None
+        ]
 
         return ErrorReport(
             total_pairs=total_pairs,
@@ -305,7 +308,7 @@ class ErrorAnalyzer:
             fp_count=fp_count,
             fn_count=fn_count,
             by_phase=by_phase,
-            by_error_type=by_error_type,
+            by_error_type={"FP": fp_count, "FN": fn_count},
             top_patterns=patterns,
             phase_suggestions=suggestions,
             elapsed_seconds=round(elapsed, 2),
@@ -339,8 +342,7 @@ class ErrorAnalyzer:
             b = p["bucket"]
             print(f"\n  #{i}: {p['count']:,} errors ({p['pct_of_total']:.1f}% of total)")
             print(f"      Type: {b['error_type']}, Phase: {b['phase']}")
-            nv = b["new_vars_in_target"]
-            print(f"      h_depth={b['h_depth']}, t_depth={b['t_depth']}, new_vars={nv}")
+            print(f"      h_depth={b['h_depth']}, t_depth={b['t_depth']}, new_vars={b['new_vars_in_target']}")
             print(f"      Example: E{p['example']['h_id']} -> E{p['example']['t_id']}")
 
         print(f"\n{'─' * 70}")
@@ -352,13 +354,13 @@ class ErrorAnalyzer:
         print(f"\n{'=' * 70}")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Analyze decision procedure errors across the implication matrix",
     )
     parser.add_argument(
         "--output",
-        type=str,
+        type=Path,
         default=None,
         help="Path to save JSON report (default: stdout only)",
     )
@@ -368,11 +370,23 @@ def main():
         default=None,
         help="Evaluate on N random pairs instead of full 22M",
     )
+    parser.add_argument(
+        "--equations",
+        type=Path,
+        default=PROJECT_ROOT / "research" / "data" / "etp" / "equations.txt",
+        help="Path to equations.txt",
+    )
+    parser.add_argument(
+        "--oracle",
+        type=Path,
+        default=PROJECT_ROOT / "research" / "data" / "etp" / "implications.csv",
+        help="Path to implications.csv",
+    )
     args = parser.parse_args()
 
     print("Loading data...")
-    eqs = ETPEquations("research/data/etp/equations.txt")
-    oracle = ImplicationOracle("research/data/etp/implications.csv")
+    eqs = ETPEquations(args.equations)
+    oracle = ImplicationOracle(args.oracle)
     proc = DecisionProcedure(eqs, oracle)
 
     print(f"Equations: {len(eqs)}")
@@ -391,10 +405,9 @@ def main():
     analyzer.print_report(report)
 
     if args.output:
-        output_path = Path(args.output)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(report.to_json(), encoding="utf-8")
-        print(f"\nJSON report saved to: {output_path}")
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(report.to_json(), encoding="utf-8")
+        print(f"\nJSON report saved to: {args.output}")
 
 
 if __name__ == "__main__":

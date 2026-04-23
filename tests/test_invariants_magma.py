@@ -33,8 +33,8 @@ class TestClosureInvariant:
 
     @given(m=magmas())
     def test_elements_match_size(self, m: Magma):
-        """The elements list is exactly [0, 1, ..., size-1]."""
-        assert m.elements == list(range(m.size))
+        """The elements tuple is exactly (0, 1, ..., size-1)."""
+        assert m.elements == tuple(range(m.size))
         assert len(m.elements) == m.size
 
     @given(m=magmas())
@@ -256,7 +256,7 @@ class TestTrivialMagma:
 
     def test_trivial_magma_has_all_properties(self):
         """The single-element magma satisfies all basic properties."""
-        m = Magma(size=1, elements=[0], operation=[[0]])
+        m = Magma(size=1, operation=[[0]])
         assert m.is_associative()
         assert m.is_commutative()
         assert m.is_idempotent()
@@ -281,7 +281,7 @@ class TestExhaustiveSize2:
             table[0][1] = (i // 2) % 2
             table[1][0] = (i // 4) % 2
             table[1][1] = (i // 8) % 2
-            all_magmas.append(Magma(size=2, elements=[0, 1], operation=table))
+            all_magmas.append(Magma(size=2, operation=table))
 
         assoc_count = sum(1 for m in all_magmas if m.is_associative())
         comm_count = sum(1 for m in all_magmas if m.is_commutative())
@@ -302,7 +302,7 @@ class TestExhaustiveSize2:
             table[0][1] = (i // 2) % 2
             table[1][0] = (i // 4) % 2
             table[1][1] = (i // 8) % 2
-            all_magmas.append(Magma(size=2, elements=[0, 1], operation=table))
+            all_magmas.append(Magma(size=2, operation=table))
 
         combos = set()
         for m in all_magmas:

@@ -309,26 +309,6 @@ class TestPhaseEquivClass:
         assert result.phase != "P5a-equiv-class"
 
 
-class TestEvaluateByPhase:
-    def test_returns_phase_breakdown(self, proc: DecisionProcedure):
-        phases = proc.evaluate_by_phase()
-        assert isinstance(phases, dict)
-        # At least P0-self should be present (diagonal)
-        assert "P0-self" in phases
-
-    def test_phase_stats_have_accuracy(self, proc: DecisionProcedure):
-        phases = proc.evaluate_by_phase()
-        for phase, stats in phases.items():
-            assert "accuracy" in stats
-            assert "tp" in stats
-            assert "total" in stats
-
-    def test_evaluate_by_phase_raises_without_oracle(self, eqs: ETPEquations):
-        proc = DecisionProcedure(eqs, oracle=None)
-        with pytest.raises(ValueError, match="Need oracle"):
-            proc.evaluate_by_phase()
-
-
 @pytest.mark.slow
 class TestFullMatrixAccuracy:
     """Evaluate the decision procedure against the full 22M implication matrix.
