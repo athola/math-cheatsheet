@@ -234,6 +234,11 @@ def analyze_implication(h: Equation, t: Equation) -> AnalysisResult:
                 magma,
             )
 
+    # Phase 6: Rewrite analysis — orient H as a rewrite rule and reduce T
+    rewrite_proof = _phase6_rewrite(h, t)
+    if rewrite_proof is not None:
+        return rewrite_proof
+
     # Phase 7: Structural heuristics
     if t.max_depth() > h.max_depth() + 1:
         return AnalysisResult(
@@ -302,6 +307,119 @@ def _check_simple_substitutions(h: Equation, t: Equation) -> AnalysisResult | No
                                 "Phase 3",
                                 f"T obtained from H by {merged}:={survivor} then {m2}:={s2}",
                             )
+    return None
+
+
+# --- Phase 6 helpers: rewrite analysis ---
+
+# Cap on rewrite steps per orientation per side of T.
+# Depth 8 is generous for single-rule systems (idempotence closes in 2 steps on
+# depth-3 terms; associativity normalisation is bounded by term size) and keeps
+# the worst case on a 10-token target well under a millisecond.
+_PHASE6_MAX_STEPS = 8
+
+
+def _match_pattern(pattern: Term, target: Term, bindings: dict[str, Term]) -> bool:
+    """First-order match: is ``target`` an instance of ``pattern``?
+
+    Extends ``bindings`` in place. Pattern variables may bind to arbitrary
+    target sub-terms; every occurrence of a pattern variable must bind to the
+    same sub-term (linear-match would miss rules like ``x*x → x``). Returns
+    True on success, leaving bindings populated; returns False on failure.
+    The bindings dict may be partially mutated on failure — callers should
+    discard it.
+    """
+    if pattern.node_type == NodeType.VAR:
+        existing = bindings.get(pattern.name)
+        if existing is None:
+            bindings[pattern.name] = target
+            return True
+        return existing == target
+    # pattern is an OP; target must also be an OP to match.
+    if target.node_type != NodeType.OP:
+        return False
+    p_l, p_r = pattern._lr()
+    t_l, t_r = target._lr()
+    return _match_pattern(p_l, t_l, bindings) and _match_pattern(p_r, t_r, bindings)
+
+
+def _rewrite_once(term: Term, rule_lhs: Term, rule_rhs: Term) -> Term | None:
+    """Apply rule ``rule_lhs → rule_rhs`` at the outermost leftmost position.
+
+    Returns the rewritten term, or None if no position matches. Tries the
+    whole term first, then the left child, then the right child. This is the
+    standard leftmost-outermost (normal-order) rewrite strategy — it avoids
+    wasted work on sub-terms that will be rewritten at the parent.
+    """
+    bindings: dict[str, Term] = {}
+    if _match_pattern(rule_lhs, term, bindings):
+        return rule_rhs.substitute(bindings)
+    if term.node_type == NodeType.OP and term.left is not None and term.right is not None:
+        left_new = _rewrite_once(term.left, rule_lhs, rule_rhs)
+        if left_new is not None:
+            return Term(NodeType.OP, left=left_new, right=term.right)
+        right_new = _rewrite_once(term.right, rule_lhs, rule_rhs)
+        if right_new is not None:
+            return Term(NodeType.OP, left=term.left, right=right_new)
+    return None
+
+
+def _rewrite_to_normal_form(
+    term: Term, rule_lhs: Term, rule_rhs: Term, max_steps: int = _PHASE6_MAX_STEPS
+) -> Term:
+    """Apply the rule until nothing matches, a cycle is detected, or the budget is spent.
+
+    Returns the final term. Termination is guaranteed by ``max_steps`` even
+    for non-terminating (size-increasing) orientations.
+    """
+    seen: set[Term] = set()
+    current = term
+    for _ in range(max_steps):
+        if current in seen:
+            break  # cycle — rewriting would go on forever
+        seen.add(current)
+        next_term = _rewrite_once(current, rule_lhs, rule_rhs)
+        if next_term is None:
+            break  # normal form reached
+        current = next_term
+    return current
+
+
+def _rule_is_sound(rule_lhs: Term, rule_rhs: Term) -> bool:
+    """A rewrite rule is sound iff every variable on the RHS appears on the LHS.
+
+    Otherwise the rule would introduce fresh (unbound) variables — applying
+    ``x → y*x`` to a concrete term would invent a ``y`` that isn't in the
+    original universal quantification. We silently skip unsound orientations
+    rather than signal an error, because many equations have at least one
+    orientation that is sound.
+    """
+    return rule_rhs.variables() <= rule_lhs.variables()
+
+
+def _phase6_rewrite(h: Equation, t: Equation) -> AnalysisResult | None:
+    """Use H as a bidirectional rewrite rule to collapse T to a tautology.
+
+    Tries both orientations of H (LHS→RHS and RHS→LHS). For each sound
+    orientation, reduces both sides of T to a normal form; if the two sides
+    reach the same term, the target holds as an instance of H-derivation.
+    Returns the phase result on success, or None if neither orientation
+    closes T.
+    """
+    for lhs, rhs, label in (
+        (h.lhs, h.rhs, "LHS→RHS"),
+        (h.rhs, h.lhs, "RHS→LHS"),
+    ):
+        if not _rule_is_sound(lhs, rhs):
+            continue
+        reduced_t_lhs = _rewrite_to_normal_form(t.lhs, lhs, rhs)
+        reduced_t_rhs = _rewrite_to_normal_form(t.rhs, lhs, rhs)
+        if reduced_t_lhs == reduced_t_rhs:
+            return AnalysisResult(
+                ImplicationVerdict.TRUE,
+                "Phase 6",
+                f"T closes under H-rewrite ({label}): both sides normalise to {reduced_t_lhs}",
+            )
     return None
 
 
