@@ -30,14 +30,43 @@ from pathlib import Path
 _DECLARATION_RE = re.compile(
     r"""
     ^                    # start of line
-    (?P<kind>theorem|lemma|def|example)
-    \s+
-    (?P<name>\S+)?       # name (optional for `example`)
+    (?:@\[[^\]]*\]\s*)*  # optional @[attr] prefix(es) — e.g. @[simp]
+    (?:                  # optional visibility / modifier prefix
+        (?:private|protected|noncomputable)
+        \s+
+    )?
+    (?P<kind>theorem|lemma|def|example|instance|structure)
+    \b                   # keyword boundary
+    \s*
+    (?P<name>[^\s:({\[]+)?  # name (optional for `example`/`instance`)
     """,
     re.VERBOSE | re.MULTILINE,
 )
 
 _PLACEHOLDER_RE = re.compile(r"\b(?:sorry|admit)\b")
+
+# NEW-C3: strip Lean comments and string literals before scanning for
+# placeholder keywords. Matches ``-- to end of line``, ``/- ... -/`` block
+# comments (single-level — sufficient for typical project Lean), and
+# double-quoted string literals.
+_COMMENT_OR_STRING_RE = re.compile(
+    r"""
+      --[^\n]*           # line comment to end of line
+    | /-.*?-/            # block comment, lazy match (single level)
+    | "(?:\\.|[^"\\])*"  # string literal with escapes
+    """,
+    re.VERBOSE | re.DOTALL,
+)
+
+
+def _strip_comments_and_strings(text: str) -> str:
+    """Replace comments and string literals with whitespace of equal length.
+
+    Preserves line numbers and column positions so that downstream regexes
+    (declaration matching, placeholder scan) operate on the same text
+    layout as the source.
+    """
+    return _COMMENT_OR_STRING_RE.sub(lambda m: " " * len(m.group(0)), text)
 
 
 @dataclass(frozen=True)
@@ -93,13 +122,20 @@ def scan_lean_declarations(
 
 
 def _extract_declarations(path: Path, text: str) -> list[LeanDeclaration]:
-    """Pull declarations out of one file's text."""
+    """Pull declarations out of one file's text.
+
+    Comments and string literals are blanked out before the placeholder
+    scan so ``-- TODO: remove sorry`` does not mark a finished proof
+    unfinished (NEW-C3). Declaration matching uses the original text so
+    column positions in error messages stay accurate.
+    """
     matches = list(_DECLARATION_RE.finditer(text))
+    stripped = _strip_comments_and_strings(text)
     results: list[LeanDeclaration] = []
     for i, match in enumerate(matches):
         start = match.start()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
-        body = text[start:end]
+        body = stripped[start:end]
         unfinished = bool(_PLACEHOLDER_RE.search(body))
         kind = match.group("kind")
         name = match.group("name") or "<anonymous>"

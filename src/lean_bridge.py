@@ -7,14 +7,16 @@ type-check. The initial scope covers FALSE implications witnessed by a
 finite 2-element magma; larger carriers and TRUE-side proof skeletons
 can follow the same pattern.
 
-The emitted source is intentionally minimal:
+The emitted source is intentionally minimal scaffolding:
 
-- One ``example`` block per counterexample.
+- One ``def`` for the binary operation, defined by ``match`` on the pair
+  of indices so the Cayley table is visible in the source.
 - Carrier is ``Fin n`` (standard Mathlib choice for small finite types).
-- Binary operation is defined by ``match`` on the pair of indices, so
-  the Cayley table is visible in the source without needing a helper.
-- Proof obligation is left as ``decide`` / ``native_decide`` — the
-  type-checker settles it once the table is concrete.
+- One placeholder ``example : True := by trivial`` so the snippet
+  type-checks. Note: this body is a tautology — it does **not** witness
+  the implication. Upgrading to ``theorem h_not_implies_t : ¬ ... := by
+  decide`` once the equations are emitted as Lean propositions is
+  tracked as backlog issue O1 from PR #57 review.
 
 Callers intending to verify with ``lean --stdin`` should concatenate the
 snippet after whatever imports they need (typically just
@@ -22,6 +24,25 @@ snippet after whatever imports they need (typically just
 """
 
 from __future__ import annotations
+
+import re
+
+# Allowed Lean identifier body chars after the ``op_`` prefix. We collapse any
+# run of disallowed chars into a single underscore and trim leading/trailing
+# underscores so names like ``"Z3 (Z/3Z addition)"`` produce ``op_Z3_Z_3Z_addition``
+# rather than ``op_Z3_(Z_3Z_addition)`` (NEW-I6 / N5).
+_OP_NAME_INVALID_RE = re.compile(r"[^A-Za-z0-9_]+")
+
+
+def _sanitize_op_name(magma_name: str) -> str:
+    """Convert a magma label into a valid Lean identifier body.
+
+    Collapses any run of non-identifier characters to ``_`` and strips
+    leading/trailing underscores. Caller is responsible for ensuring the
+    input has at least one identifier character (see input validation in
+    ``counterexample_to_lean``).
+    """
+    return _OP_NAME_INVALID_RE.sub("_", magma_name).strip("_")
 
 
 def counterexample_to_lean(
@@ -47,18 +68,25 @@ def counterexample_to_lean(
 
     Returns:
         Lean 4 source as a single string. Contains one ``def`` for the
-        binary operation and one ``example`` block annotated with both
-        equation texts. The example body is left as ``by decide`` — when
-        the table is concrete and the equations compile, Lean can settle
-        the obligation automatically.
+        binary operation and one ``example : True := by trivial`` block
+        annotated with both equation texts. The placeholder body type-checks
+        but does **not** discharge the implication — it is scaffolding so
+        the file compiles. Upgrading to a real ``decide``-discharged
+        theorem is backlog issue O1.
 
     Raises:
-        ValueError: if ``magma_table`` isn't a size×size square matrix
-            with entries in ``[0, magma_size)``.
+        ValueError: if ``magma_name`` is empty / whitespace-only, if
+            ``magma_size`` is not positive, or if ``magma_table`` isn't a
+            size×size square matrix with entries in ``[0, magma_size)``.
     """
+    if magma_size <= 0:
+        raise ValueError(f"magma_size must be positive, got {magma_size}")
+    sanitized = _sanitize_op_name(magma_name)
+    if not sanitized:
+        raise ValueError(f"magma_name {magma_name!r} reduces to an empty Lean identifier")
     _validate_table(magma_size, magma_table)
 
-    op_name = f"op_{magma_name.replace(' ', '_').replace('/', '_')}"
+    op_name = f"op_{sanitized}"
     # Each match arm writes one (i, j) → table[i][j] case. For a 2-element
     # carrier this is four arms; scales quadratically in size, which is fine
     # for the size-2 scope of this issue.

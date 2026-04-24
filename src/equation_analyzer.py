@@ -7,7 +7,8 @@ Implements the v3 cheatsheet decision procedure as computable functions:
 - Phase 4: Counterexample testing (canonical + exhaustive magmas)
 - Phase 4b: Exhaustive 2-element search
 - Phase 5: Determined operation detection (absorption, constant law)
-- Phase 7: Structural heuristics (depth comparison)
+- Phase 6: Rewrite analysis (orient H as a rule, reduce T to a normal form)
+- Phase 7: Structural heuristics (side-swap, depth, op-count)
 - Phase 8: Default (inconclusive → FALSE)
 
 Based on techniques from the Equational Theories Project (Tao et al., 2024-2025)
@@ -284,7 +285,13 @@ def analyze_implication(h: Equation, t: Equation) -> AnalysisResult:
     # Substitution of a variable with a k-op subterm can at most double op
     # count per step; with one step allowed, ``T.ops > 2*H.ops + 2`` exceeds
     # what any single substitution can produce, so H cannot imply T.
-    if t.total_ops() > 2 * h.total_ops() + 2:
+    #
+    # Soundness precondition (NEW-C1): the bound assumes each variable in H
+    # appears once. When a variable repeats k times, substituting it with a
+    # term of size m amplifies T.ops by ``k*m`` rather than ``m``, breaking
+    # the bound. Gate the rule on globally-unique variable occurrences so the
+    # broken case (e.g. H = ``x*x = x``) cannot reach this branch.
+    if _h_vars_unique(h) and t.total_ops() > 2 * h.total_ops() + 2:
         return AnalysisResult(
             ImplicationVerdict.FALSE,
             "Phase 7",
@@ -476,6 +483,18 @@ def _iter_vars(term: Term) -> Iterator[str]:
         lt, rt = term._lr()
         yield from _iter_vars(lt)
         yield from _iter_vars(rt)
+
+
+def _h_vars_unique(h: Equation) -> bool:
+    """True iff every variable in ``h`` appears exactly once across both sides.
+
+    Phase 7c's ``2*ops + 2`` bound is sound only under this condition. When a
+    variable repeats ``k`` times in H, substituting it with a term of size
+    ``m`` adds ``k*m`` ops rather than ``m`` ops, and the bound can wrongly
+    rule out valid implications (NEW-C1 reproducer: H = ``x*x = x``).
+    """
+    occurrences = list(_iter_vars(h.lhs)) + list(_iter_vars(h.rhs))
+    return len(occurrences) == len(set(occurrences))
 
 
 def _detect_determined_operation(eq: Equation) -> tuple[list[list[int]], str] | None:

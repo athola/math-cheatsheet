@@ -24,6 +24,7 @@ import pytest
 
 from equation_analyzer import (
     ImplicationVerdict,
+    _h_vars_unique,
     analyze_implication,
     parse_equation,
 )
@@ -47,19 +48,70 @@ class TestPhase7OpCountHeuristic:
         assert result.verdict == ImplicationVerdict.FALSE
 
     @pytest.mark.unit
-    def test_small_h_cannot_produce_large_t(self):
-        """H: x = y (collapse, 0 ops). T: x*y*x*y = x (3 ops).
+    def test_idempotence_normalises_via_phase6_not_phase7c(self):
+        """H: x*x=x (var-repeating, total_ops=1). T: x*x*x*x*x = x*x*x (total_ops=6).
 
-        Phase 1c already catches collapse H → TRUE, but this asserts the
-        op-count rule would fire on non-collapse H's with a similar gap.
+        T.ops (6) > 2*H.ops + 2 (4), so the broken Phase 7c bound would have
+        marked this FALSE. After the soundness fix (NEW-C1), Phase 7c is gated
+        on H having unique variable occurrences and won't fire here. Phase 6
+        rewrites both sides via ``x*x → x`` to ``x``, returning TRUE.
+
+        Pins both verdict AND phase so a regression that bypasses Phase 6 or
+        re-enables Phase 7c on var-repeating H is caught (NEW-C2 / NEW-N3).
         """
-        # Non-collapse H:
-        h = parse_equation("x * x = x")  # idempotence, 2 ops total
-        t = parse_equation("x * x * x * x * x = x * x * x")  # 4+2 = 6 ops
+        h = parse_equation("x * x = x")
+        t = parse_equation("x * x * x * x * x = x * x * x")
         result = analyze_implication(h, t)
-        # Idempotence plus rewrite (Phase 6) handles this: it collapses to x=x.
-        # If Phase 6 doesn't fire for any reason, op-count would still say FALSE.
-        assert result.verdict in {ImplicationVerdict.TRUE, ImplicationVerdict.FALSE}
+        assert result.verdict == ImplicationVerdict.TRUE
+        assert result.phase == "Phase 6"
+
+
+class TestPhase7cSoundnessGuard:
+    """NEW-C1: Phase 7c's ``T.ops > 2*H.ops + 2`` bound is unsound when H has
+    repeated variables. Substituting ``x → s`` with ``x`` appearing ``k`` times
+    in H grows ops by ``k * size(s)``, which can exceed the bound for valid
+    implications.
+
+    Fix: gate Phase 7c on H having unique variable occurrences globally
+    (``_h_vars_unique``). These tests pin the precondition behaviour so future
+    edits to the rule cannot reintroduce the unsound branch by accident.
+    """
+
+    @pytest.mark.unit
+    def test_unique_vars_helper_accepts_distinct_variables(self):
+        """``x*y = z*w`` — every variable appears exactly once."""
+        assert _h_vars_unique(parse_equation("x * y = z * w")) is True
+
+    @pytest.mark.unit
+    def test_unique_vars_helper_accepts_collapse_law(self):
+        """``x = y`` — two distinct variables, one occurrence each."""
+        assert _h_vars_unique(parse_equation("x = y")) is True
+
+    @pytest.mark.unit
+    def test_unique_vars_helper_rejects_idempotence(self):
+        """``x*x = x`` — ``x`` appears three times. Phase 7c must not fire."""
+        assert _h_vars_unique(parse_equation("x * x = x")) is False
+
+    @pytest.mark.unit
+    def test_unique_vars_helper_rejects_commutativity(self):
+        """``x*y = y*x`` — ``x`` and ``y`` each appear twice. Repetition across
+        sides is enough to invalidate the bound."""
+        assert _h_vars_unique(parse_equation("x * y = y * x")) is False
+
+    @pytest.mark.unit
+    def test_phase7c_does_not_force_false_on_var_repeating_h(self):
+        """Direct integration check: with H = ``x*x = x`` (idempotence), no T
+        constructible from H's variables should receive a Phase 7c FALSE
+        verdict — the bound is unsound for this H.
+
+        The chosen T is genuinely TRUE under H (substituting nothing, but
+        idempotence collapses both sides). Phase 6 catches it at TRUE; the
+        critical assertion is the negative one — verdict is not FALSE via
+        Phase 7."""
+        h = parse_equation("x * x = x")
+        t = parse_equation("(x * x) * (x * x) = x * x")
+        result = analyze_implication(h, t)
+        assert not (result.verdict == ImplicationVerdict.FALSE and result.phase == "Phase 7")
 
 
 class TestPhase7SideSwapIdentity:

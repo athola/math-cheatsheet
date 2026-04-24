@@ -64,6 +64,117 @@ class TestLeanScanner:
         assert by_name["placeholder"].unfinished is True
         assert by_name["finished"].unfinished is False
 
+    @pytest.mark.unit
+    def test_does_not_flag_sorry_in_line_comment(self, tmp_path: Path):
+        """NEW-C3: ``-- sorry`` in a line comment must not mark a finished
+        proof as unfinished. The previous regex matched the bare keyword
+        anywhere in the declaration text, including inside comments."""
+        from lean_coverage import scan_lean_declarations
+
+        (tmp_path / "Draft.lean").write_text(
+            "theorem done : True := by trivial -- TODO: remove sorry\n",
+            encoding="utf-8",
+        )
+        decls = scan_lean_declarations(tmp_path)
+        assert decls[0].name == "done"
+        assert decls[0].unfinished is False
+
+    @pytest.mark.unit
+    def test_does_not_flag_admit_in_block_comment(self, tmp_path: Path):
+        """NEW-C3: ``/- admit -/`` block comments must not trigger the
+        unfinished flag. Lean block comments can nest, but for the dashboard
+        a single-level strip is sufficient (matches conventional usage)."""
+        from lean_coverage import scan_lean_declarations
+
+        (tmp_path / "Draft.lean").write_text(
+            "theorem also_done : True := by trivial /- once admitted; now proved -/\n",
+            encoding="utf-8",
+        )
+        decls = scan_lean_declarations(tmp_path)
+        assert decls[0].name == "also_done"
+        assert decls[0].unfinished is False
+
+    @pytest.mark.unit
+    def test_does_not_flag_sorry_in_string_literal(self, tmp_path: Path):
+        """NEW-C3: a string literal mentioning ``sorry`` must not count as
+        a placeholder. Lean strings use double quotes; conservative strip
+        before the placeholder scan."""
+        from lean_coverage import scan_lean_declarations
+
+        (tmp_path / "Draft.lean").write_text(
+            'theorem msg_done : True := by have _ := "say sorry"; trivial\n',
+            encoding="utf-8",
+        )
+        decls = scan_lean_declarations(tmp_path)
+        assert decls[0].name == "msg_done"
+        assert decls[0].unfinished is False
+
+
+class TestLeanScannerExtendedSyntax:
+    """NEW-C5: ``_DECLARATION_RE`` previously required the keyword at line
+    start, missing real-world Lean syntax: ``@[simp] theorem``, ``private``
+    /``protected``/``noncomputable`` modifiers, ``instance``, ``structure``."""
+
+    @pytest.mark.unit
+    def test_finds_attribute_prefixed_theorem(self, tmp_path: Path):
+        from lean_coverage import scan_lean_declarations
+
+        (tmp_path / "Attr.lean").write_text(
+            "@[simp] theorem simp_lemma : True := by trivial\n",
+            encoding="utf-8",
+        )
+        decls = scan_lean_declarations(tmp_path)
+        names = [d.name for d in decls]
+        assert "simp_lemma" in names
+
+    @pytest.mark.unit
+    def test_finds_private_theorem(self, tmp_path: Path):
+        from lean_coverage import scan_lean_declarations
+
+        (tmp_path / "Vis.lean").write_text(
+            "private theorem hidden_thm : True := by trivial\n",
+            encoding="utf-8",
+        )
+        decls = scan_lean_declarations(tmp_path)
+        names = [d.name for d in decls]
+        assert "hidden_thm" in names
+
+    @pytest.mark.unit
+    def test_finds_noncomputable_def(self, tmp_path: Path):
+        from lean_coverage import scan_lean_declarations
+
+        (tmp_path / "NC.lean").write_text(
+            "noncomputable def some_def : Nat := 0\n",
+            encoding="utf-8",
+        )
+        decls = scan_lean_declarations(tmp_path)
+        kinds = {(d.kind, d.name) for d in decls}
+        assert ("def", "some_def") in kinds
+
+    @pytest.mark.unit
+    def test_finds_instance_declaration(self, tmp_path: Path):
+        from lean_coverage import scan_lean_declarations
+
+        (tmp_path / "Inst.lean").write_text(
+            "instance my_inst : Inhabited Nat := ⟨0⟩\n",
+            encoding="utf-8",
+        )
+        decls = scan_lean_declarations(tmp_path)
+        kinds = {d.kind for d in decls}
+        assert "instance" in kinds
+
+    @pytest.mark.unit
+    def test_finds_structure_declaration(self, tmp_path: Path):
+        from lean_coverage import scan_lean_declarations
+
+        (tmp_path / "Struct.lean").write_text(
+            "structure MyPair where\n  fst : Nat\n  snd : Nat\n",
+            encoding="utf-8",
+        )
+        decls = scan_lean_declarations(tmp_path)
+        kinds = {d.kind for d in decls}
+        assert "structure" in kinds
+
 
 class TestCoverageReport:
     @pytest.mark.unit
