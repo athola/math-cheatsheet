@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1] - 2026-04-23
+
+### Added
+- Phase 6 rewrite analysis: orient H as a rewrite rule and reduce T (#28)
+- Phase 7 structural heuristics: side-swap identity, depth divergence,
+  operator-count bounds (#35)
+- Python → Lean 4 counterexample bridge: emit `example` blocks witnessing
+  FALSE implications via finite magmas (`src/lean_bridge.py`, #32)
+- Lean 4 proof coverage dashboard: scan `.lean` declarations and report
+  `sorry`/`admit` placeholder rate (`src/lean_coverage.py`, #25)
+- Canonical `Term` AST in `src/term.py` — single source of truth for the
+  parser that previously lived in `equation_analyzer.py` and
+  `etp_equations.py` (#27)
+- Phase-ordering invariant tests and coverage-fill tests for `term.py`
+
+### Changed
+- `equation_analyzer.py` and `etp_equations.py` now re-export
+  `Term`/`NodeType`/`var`/`op` from `src/term.py` rather than defining
+  their own (#27)
+
+### Performance
+- Phase 4b caches size-2 satisfaction per equation (#34), avoiding
+  repeated enumeration of the same magma set across equation pairs
+
 ## [0.2.0] - 2026-04-21
 
 ### Added

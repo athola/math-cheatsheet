@@ -199,6 +199,12 @@ Cheatsheet: "Red flag: Non-commutative operation ⇒ E₁ ⇒ commutativity FALS
 - `tla/Counterexamples/CounterexampleExplorer.tla` (236 lines)
 - `tla/Counterexamples/counterexample_db.py` (244 lines)
 
+### Python ↔ Lean Tooling (v0.2.1)
+- `src/lean_bridge.py` — emit a Lean 4 `example` block witnessing a
+  FALSE implication, given a finite counterexample magma (#32)
+- `src/lean_coverage.py` — scan `.lean` declarations for remaining
+  `sorry`/`admit` placeholders and report completion rate (#25)
+
 ### Cheatsheet Versions
 - `cheatsheet/v1.txt` (6680 bytes, 238 lines) - Initial version
 - `cheatsheet/v2.txt` (9570 bytes, 318 lines) - Improved version

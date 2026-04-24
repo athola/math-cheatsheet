@@ -141,9 +141,7 @@ def search_counterexample(
 
     def _load(eq_id: int):
         if eq_id < 1 or eq_id > total_equations:
-            raise ValueError(
-                f"Equation ID {eq_id} out of range 1-{total_equations}"
-            )
+            raise ValueError(f"Equation ID {eq_id} out of range 1-{total_equations}")
         return _parse(lines[eq_id - 1].strip())
 
     premises = [_load(eid) for eid in equations_holding]
@@ -204,9 +202,7 @@ class TLAModelChecker:
         """
         jar = self._find_tla_tools()
         if jar is None:
-            raise RuntimeError(
-                "tla2tools.jar not found. Run: bash scripts/setup_tla_tools.sh"
-            )
+            raise RuntimeError("tla2tools.jar not found. Run: bash scripts/setup_tla_tools.sh")
 
         tla_file = Path(self.tla_dir) / f"{module}.tla"
         if not tla_file.exists():
@@ -218,10 +214,15 @@ class TLAModelChecker:
             config_path = f.name
 
         cmd = [
-            "java", "-XX:+UseParallelGC",
-            "-cp", str(jar),
-            "tlc2.TLC", "-deadlock", "-cleanup",
-            "-config", config_path,
+            "java",
+            "-XX:+UseParallelGC",
+            "-cp",
+            str(jar),
+            "tlc2.TLC",
+            "-deadlock",
+            "-cleanup",
+            "-config",
+            config_path,
             str(tla_file),
         ]
         _logger.debug("Running TLC: %s", " ".join(cmd))
