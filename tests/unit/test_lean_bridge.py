@@ -109,3 +109,17 @@ class TestCounterexampleToLeanValidation:
                 magma_size=3,  # claims 3 but table is 2x2
                 magma_table=[[0, 0], [1, 0]],
             )
+
+    @pytest.mark.unit
+    def test_rejects_entry_out_of_range(self):
+        """Cayley table entries must be indices into the carrier (``[0, size)``)."""
+        from lean_bridge import counterexample_to_lean
+
+        with pytest.raises(ValueError, match="outside"):
+            counterexample_to_lean(
+                h_text="x = y",
+                t_text="x = x",
+                magma_name="bad",
+                magma_size=2,
+                magma_table=[[0, 2], [1, 0]],  # cell (0,1)=2 is out of range
+            )
