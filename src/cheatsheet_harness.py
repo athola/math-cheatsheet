@@ -339,8 +339,6 @@ def load_training_set(
     problems, which was too small a sample to catch accuracy regressions on
     the broader matrix.
     """
-    import json as _json
-
     p = Path(path)
     if not p.exists():
         logger.debug("Training set not found at %s; using KNOWN_PROBLEMS fallback", p)
@@ -349,13 +347,13 @@ def load_training_set(
     problems: list[tuple[str, str, bool, str]] = []
     content = p.read_text(encoding="utf-8").strip()
     if content.startswith("["):
-        raw_records = _json.loads(content)
+        raw_records = json.loads(content)
     else:
         raw_records = []
         for line in content.splitlines():
             line = line.strip()
             if line:
-                raw_records.append(_json.loads(line))
+                raw_records.append(json.loads(line))
     for rec in raw_records:
         h = rec.get("equation_1") or rec.get("hypothesis")
         t = rec.get("equation_2") or rec.get("target")

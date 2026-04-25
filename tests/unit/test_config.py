@@ -10,6 +10,13 @@ from __future__ import annotations
 
 import pytest
 
+from config import (
+    EVAL_CACHE_VERSION,
+    MAX_CHEATSHEET_BYTES,
+    PRICE_INPUT_PER_TOKEN,
+    PRICE_OUTPUT_PER_TOKEN,
+)
+
 
 class TestCheatsheetConstants:
     """Feature: Cheatsheet competition constraints are defined centrally."""
@@ -22,8 +29,6 @@ class TestCheatsheetConstants:
         When I import MAX_CHEATSHEET_BYTES
         Then it is an integer
         """
-        from config import MAX_CHEATSHEET_BYTES
-
         assert isinstance(MAX_CHEATSHEET_BYTES, int)
 
     @pytest.mark.unit
@@ -34,8 +39,6 @@ class TestCheatsheetConstants:
         When I read MAX_CHEATSHEET_BYTES
         Then it equals 10240
         """
-        from config import MAX_CHEATSHEET_BYTES
-
         assert MAX_CHEATSHEET_BYTES == 10_240
 
     @pytest.mark.unit
@@ -46,8 +49,6 @@ class TestCheatsheetConstants:
         When I read MAX_CHEATSHEET_BYTES
         Then it is strictly greater than zero
         """
-        from config import MAX_CHEATSHEET_BYTES
-
         assert MAX_CHEATSHEET_BYTES > 0
 
 
@@ -62,8 +63,6 @@ class TestLLMCacheConstants:
         When I import EVAL_CACHE_VERSION
         Then it is an integer
         """
-        from config import EVAL_CACHE_VERSION
-
         assert isinstance(EVAL_CACHE_VERSION, int)
 
     @pytest.mark.unit
@@ -74,8 +73,6 @@ class TestLLMCacheConstants:
         When I read EVAL_CACHE_VERSION
         Then it is >= 1
         """
-        from config import EVAL_CACHE_VERSION
-
         assert EVAL_CACHE_VERSION >= 1
 
 
@@ -90,8 +87,6 @@ class TestPricingConstants:
         When I import PRICE_INPUT_PER_TOKEN
         Then it is a positive float
         """
-        from config import PRICE_INPUT_PER_TOKEN
-
         assert isinstance(PRICE_INPUT_PER_TOKEN, float)
         assert PRICE_INPUT_PER_TOKEN > 0
 
@@ -103,8 +98,6 @@ class TestPricingConstants:
         When I import PRICE_OUTPUT_PER_TOKEN
         Then it is greater than zero
         """
-        from config import PRICE_OUTPUT_PER_TOKEN
-
         assert isinstance(PRICE_OUTPUT_PER_TOKEN, float)
         assert PRICE_OUTPUT_PER_TOKEN > 0
 
@@ -116,8 +109,6 @@ class TestPricingConstants:
         When I compare PRICE_OUTPUT_PER_TOKEN and PRICE_INPUT_PER_TOKEN
         Then output price is greater than input price
         """
-        from config import PRICE_INPUT_PER_TOKEN, PRICE_OUTPUT_PER_TOKEN
-
         assert PRICE_OUTPUT_PER_TOKEN > PRICE_INPUT_PER_TOKEN
 
     @pytest.mark.unit
@@ -128,8 +119,6 @@ class TestPricingConstants:
         When I read PRICE_INPUT_PER_TOKEN
         Then it equals 3e-6
         """
-        from config import PRICE_INPUT_PER_TOKEN
-
         assert abs(PRICE_INPUT_PER_TOKEN - 3e-6) < 1e-12
 
     @pytest.mark.unit
@@ -140,6 +129,4 @@ class TestPricingConstants:
         When I read PRICE_OUTPUT_PER_TOKEN
         Then it equals 15e-6
         """
-        from config import PRICE_OUTPUT_PER_TOKEN
-
         assert abs(PRICE_OUTPUT_PER_TOKEN - 15e-6) < 1e-12

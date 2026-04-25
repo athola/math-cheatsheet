@@ -30,6 +30,14 @@ from config import (
     PRICE_INPUT_PER_TOKEN,
     PRICE_OUTPUT_PER_TOKEN,
 )
+from etp_equations import ETPEquations
+from implication_oracle import ImplicationOracle
+from metrics_utils import update_confusion
+
+try:
+    import anthropic
+except ImportError:
+    anthropic = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -221,9 +229,7 @@ def evaluate_with_llm(
         client: Optional pre-configured Anthropic client (for testing).
     """
     if client is None:
-        try:
-            import anthropic
-        except ImportError:
+        if anthropic is None:
             print("ERROR: pip install anthropic")
             sys.exit(1)
         api_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -235,8 +241,6 @@ def evaluate_with_llm(
 
     if max_problems:
         problems = problems[:max_problems]
-
-    from metrics_utils import update_confusion
 
     counts: dict[str, int] = {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
     errors = 0
@@ -331,9 +335,6 @@ def evaluate_with_llm(
 
 def generate_problems(n_normal: int = 50, n_hard: int = 10) -> list[dict]:
     """Generate problems from the implication matrix."""
-    from etp_equations import ETPEquations
-    from implication_oracle import ImplicationOracle
-
     eqs = ETPEquations("research/data/etp/equations.txt")
     oracle = ImplicationOracle("research/data/etp/implications.csv")
     n_eq = oracle.num_equations

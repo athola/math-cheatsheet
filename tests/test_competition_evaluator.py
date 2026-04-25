@@ -10,10 +10,12 @@ from pathlib import Path
 
 import pytest
 
+import competition_evaluator as ce
 from competition_evaluator import (
     ComparisonReport,
     CompetitionEvaluator,
     EvalResult,
+    build_parser,
 )
 
 # ---------------------------------------------------------------------------
@@ -266,8 +268,6 @@ class TestEvaluateByCategory:
         of size. Using a monotonic counter clock, we verify the recorded times
         track distinct call counts, not an even division.
         """
-        import competition_evaluator as ce
-
         tick = {"n": 0}
 
         def fake_time() -> float:
@@ -320,30 +320,22 @@ class TestCompareVersions:
 
 class TestCLIParsing:
     def test_default_mode_is_full(self):
-        from competition_evaluator import build_parser
-
         parser = build_parser()
         args = parser.parse_args([])
         assert args.mode == "full"
 
     def test_competition_mode(self):
-        from competition_evaluator import build_parser
-
         parser = build_parser()
         args = parser.parse_args(["--mode", "competition", "--problems", "test.jsonl"])
         assert args.mode == "competition"
         assert args.problems == "test.jsonl"
 
     def test_compare_mode(self):
-        from competition_evaluator import build_parser
-
         parser = build_parser()
         args = parser.parse_args(["--mode", "compare"])
         assert args.mode == "compare"
 
     def test_custom_data_paths(self):
-        from competition_evaluator import build_parser
-
         parser = build_parser()
         args = parser.parse_args(["--equations", "eq.txt", "--oracle", "impl.csv"])
         assert args.equations == "eq.txt"

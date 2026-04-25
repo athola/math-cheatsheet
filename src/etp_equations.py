@@ -18,65 +18,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from equation_parser_utils import tokenize_equation as _tokenize
+from implication_oracle import ImplicationOracle
+from term import Term, op, parse_equation_terms, var
+
+__all__ = [
+    "Term",
+    "op",
+    "var",
+    "parse_equation",
+    "Equation",
+    "ETPEquations",
+    "StructuralClass",
+]
 
 StructuralClass = Literal["tautology", "collapse", "trivial_lhs", "trivial_rhs", "balanced"]
-
-
-@dataclass(frozen=True)
-class Term:
-    """AST node: either Var(name) or Op(left, right)."""
-
-    is_var: bool
-    name: str = ""
-    left: Term | None = None
-    right: Term | None = None
-
-    def _lr(self) -> tuple[Term, Term]:
-        """Return (left, right) with type narrowing for mypy."""
-        assert self.left is not None and self.right is not None
-        return self.left, self.right
-
-    def variables(self) -> frozenset[str]:
-        if self.is_var:
-            return frozenset({self.name})
-        lt, rt = self._lr()
-        return lt.variables() | rt.variables()
-
-    def depth(self) -> int:
-        if self.is_var:
-            return 0
-        lt, rt = self._lr()
-        return 1 + max(lt.depth(), rt.depth())
-
-    def size(self) -> int:
-        """Number of ◇ operations."""
-        if self.is_var:
-            return 0
-        lt, rt = self._lr()
-        return 1 + lt.size() + rt.size()
-
-    def __str__(self) -> str:
-        if self.is_var:
-            return self.name
-        lt, rt = self._lr()
-        ls = str(lt) if lt.is_var else f"({lt})"
-        rs = str(rt) if rt.is_var else f"({rt})"
-        return f"{ls} ◇ {rs}"
-
-    def substitute(self, mapping: dict[str, Term]) -> Term:
-        if self.is_var:
-            return mapping.get(self.name, self)
-        lt, rt = self._lr()
-        return Term(False, left=lt.substitute(mapping), right=rt.substitute(mapping))
-
-
-def var(name: str) -> Term:
-    return Term(is_var=True, name=name)
-
-
-def op(left: Term, right: Term) -> Term:
-    return Term(is_var=False, left=left, right=right)
 
 
 @dataclass
@@ -107,45 +62,13 @@ class Equation:
         self.is_tautology = self.lhs == self.rhs
 
 
-def _parse_expr(tokens: list[str], pos: int) -> tuple[Term, int]:
-    """Parse: primary (◇ primary)* with left-to-right associativity."""
-    if pos >= len(tokens):
-        raise ValueError("Unexpected end of expression")
-    left, pos = _parse_primary(tokens, pos)
-    while pos < len(tokens) and tokens[pos] == "*":
-        right, pos = _parse_primary(tokens, pos + 1)
-        left = op(left, right)
-    return left, pos
-
-
-def _parse_primary(tokens: list[str], pos: int) -> tuple[Term, int]:
-    """Parse: variable or (expr)."""
-    if pos >= len(tokens):
-        raise ValueError("Unexpected end of expression")
-    if tokens[pos] == "(":
-        expr, pos = _parse_expr(tokens, pos + 1)
-        if pos >= len(tokens) or tokens[pos] != ")":
-            raise ValueError(f"Expected ')' at position {pos}")
-        return expr, pos + 1
-    elif tokens[pos].isalpha():
-        return var(tokens[pos]), pos + 1
-    else:
-        raise ValueError(f"Unexpected token '{tokens[pos]}' at position {pos}")
-
-
 def parse_equation(eq_id: int, text: str) -> Equation:
-    """Parse an equation string like 'x ◇ y = y ◇ x'."""
+    """Parse an equation string like ``x ◇ y = y ◇ x``."""
     text = text.strip()
-    parts = text.split("=", 1)
-    if len(parts) != 2:
-        raise ValueError(f"No '=' in equation {eq_id}: {text}")
-
-    lhs_tokens = _tokenize(parts[0])
-    rhs_tokens = _tokenize(parts[1])
-
-    lhs, _ = _parse_expr(lhs_tokens, 0)
-    rhs, _ = _parse_expr(rhs_tokens, 0)
-
+    try:
+        lhs, rhs = parse_equation_terms(text)
+    except ValueError as exc:
+        raise ValueError(f"Failed to parse equation {eq_id}: {exc}") from exc
     return Equation(id=eq_id, text=text, lhs=lhs, rhs=rhs)
 
 
@@ -279,8 +202,6 @@ class ETPDataset:
         equations_path: str | Path = "research/data/etp/equations.txt",
         implications_path: str | Path = "research/data/etp/implications.csv",
     ):
-        from implication_oracle import ImplicationOracle
-
         self.equations = ETPEquations(equations_path)
         self.oracle = ImplicationOracle(implications_path)
 

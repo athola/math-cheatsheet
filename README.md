@@ -7,6 +7,12 @@ using Lean 4, TLA+, Rust, and Python.
 
 **98.01% accuracy** on the full 22M implication matrix
 (4,694 equations, 22,028,942 pairs) | 10,230 bytes of 10,240 limit
+| current version: `0.2.1` ([CHANGELOG](CHANGELOG.md))
+
+The dataset and canonical proofs are sourced from the upstream
+[Equational Theories Project][etp] (Tao et al.); this repository
+distills that corpus into a cheatsheet and multi-angle verification
+harness.
 
 ## Competition Context
 
@@ -33,10 +39,26 @@ counterexamples.
 | Cheatsheet size         | 10,230 / 10,240 bytes |
 | Competition submission  | 9,851 bytes (`competition-v1.txt`) |
 | Equations covered       | 4,694         |
-| Decision procedure phases | 9 (P0-P6 + structural) |
+| Decision procedure phases | 11 (P0-P7 + structural) |
 | Test suite              | 580+ tests (100% equation_analyzer.py) |
+| Lean 4 bridge           | Python → Lean counterexamples (`src/lean_bridge.py`) |
 
 ## Quick Start
+
+### Prerequisites
+
+| Tool      | Version        | Used by                         |
+|-----------|----------------|---------------------------------|
+| Python    | >=3.12         | core pipeline, cheatsheet harness |
+| `uv`      | latest         | dependency management           |
+| Rust      | stable (1.75+) | `magma_core` PyO3 extension     |
+| Lean 4    | via `elan`, mathlib v4.28.0 | formal proofs (`make lean-check`) |
+| TLA+ tools | `tla2tools.jar` (Java 17+) | model checking (`make tla-check`) |
+
+Rust, Lean, and TLA+ are only required for the matching
+verification targets; `make test` works with Python alone.
+
+### Build
 
 ```bash
 make setup            # create venv, install Python deps
@@ -79,7 +101,7 @@ Competition submission: `cheatsheet/competition.txt` → `competition-v1.txt` (9
 
 ## Decision Procedure
 
-The multi-phase implication predictor runs 9 phases in sequence:
+The multi-phase implication predictor runs 11 phases in sequence:
 
 | Phase | Name | Decision |
 |-------|------|----------|
@@ -91,7 +113,10 @@ The multi-phase implication predictor runs 9 phases in sequence:
 | P5 | Substitution | T is H with merged vars → TRUE |
 | P5a | Equivalence class | Same implication profile → TRUE |
 | P5b/c | Structural analysis | Counterexample magmas / determined ops → TRUE/FALSE |
-| P6 | Default | → FALSE |
+| P5d | Exhaustive size-2 search | Cached size-2 satisfaction difference → FALSE |
+| P6 | Rewrite analysis | Orient H as rewrite rule, reduce T → TRUE |
+| P7 | Structural heuristics | Side-swap / depth divergence / op-count → TRUE/FALSE |
+| Default | Fallback | → FALSE |
 
 Evaluate against the full matrix: `python src/decision_procedure.py`
 Analyze errors: `python src/error_analyzer.py`
@@ -102,13 +127,16 @@ Batch competition scoring: `python src/competition_evaluator.py`
 ```
 math-cheatsheet/
 ├── src/                  # Python core
-│   ├── decision_procedure.py  # 9-phase implication predictor
+│   ├── decision_procedure.py  # 11-phase implication predictor
+│   ├── term.py                # Canonical Term AST + parser
 │   ├── equation_analyzer.py   # Structural analysis + counterexamples
-│   ├── etp_equations.py       # ETP dataset parser (4,694 equations)
+│   ├── etp_equations.py       # ETP dataset catalog (4,694 equations)
 │   ├── implication_oracle.py  # 22M ground-truth matrix
 │   ├── competition_evaluator.py # Batch scoring + category breakdown
 │   ├── error_analyzer.py      # Failure pattern analysis
 │   ├── counterexample_generator.py # Exhaustive magma search
+│   ├── lean_bridge.py         # Python → Lean 4 counterexample emitter
+│   ├── lean_coverage.py       # Lean proof coverage dashboard
 │   ├── llm_evaluator.py       # Claude API evaluation (with caching)
 │   └── cheatsheet_harness.py  # 5-angle validation
 ├── rust/                 # Rust PyO3 extension (magma_core)
@@ -167,15 +195,17 @@ make demo-cheatsheet      # show cheatsheet stats and byte count
 
 - [Specification](docs/specification.md) — cheatsheet requirements
   and acceptance criteria
-- [Implementation plan](docs/implementation-plan.md) — build strategy
-  and phases
+- [Implementation plans](docs/plans/) — build strategy and phase
+  breakdowns
 - [Competition rules analysis](docs/competition-rules-analysis.md) —
   constraint deep-dive
 - [Formal verification summary](docs/formal-verification-summary.md) —
-  Lean/TLA+ results
-- [State-of-the-art research](docs/sota-research.md) — prior work
-  and techniques survey
-- [Research index](research/INDEX.md) — domain research notes
+  Lean 4 and TLA+ approach, tool versions, verified implications
+- [Project brief](docs/project-brief.md) — origin, scope, and success
+  criteria
+- [Research index](research/INDEX.md) — domain research notes and
+  bibliography
+- [CHANGELOG](CHANGELOG.md) — release history
 
 ## Links
 

@@ -7,7 +7,8 @@ Implements the v3 cheatsheet decision procedure as computable functions:
 - Phase 4: Counterexample testing (canonical + exhaustive magmas)
 - Phase 4b: Exhaustive 2-element search
 - Phase 5: Determined operation detection (absorption, constant law)
-- Phase 7: Structural heuristics (depth comparison)
+- Phase 6: Rewrite analysis (orient H as a rule, reduce T to a normal form)
+- Phase 7: Structural heuristics (side-swap, depth, op-count)
 - Phase 8: Default (inconclusive → FALSE)
 
 Based on techniques from the Equational Theories Project (Tao et al., 2024-2025)
@@ -16,71 +17,29 @@ and Birkhoff's completeness theorem for equational logic.
 
 from __future__ import annotations
 
+import functools
 import itertools
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from enum import Enum, auto
+from enum import Enum
 
-from equation_parser_utils import tokenize_equation as _tokenize
+from term import (
+    NodeType,
+    Term,
+    op,
+    parse_equation_terms,
+    var,
+)
 
-
-class NodeType(Enum):
-    VAR = auto()
-    OP = auto()
-
-
-@dataclass(frozen=True)
-class Term:
-    """A term in the free magma: either a variable or an application of *."""
-
-    node_type: NodeType
-    name: str = ""  # variable name if VAR
-    left: Term | None = None  # left child if OP
-    right: Term | None = None  # right child if OP
-
-    def _lr(self) -> tuple[Term, Term]:
-        """Return (left, right) for OP nodes; raises if children are missing."""
-        if self.left is None or self.right is None:
-            raise ValueError("OP node must have left and right children")
-        return self.left, self.right
-
-    def variables(self) -> set[str]:
-        if self.node_type == NodeType.VAR:
-            return {self.name}
-        lt, rt = self._lr()
-        return lt.variables() | rt.variables()
-
-    def depth(self) -> int:
-        if self.node_type == NodeType.VAR:
-            return 0
-        lt, rt = self._lr()
-        return 1 + max(lt.depth(), rt.depth())
-
-    def size(self) -> int:
-        """Count the number of * operations."""
-        if self.node_type == NodeType.VAR:
-            return 0
-        lt, rt = self._lr()
-        return 1 + lt.size() + rt.size()
-
-    def substitute(self, mapping: dict[str, Term]) -> Term:
-        if self.node_type == NodeType.VAR:
-            return mapping.get(self.name, self)
-        lt, rt = self._lr()
-        return Term(NodeType.OP, left=lt.substitute(mapping), right=rt.substitute(mapping))
-
-    def evaluate(self, table: list[list[int]], assignment: dict[str, int]) -> int:
-        """Evaluate this term in a finite magma given variable assignments."""
-        if self.node_type == NodeType.VAR:
-            return assignment[self.name]
-        lt, rt = self._lr()
-        return table[lt.evaluate(table, assignment)][rt.evaluate(table, assignment)]
-
-    def __str__(self) -> str:
-        if self.node_type == NodeType.VAR:
-            return self.name
-        lt, rt = self._lr()
-        return f"({lt} * {rt})"
+# Re-export canonical names for existing callers.
+__all__ = [
+    "NodeType",
+    "Term",
+    "Equation",
+    "parse_equation",
+    "var",
+    "op",
+]
 
 
 @dataclass(frozen=True)
@@ -115,48 +74,9 @@ class Equation:
         return f"{self.lhs} = {self.rhs}"
 
 
-# --- Parsing ---
-
-
-def _parse_expr(tokens: list[str], pos: int) -> tuple[Term, int]:
-    """Parse an expression: primary (* primary)* with left-to-right associativity."""
-    if pos >= len(tokens):
-        raise ValueError("Unexpected end of expression")
-    left, pos = _parse_primary(tokens, pos)
-    while pos < len(tokens) and tokens[pos] == "*":
-        right, pos = _parse_primary(tokens, pos + 1)
-        left = Term(NodeType.OP, left=left, right=right)
-    return left, pos
-
-
-def _parse_primary(tokens: list[str], pos: int) -> tuple[Term, int]:
-    """Parse an atom: variable or parenthesized expression."""
-    if pos >= len(tokens):
-        raise ValueError("Unexpected end of expression")
-    if tokens[pos] == "(":
-        expr, pos = _parse_expr(tokens, pos + 1)
-        if pos >= len(tokens) or tokens[pos] != ")":
-            raise ValueError(f"Expected ')' at position {pos}")
-        return expr, pos + 1
-    elif tokens[pos].isalpha() and tokens[pos] != "*":
-        return Term(NodeType.VAR, name=tokens[pos]), pos + 1
-    else:
-        raise ValueError(f"Unexpected token '{tokens[pos]}' at position {pos}")
-
-
 def parse_equation(s: str) -> Equation:
-    """Parse an equation string like 'x * (y * z) = (x * y) * z'."""
-    s = s.strip()
-    s = s.replace("◇", "*").replace("⋄", "*")
-    parts = s.split("=", 1)
-    if len(parts) != 2:
-        raise ValueError(f"No '=' found in equation: {s}")
-
-    lhs_tokens = _tokenize(parts[0])
-    rhs_tokens = _tokenize(parts[1])
-
-    lhs, _ = _parse_expr(lhs_tokens, 0)
-    rhs, _ = _parse_expr(rhs_tokens, 0)
+    """Parse an equation string like ``x * (y * z) = (x * y) * z``."""
+    lhs, rhs = parse_equation_terms(s)
     return Equation(lhs, rhs)
 
 
@@ -227,6 +147,21 @@ ALL_SIZE_2_MAGMAS: tuple[CounterexampleMagma, ...] = tuple(
     CounterexampleMagma(f"M2_{i:04b}", 2, [[i >> 3 & 1, i >> 2 & 1], [i >> 1 & 1, i & 1]])
     for i in range(16)
 )
+
+
+@functools.cache
+def _size_2_satisfactions(eq: Equation) -> frozenset[int]:
+    """Indices of ``ALL_SIZE_2_MAGMAS`` that satisfy ``eq``.
+
+    Cached per Equation (the dataclass is frozen and hashable) so that
+    Phase 4b does not re-evaluate the same equation against the 16 size-2
+    magmas on every pair it appears in. For a full-corpus run over
+    ~4.7K equations, this turns the cost from O(n_pairs × 16 × evals)
+    into O(n_equations × 16 × evals + n_pairs).
+    """
+    return frozenset(
+        i for i, magma in enumerate(ALL_SIZE_2_MAGMAS) if eq.holds_in(magma.table, magma.size)
+    )
 
 
 # --- Analysis Functions ---
@@ -306,22 +241,61 @@ def analyze_implication(h: Equation, t: Equation) -> AnalysisResult:
                 ImplicationVerdict.FALSE, "Phase 4", f"Counterexample: {magma.name}", magma
             )
 
-    # Phase 4b: Exhaustive 2-element search
-    for magma in ALL_SIZE_2_MAGMAS:
-        if magma.satisfies(h) and not magma.satisfies(t):
-            return AnalysisResult(
-                ImplicationVerdict.FALSE,
-                "Phase 4b",
-                f"Counterexample: {magma.name} table={magma.table}",
-                magma,
-            )
+    # Phase 4b: Exhaustive 2-element search (cached per equation — #34).
+    # Look up the set of size-2 magmas satisfying H and T once each, then
+    # subtract: any magma satisfying H but not T is a counterexample.
+    h_sat = _size_2_satisfactions(h)
+    t_sat = _size_2_satisfactions(t)
+    diff = h_sat - t_sat
+    if diff:
+        magma = ALL_SIZE_2_MAGMAS[min(diff)]  # deterministic: smallest index
+        return AnalysisResult(
+            ImplicationVerdict.FALSE,
+            "Phase 4b",
+            f"Counterexample: {magma.name} table={magma.table}",
+            magma,
+        )
+
+    # Phase 6: Rewrite analysis — orient H as a rewrite rule and reduce T
+    rewrite_proof = _phase6_rewrite(h, t)
+    if rewrite_proof is not None:
+        return rewrite_proof
 
     # Phase 7: Structural heuristics
+    # 7a. Side-swap identity: ``a = b`` and ``b = a`` are the same universally
+    # quantified law. If T is H with LHS/RHS swapped, return TRUE. This is not
+    # caught by Phase 1a (which tests h == t strictly) or Phase 3 (which only
+    # merges variables, not sides).
+    if h.lhs == t.rhs and h.rhs == t.lhs:
+        return AnalysisResult(
+            ImplicationVerdict.TRUE,
+            "Phase 7",
+            "T is H with LHS/RHS swapped — same equational law",
+        )
+
+    # 7b. Depth divergence: target is too deep to be reached by substitution.
     if t.max_depth() > h.max_depth() + 1:
         return AnalysisResult(
             ImplicationVerdict.FALSE,
             "Phase 7",
             f"Target depth ({t.max_depth()}) >> hypothesis depth ({h.max_depth()})",
+        )
+
+    # 7c. Op-count divergence: analog of depth for wide-but-shallow terms.
+    # Substitution of a variable with a k-op subterm can at most double op
+    # count per step; with one step allowed, ``T.ops > 2*H.ops + 2`` exceeds
+    # what any single substitution can produce, so H cannot imply T.
+    #
+    # Soundness precondition (NEW-C1): the bound assumes each variable in H
+    # appears once. When a variable repeats k times, substituting it with a
+    # term of size m amplifies T.ops by ``k*m`` rather than ``m``, breaking
+    # the bound. Gate the rule on globally-unique variable occurrences so the
+    # broken case (e.g. H = ``x*x = x``) cannot reach this branch.
+    if _h_vars_unique(h) and t.total_ops() > 2 * h.total_ops() + 2:
+        return AnalysisResult(
+            ImplicationVerdict.FALSE,
+            "Phase 7",
+            f"Target op count ({t.total_ops()}) >> hypothesis op count ({h.total_ops()})",
         )
 
     return AnalysisResult(ImplicationVerdict.UNKNOWN, "Phase 8", "Inconclusive - default FALSE")
@@ -387,6 +361,119 @@ def _check_simple_substitutions(h: Equation, t: Equation) -> AnalysisResult | No
     return None
 
 
+# --- Phase 6 helpers: rewrite analysis ---
+
+# Cap on rewrite steps per orientation per side of T.
+# Depth 8 is generous for single-rule systems (idempotence closes in 2 steps on
+# depth-3 terms; associativity normalisation is bounded by term size) and keeps
+# the worst case on a 10-token target well under a millisecond.
+_PHASE6_MAX_STEPS = 8
+
+
+def _match_pattern(pattern: Term, target: Term, bindings: dict[str, Term]) -> bool:
+    """First-order match: is ``target`` an instance of ``pattern``?
+
+    Extends ``bindings`` in place. Pattern variables may bind to arbitrary
+    target sub-terms; every occurrence of a pattern variable must bind to the
+    same sub-term (linear-match would miss rules like ``x*x → x``). Returns
+    True on success, leaving bindings populated; returns False on failure.
+    The bindings dict may be partially mutated on failure — callers should
+    discard it.
+    """
+    if pattern.node_type == NodeType.VAR:
+        existing = bindings.get(pattern.name)
+        if existing is None:
+            bindings[pattern.name] = target
+            return True
+        return existing == target
+    # pattern is an OP; target must also be an OP to match.
+    if target.node_type != NodeType.OP:
+        return False
+    p_l, p_r = pattern._lr()
+    t_l, t_r = target._lr()
+    return _match_pattern(p_l, t_l, bindings) and _match_pattern(p_r, t_r, bindings)
+
+
+def _rewrite_once(term: Term, rule_lhs: Term, rule_rhs: Term) -> Term | None:
+    """Apply rule ``rule_lhs → rule_rhs`` at the outermost leftmost position.
+
+    Returns the rewritten term, or None if no position matches. Tries the
+    whole term first, then the left child, then the right child. This is the
+    standard leftmost-outermost (normal-order) rewrite strategy — it avoids
+    wasted work on sub-terms that will be rewritten at the parent.
+    """
+    bindings: dict[str, Term] = {}
+    if _match_pattern(rule_lhs, term, bindings):
+        return rule_rhs.substitute(bindings)
+    if term.node_type == NodeType.OP and term.left is not None and term.right is not None:
+        left_new = _rewrite_once(term.left, rule_lhs, rule_rhs)
+        if left_new is not None:
+            return Term(NodeType.OP, left=left_new, right=term.right)
+        right_new = _rewrite_once(term.right, rule_lhs, rule_rhs)
+        if right_new is not None:
+            return Term(NodeType.OP, left=term.left, right=right_new)
+    return None
+
+
+def _rewrite_to_normal_form(
+    term: Term, rule_lhs: Term, rule_rhs: Term, max_steps: int = _PHASE6_MAX_STEPS
+) -> Term:
+    """Apply the rule until nothing matches, a cycle is detected, or the budget is spent.
+
+    Returns the final term. Termination is guaranteed by ``max_steps`` even
+    for non-terminating (size-increasing) orientations.
+    """
+    seen: set[Term] = set()
+    current = term
+    for _ in range(max_steps):
+        if current in seen:
+            break  # cycle — rewriting would go on forever
+        seen.add(current)
+        next_term = _rewrite_once(current, rule_lhs, rule_rhs)
+        if next_term is None:
+            break  # normal form reached
+        current = next_term
+    return current
+
+
+def _rule_is_sound(rule_lhs: Term, rule_rhs: Term) -> bool:
+    """A rewrite rule is sound iff every variable on the RHS appears on the LHS.
+
+    Otherwise the rule would introduce fresh (unbound) variables — applying
+    ``x → y*x`` to a concrete term would invent a ``y`` that isn't in the
+    original universal quantification. We silently skip unsound orientations
+    rather than signal an error, because many equations have at least one
+    orientation that is sound.
+    """
+    return rule_rhs.variables() <= rule_lhs.variables()
+
+
+def _phase6_rewrite(h: Equation, t: Equation) -> AnalysisResult | None:
+    """Use H as a bidirectional rewrite rule to collapse T to a tautology.
+
+    Tries both orientations of H (LHS→RHS and RHS→LHS). For each sound
+    orientation, reduces both sides of T to a normal form; if the two sides
+    reach the same term, the target holds as an instance of H-derivation.
+    Returns the phase result on success, or None if neither orientation
+    closes T.
+    """
+    for lhs, rhs, label in (
+        (h.lhs, h.rhs, "LHS→RHS"),
+        (h.rhs, h.lhs, "RHS→LHS"),
+    ):
+        if not _rule_is_sound(lhs, rhs):
+            continue
+        reduced_t_lhs = _rewrite_to_normal_form(t.lhs, lhs, rhs)
+        reduced_t_rhs = _rewrite_to_normal_form(t.rhs, lhs, rhs)
+        if reduced_t_lhs == reduced_t_rhs:
+            return AnalysisResult(
+                ImplicationVerdict.TRUE,
+                "Phase 6",
+                f"T closes under H-rewrite ({label}): both sides normalise to {reduced_t_lhs}",
+            )
+    return None
+
+
 def _iter_vars(term: Term) -> Iterator[str]:
     """Yield variable names in a term, including duplicates."""
 
@@ -396,6 +483,18 @@ def _iter_vars(term: Term) -> Iterator[str]:
         lt, rt = term._lr()
         yield from _iter_vars(lt)
         yield from _iter_vars(rt)
+
+
+def _h_vars_unique(h: Equation) -> bool:
+    """True iff every variable in ``h`` appears exactly once across both sides.
+
+    Phase 7c's ``2*ops + 2`` bound is sound only under this condition. When a
+    variable repeats ``k`` times in H, substituting it with a term of size
+    ``m`` adds ``k*m`` ops rather than ``m`` ops, and the bound can wrongly
+    rule out valid implications (NEW-C1 reproducer: H = ``x*x = x``).
+    """
+    occurrences = list(_iter_vars(h.lhs)) + list(_iter_vars(h.rhs))
+    return len(occurrences) == len(set(occurrences))
 
 
 def _detect_determined_operation(eq: Equation) -> tuple[list[list[int]], str] | None:
