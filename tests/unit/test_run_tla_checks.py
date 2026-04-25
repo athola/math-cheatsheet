@@ -17,6 +17,14 @@ import pytest
 # Add scripts to path for import
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
 
+from run_tla_checks import (  # noqa: E402
+    TLCResult,
+    find_tla_tools,
+    parse_tlc_output,
+    print_summary,
+    run_tlc,
+)
+
 
 class TestTLCOutputParsing:
     """Feature: Parse TLC model checker output into structured results."""
@@ -29,8 +37,6 @@ class TestTLCOutputParsing:
         When the output is parsed
         Then status should be 'pass'
         """
-        from run_tla_checks import parse_tlc_output
-
         output = (
             "TLC2 Version 2.18\n"
             "Running breadth-first search...\n"
@@ -54,8 +60,6 @@ class TestTLCOutputParsing:
         When the output is parsed
         Then status should be 'fail' and message should contain the error
         """
-        from run_tla_checks import parse_tlc_output
-
         output = (
             "TLC2 Version 2.18\n"
             "Error: Invariant TypeOK is violated.\n"
@@ -74,8 +78,6 @@ class TestTLCOutputParsing:
         When the output is parsed
         Then warnings should be captured in the result
         """
-        from run_tla_checks import parse_tlc_output
-
         output = "Warning: Unused variable x\nModel checking completed. No error has been found.\n"
         result = parse_tlc_output("WarnModule", output, returncode=0, elapsed=0.5)
 
@@ -95,8 +97,6 @@ class TestTLCRunnerIntegration:
         When run_tlc is called
         Then it should return status 'skip' with installation instructions
         """
-        from run_tla_checks import run_tlc
-
         with patch("run_tla_checks.find_tla_tools", return_value=None):
             result = run_tlc("TestModule")
 
@@ -111,8 +111,6 @@ class TestTLCRunnerIntegration:
         When run_tlc is called
         Then it should return status 'error'
         """
-        from run_tla_checks import run_tlc
-
         with patch("run_tla_checks.find_tla_tools", return_value=Path("/fake/tla2tools.jar")):
             with patch("run_tla_checks.TLA_DIR", Path("/nonexistent/dir")):
                 result = run_tlc("NonexistentModule")
@@ -128,8 +126,6 @@ class TestTLCRunnerIntegration:
         When run_tlc is called with a short timeout
         Then it should return status 'error' with timeout message
         """
-        from run_tla_checks import run_tlc
-
         with patch("run_tla_checks.find_tla_tools", return_value=Path("/fake/tla2tools.jar")):
             with patch.object(Path, "exists", return_value=True):
                 with patch(
@@ -152,8 +148,6 @@ class TestSummaryReport:
         When print_summary is called
         Then it should return exit code 0
         """
-        from run_tla_checks import TLCResult, print_summary
-
         results = [
             TLCResult(module="Magma", status="pass", elapsed_seconds=1.0, message="OK"),
             TLCResult(module="Model", status="pass", elapsed_seconds=2.0, message="OK"),
@@ -168,8 +162,6 @@ class TestSummaryReport:
         When print_summary is called
         Then it should return non-zero exit code
         """
-        from run_tla_checks import TLCResult, print_summary
-
         results = [
             TLCResult(module="Magma", status="pass", elapsed_seconds=1.0, message="OK"),
             TLCResult(
@@ -186,8 +178,6 @@ class TestSummaryReport:
         When print_summary is called
         Then it should return exit code 0
         """
-        from run_tla_checks import TLCResult, print_summary
-
         results = [
             TLCResult(module="Magma", status="pass", elapsed_seconds=1.0, message="OK"),
             TLCResult(module="Model", status="skip", elapsed_seconds=0.0, message="No tools"),
@@ -206,8 +196,6 @@ class TestToolDiscovery:
         When find_tla_tools is called
         Then it should return that path
         """
-        from run_tla_checks import find_tla_tools
-
         with patch.object(Path, "exists", return_value=True):
             result = find_tla_tools()
         assert result is not None
@@ -220,8 +208,6 @@ class TestToolDiscovery:
         When find_tla_tools is called
         Then it should return None
         """
-        from run_tla_checks import find_tla_tools
-
         with patch.object(Path, "exists", return_value=False):
             result = find_tla_tools()
         assert result is None

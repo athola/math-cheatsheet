@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import sys
 from pathlib import Path
 
@@ -71,8 +72,6 @@ class TestSamplePairs:
     @pytest.mark.unit
     def test_skips_none_truth(self):
         """Scenario: the only decidable cells are (1,1) and (1,2); sample 2."""
-        import random
-
         truth = {(1, 1): True, (1, 2): False, (2, 1): None, (2, 2): None}
         oracle = _FakeOracle(truth)
         pairs = sim.sample_pairs(oracle, 2, random.Random(42))
@@ -84,8 +83,6 @@ class TestSamplePairs:
     @pytest.mark.unit
     def test_raises_when_cannot_find_enough(self):
         """When no cells are decidable, sample_pairs must fail loudly."""
-        import random
-
         truth = {(1, 1): None, (1, 2): None, (2, 1): None, (2, 2): None}
         oracle = _FakeOracle(truth)
         with pytest.raises(RuntimeError, match="Could only draw"):

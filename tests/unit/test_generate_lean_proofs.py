@@ -16,6 +16,11 @@ import pytest
 # Add scripts to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
 
+from generate_lean_proofs import (  # noqa: E402
+    generate_false_witness_template,
+    generate_true_proof_template,
+)
+
 
 class TestTrueProofTemplate:
     """Feature: Generate Lean proof templates for TRUE implications."""
@@ -28,8 +33,6 @@ class TestTrueProofTemplate:
         When a TRUE proof template is generated
         Then it should contain a properly named theorem
         """
-        from generate_lean_proofs import generate_true_proof_template
-
         result = generate_true_proof_template(
             43, 4512, "P5-substitution", "Target is specialization"
         )
@@ -44,8 +47,6 @@ class TestTrueProofTemplate:
         When the template is generated
         Then it should document the phase and reason
         """
-        from generate_lean_proofs import generate_true_proof_template
-
         result = generate_true_proof_template(2, 100, "P2-collapse", "Hypothesis is collapse")
         assert "P2-collapse" in result
         assert "collapse" in result.lower()
@@ -62,8 +63,6 @@ class TestFalseWitnessTemplate:
         When the template is generated
         Then it should contain ¬ (negation) in the type
         """
-        from generate_lean_proofs import generate_false_witness_template
-
         result = generate_false_witness_template(100, 200, "P4-new-vars", "New variable z")
         assert "not_implies" in result
         assert "sorry" in result
@@ -76,8 +75,6 @@ class TestFalseWitnessTemplate:
         When the template is generated
         Then it should include the counterexample info
         """
-        from generate_lean_proofs import generate_false_witness_template
-
         result = generate_false_witness_template(
             6, 3, "P5c-structural(Phase 4)", "Counterexample: LP"
         )

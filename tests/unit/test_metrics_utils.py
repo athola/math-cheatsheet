@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import pytest
 
+from metrics_utils import compute_accuracy_metrics, update_confusion
+
 
 class TestUpdateConfusion:
     """Feature: update_confusion increments the correct cell."""
@@ -22,8 +24,6 @@ class TestUpdateConfusion:
         When update_confusion is called
         Then tp increases by 1 and others are unchanged
         """
-        from metrics_utils import update_confusion
-
         counts = {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
         update_confusion(counts, predicted=True, actual=True)
         assert counts == {"tp": 1, "fp": 0, "tn": 0, "fn": 0}
@@ -36,8 +36,6 @@ class TestUpdateConfusion:
         When update_confusion is called
         Then fp increases by 1
         """
-        from metrics_utils import update_confusion
-
         counts = {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
         update_confusion(counts, predicted=True, actual=False)
         assert counts == {"tp": 0, "fp": 1, "tn": 0, "fn": 0}
@@ -50,8 +48,6 @@ class TestUpdateConfusion:
         When update_confusion is called
         Then fn increases by 1
         """
-        from metrics_utils import update_confusion
-
         counts = {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
         update_confusion(counts, predicted=False, actual=True)
         assert counts == {"tp": 0, "fp": 0, "tn": 0, "fn": 1}
@@ -64,8 +60,6 @@ class TestUpdateConfusion:
         When update_confusion is called
         Then tn increases by 1
         """
-        from metrics_utils import update_confusion
-
         counts = {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
         update_confusion(counts, predicted=False, actual=False)
         assert counts == {"tp": 0, "fp": 0, "tn": 1, "fn": 0}
@@ -78,8 +72,6 @@ class TestUpdateConfusion:
         When update_confusion is called for each
         Then the final counts match the expected totals
         """
-        from metrics_utils import update_confusion
-
         counts = {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
         pairs = [
             (True, True),  # tp
@@ -100,8 +92,6 @@ class TestUpdateConfusion:
         When update_confusion is called
         Then only one cell changes
         """
-        from metrics_utils import update_confusion
-
         counts = {"tp": 5, "fp": 3, "tn": 7, "fn": 2}
         before = dict(counts)
         update_confusion(counts, predicted=True, actual=True)
@@ -120,8 +110,6 @@ class TestComputeAccuracyMetrics:
         When compute_accuracy_metrics is called
         Then accuracy=1.0, precision=1.0, recall=1.0, f1=1.0
         """
-        from metrics_utils import compute_accuracy_metrics
-
         m = compute_accuracy_metrics(tp=50, fp=0, tn=50, fn=0)
         assert m["accuracy"] == 1.0
         assert m["precision"] == 1.0
@@ -136,8 +124,6 @@ class TestComputeAccuracyMetrics:
         When compute_accuracy_metrics is called
         Then precision == 0.0 (no ZeroDivisionError)
         """
-        from metrics_utils import compute_accuracy_metrics
-
         m = compute_accuracy_metrics(tp=0, fp=0, tn=10, fn=5)
         assert m["precision"] == 0.0
 
@@ -149,8 +135,6 @@ class TestComputeAccuracyMetrics:
         When compute_accuracy_metrics is called
         Then recall == 0.0 (no ZeroDivisionError)
         """
-        from metrics_utils import compute_accuracy_metrics
-
         m = compute_accuracy_metrics(tp=0, fp=3, tn=10, fn=5)
         assert m["recall"] == 0.0
 
@@ -162,8 +146,6 @@ class TestComputeAccuracyMetrics:
         When compute_accuracy_metrics is called
         Then accuracy=0.85, precision=0.888..., recall=0.8
         """
-        from metrics_utils import compute_accuracy_metrics
-
         m = compute_accuracy_metrics(tp=80, fp=10, tn=90, fn=20)
         assert abs(m["accuracy"] - 0.85) < 1e-9
         assert abs(m["precision"] - 80 / 90) < 1e-9
@@ -177,8 +159,6 @@ class TestComputeAccuracyMetrics:
         When compute_accuracy_metrics is called
         Then f1 == 2*tp / (2*tp + fp + fn)
         """
-        from metrics_utils import compute_accuracy_metrics
-
         tp, fp, tn, fn = 60, 20, 80, 40
         m = compute_accuracy_metrics(tp=tp, fp=fp, tn=tn, fn=fn)
         expected_f1 = 2 * tp / (2 * tp + fp + fn)
@@ -192,8 +172,6 @@ class TestComputeAccuracyMetrics:
         When compute_accuracy_metrics is called
         Then all metrics are 0.0
         """
-        from metrics_utils import compute_accuracy_metrics
-
         m = compute_accuracy_metrics(tp=0, fp=0, tn=0, fn=0)
         assert m["accuracy"] == 0.0
         assert m["precision"] == 0.0

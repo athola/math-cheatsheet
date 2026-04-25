@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import tla_bridge
 from tla_bridge import (
     TLAModelChecker,
     evaluate_equation,
@@ -312,8 +313,6 @@ class TestGetCounterexample:
         When get_counterexample(43, 4512) is called
         Then the stored magma is returned unchanged
         """
-        import tla_bridge
-
         magma = Magma(size=2, operation=[[0, 1], [0, 0]])
         tla_bridge.COUNTEREXAMPLES[(43, 4512)] = magma
         try:

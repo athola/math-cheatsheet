@@ -22,6 +22,7 @@ to avoid duplicating logic. See issue #21.
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 
 from equation_analyzer import (
@@ -192,8 +193,6 @@ class DecisionProcedure:
 
 
 if __name__ == "__main__":
-    import time
-
     print("Loading data...")
     eqs = ETPEquations("research/data/etp/equations.txt")
     oracle = ImplicationOracle("research/data/etp/implications.csv")

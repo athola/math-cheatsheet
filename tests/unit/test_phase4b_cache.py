@@ -20,6 +20,7 @@ import pytest
 from equation_analyzer import (
     ALL_SIZE_2_MAGMAS,
     ImplicationVerdict,
+    _size_2_satisfactions,
     analyze_implication,
     parse_equation,
 )
@@ -32,8 +33,6 @@ class TestSatisfactionCacheSemantics:
     def test_cache_returns_same_indices_as_direct_evaluation(self):
         """For each of the 16 2-element magmas, the cache must agree with
         the direct ``Equation.holds_in`` call."""
-        from equation_analyzer import _size_2_satisfactions
-
         eq = parse_equation("x * y = y * x")  # commutativity
         cached = _size_2_satisfactions(eq)
         direct = frozenset(
@@ -44,8 +43,6 @@ class TestSatisfactionCacheSemantics:
     @pytest.mark.unit
     def test_cache_is_idempotent(self):
         """Calling the cache twice returns the same frozenset (not a new copy)."""
-        from equation_analyzer import _size_2_satisfactions
-
         eq = parse_equation("x * x = x")
         first = _size_2_satisfactions(eq)
         second = _size_2_satisfactions(eq)
@@ -67,8 +64,6 @@ class TestPhase4bUsesCache:
 
         # We test the cache itself; analyze_implication may short-circuit
         # before Phase 4b for these, so also do a direct cache check.
-        from equation_analyzer import _size_2_satisfactions
-
         _size_2_satisfactions.cache_clear()
         _size_2_satisfactions(h)
         _size_2_satisfactions(h)  # second call should be a cache hit

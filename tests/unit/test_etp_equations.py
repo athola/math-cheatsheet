@@ -1,10 +1,12 @@
 """Tests for the ETP equation parser, classifier, and unified query interface."""
 
+import pathlib
 import time
+from collections import Counter
 
 import pytest
 
-from etp_equations import Equation, ETPEquations, op, parse_equation, var
+from etp_equations import Equation, ETPDataset, ETPEquations, op, parse_equation, var
 from implication_oracle import ImplicationOracle
 
 # ---------------------------------------------------------------------------
@@ -189,8 +191,6 @@ class TestETPClassifyStructural:
     @pytest.mark.unit
     def test_classification_distribution_plausible(self, etp):
         """Structural classification distribution is plausible."""
-        from collections import Counter
-
         counts: Counter[str] = Counter()
         for eq_id in etp.ids():
             counts[etp.classify_structural(eq_id)] += 1
@@ -219,8 +219,6 @@ class TestQueryTiming:
 
     @pytest.fixture(scope="class")
     def oracle(self):
-        import pathlib
-
         csv_path = pathlib.Path("research/data/etp/implications.csv")
         if not csv_path.exists():
             pytest.skip("implications.csv not available")
@@ -328,10 +326,6 @@ class TestETPDataset:
 
     @pytest.fixture(scope="class")
     def dataset(self):
-        import pathlib
-
-        from etp_equations import ETPDataset
-
         csv_path = pathlib.Path("research/data/etp/implications.csv")
         if not csv_path.exists():
             pytest.skip("implications.csv not available")
@@ -401,8 +395,6 @@ class TestOracleClassificationCompleteness:
 
     @pytest.fixture(scope="class")
     def oracle(self):
-        import pathlib
-
         csv_path = pathlib.Path("research/data/etp/implications.csv")
         if not csv_path.exists():
             pytest.skip("implications.csv not available")

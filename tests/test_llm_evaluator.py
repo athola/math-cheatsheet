@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import llm_evaluator
 from llm_evaluator import (
     EvalCache,
     compute_cache_key,
@@ -273,8 +274,6 @@ class TestEvaluateWithLLMCaching:
     @patch("llm_evaluator.time.sleep")
     def test_cache_miss_calls_api(self, mock_sleep, tmp_path):
         """On cache miss, API is called and result is cached."""
-        import llm_evaluator
-
         mock_client = MagicMock()
         mock_client.messages.create.return_value = self._make_mock_response(
             "VERDICT: TRUE\nREASONING: trivial"
@@ -292,8 +291,6 @@ class TestEvaluateWithLLMCaching:
 
     def test_cache_hit_skips_api(self, tmp_path):
         """On cache hit, API is NOT called."""
-        import llm_evaluator
-
         problems = self._make_problems()[:1]
         cheatsheet = "cheatsheet"
         cache = EvalCache(tmp_path / "cache.json")
@@ -324,8 +321,6 @@ class TestEvaluateWithLLMCaching:
     @patch("llm_evaluator.time.sleep")
     def test_no_cache_flag_bypasses(self, mock_sleep):
         """When cache=None, every problem hits the API."""
-        import llm_evaluator
-
         mock_client = MagicMock()
         mock_client.messages.create.return_value = self._make_mock_response(
             "VERDICT: FALSE\nREASONING: counter"
@@ -343,8 +338,6 @@ class TestEvaluateWithLLMCaching:
     @patch("llm_evaluator.time.sleep")
     def test_mixed_hits_and_misses(self, mock_sleep, tmp_path):
         """Some problems cached, others need API calls."""
-        import llm_evaluator
-
         problems = self._make_problems()
         cheatsheet = "cheatsheet"
         cache = EvalCache(tmp_path / "cache.json")
@@ -381,8 +374,6 @@ class TestEvaluateWithLLMCaching:
     @patch("llm_evaluator.time.sleep")
     def test_token_usage_in_result(self, mock_sleep, tmp_path):
         """Result includes token usage summary."""
-        import llm_evaluator
-
         mock_client = MagicMock()
         mock_client.messages.create.return_value = self._make_mock_response(
             "VERDICT: TRUE\nREASONING: ok", input_tokens=150, output_tokens=75
@@ -420,8 +411,6 @@ class TestEvaluateWithLLMAPIErrors:
         self, mock_sleep: MagicMock, tmp_path: Path
     ):
         """A raised Anthropic SDK error on one problem doesn't break the loop."""
-        import llm_evaluator
-
         # Use a mock exception class whose __name__ matches an Anthropic SDK error
         # so that the exception handler classifies it as a recoverable API error.
         _MockAPIError = type("APIStatusError", (Exception,), {})
@@ -445,8 +434,6 @@ class TestEvaluateWithLLMAPIErrors:
     @patch("llm_evaluator.time.sleep")
     def test_api_exception_does_not_poison_cache(self, mock_sleep: MagicMock, tmp_path: Path):
         """Failed API calls must not write a partial/garbage entry to the cache."""
-        import llm_evaluator
-
         _MockAPIError = type("APIConnectionError", (Exception,), {})
 
         mock_client = MagicMock()

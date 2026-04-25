@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import pytest
 
+from equation_parser_utils import tokenize_equation
+
 
 class TestTokenizeEquation:
     """Feature: tokenize_equation normalizes operators and splits equation strings."""
@@ -22,8 +24,6 @@ class TestTokenizeEquation:
         When tokenize_equation is called
         Then tokens are ['x', '*', 'y', '=', 'y', '*', 'x']
         """
-        from equation_parser_utils import tokenize_equation
-
         assert tokenize_equation("x * y = y * x") == ["x", "*", "y", "=", "y", "*", "x"]
 
     @pytest.mark.unit
@@ -34,8 +34,6 @@ class TestTokenizeEquation:
         When tokenize_equation is called
         Then ◇ becomes * in the token list
         """
-        from equation_parser_utils import tokenize_equation
-
         assert tokenize_equation("x ◇ y = y ◇ x") == ["x", "*", "y", "=", "y", "*", "x"]
 
     @pytest.mark.unit
@@ -46,8 +44,6 @@ class TestTokenizeEquation:
         When tokenize_equation is called
         Then ⋄ becomes *
         """
-        from equation_parser_utils import tokenize_equation
-
         assert tokenize_equation("x ⋄ y = y ⋄ x") == ["x", "*", "y", "=", "y", "*", "x"]
 
     @pytest.mark.unit
@@ -58,8 +54,6 @@ class TestTokenizeEquation:
         When tokenize_equation is called
         Then parens appear in the token list
         """
-        from equation_parser_utils import tokenize_equation
-
         tokens = tokenize_equation("x * (y * z) = (x * y) * z")
         assert "(" in tokens
         assert ")" in tokens
@@ -72,8 +66,6 @@ class TestTokenizeEquation:
         When tokenize_equation is called
         Then the same tokens as 'x * y = y * x' are returned
         """
-        from equation_parser_utils import tokenize_equation
-
         assert tokenize_equation("  x  *  y  =  y  *  x  ") == ["x", "*", "y", "=", "y", "*", "x"]
 
     @pytest.mark.unit
@@ -84,8 +76,6 @@ class TestTokenizeEquation:
         When tokenize_equation is called
         Then 'xy' appears as a single token
         """
-        from equation_parser_utils import tokenize_equation
-
         tokens = tokenize_equation("xy * z = z * xy")
         assert "xy" in tokens
 
@@ -97,6 +87,4 @@ class TestTokenizeEquation:
         When tokenize_equation is called
         Then tokens are ['x', '=', 'x']
         """
-        from equation_parser_utils import tokenize_equation
-
         assert tokenize_equation("x = x") == ["x", "=", "x"]

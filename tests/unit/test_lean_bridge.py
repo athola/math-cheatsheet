@@ -15,15 +15,17 @@ Acceptance criteria (from #32):
 
 from __future__ import annotations
 
+import re
+
 import pytest
+
+from lean_bridge import counterexample_to_lean
 
 
 class TestCounterexampleToLean:
     @pytest.mark.unit
     def test_emits_fin_type_carrier(self):
         """The generated Lean source references ``Fin 2`` for a 2-element magma."""
-        from lean_bridge import counterexample_to_lean
-
         lean = counterexample_to_lean(
             h_text="x * y = y * x",
             t_text="x * y = x",
@@ -37,8 +39,6 @@ class TestCounterexampleToLean:
     def test_emits_example_header(self):
         """Output contains an ``example`` declaration — the standard Lean 4 idiom
         for anonymous proof obligations."""
-        from lean_bridge import counterexample_to_lean
-
         lean = counterexample_to_lean(
             h_text="x * y = y * x",
             t_text="x * y = x",
@@ -52,8 +52,6 @@ class TestCounterexampleToLean:
     def test_encodes_cayley_table(self):
         """Every cell of the magma table appears in the generated source so a
         reader can reconstruct the witness from the Lean file alone."""
-        from lean_bridge import counterexample_to_lean
-
         table = [[0, 0], [1, 0]]
         lean = counterexample_to_lean(
             h_text="x * y = y * x",
@@ -70,8 +68,6 @@ class TestCounterexampleToLean:
     def test_references_hypothesis_and_target(self):
         """Comments in the generated source cite H and T so the file is
         self-documenting."""
-        from lean_bridge import counterexample_to_lean
-
         lean = counterexample_to_lean(
             h_text="x * y = y * x",
             t_text="x * y = x",
@@ -86,8 +82,6 @@ class TestCounterexampleToLean:
 class TestCounterexampleToLeanValidation:
     @pytest.mark.unit
     def test_rejects_non_square_table(self):
-        from lean_bridge import counterexample_to_lean
-
         with pytest.raises(ValueError, match="square"):
             counterexample_to_lean(
                 h_text="x = y",
@@ -99,8 +93,6 @@ class TestCounterexampleToLeanValidation:
 
     @pytest.mark.unit
     def test_rejects_size_mismatch(self):
-        from lean_bridge import counterexample_to_lean
-
         with pytest.raises(ValueError, match="size"):
             counterexample_to_lean(
                 h_text="x = y",
@@ -113,8 +105,6 @@ class TestCounterexampleToLeanValidation:
     @pytest.mark.unit
     def test_rejects_entry_out_of_range(self):
         """Cayley table entries must be indices into the carrier (``[0, size)``)."""
-        from lean_bridge import counterexample_to_lean
-
         with pytest.raises(ValueError, match="outside"):
             counterexample_to_lean(
                 h_text="x = y",
@@ -128,8 +118,6 @@ class TestCounterexampleToLeanValidation:
     def test_rejects_empty_magma_name(self):
         """NEW-C6: empty ``magma_name`` produces ``def op_`` — not a valid Lean
         identifier. Reject at the boundary instead of emitting broken Lean."""
-        from lean_bridge import counterexample_to_lean
-
         with pytest.raises(ValueError, match="magma_name"):
             counterexample_to_lean(
                 h_text="x = y",
@@ -143,8 +131,6 @@ class TestCounterexampleToLeanValidation:
     def test_rejects_whitespace_only_magma_name(self):
         """NEW-C6: whitespace-only name reduces to an empty identifier after
         sanitisation; reject it the same way as an empty name."""
-        from lean_bridge import counterexample_to_lean
-
         with pytest.raises(ValueError, match="magma_name"):
             counterexample_to_lean(
                 h_text="x = y",
@@ -158,8 +144,6 @@ class TestCounterexampleToLeanValidation:
     def test_rejects_zero_size(self):
         """NEW-C6: ``magma_size=0`` produces a ``def`` with zero match arms,
         which is uncompilable and meaningless as a witness."""
-        from lean_bridge import counterexample_to_lean
-
         with pytest.raises(ValueError, match="magma_size"):
             counterexample_to_lean(
                 h_text="x = y",
@@ -173,8 +157,6 @@ class TestCounterexampleToLeanValidation:
     def test_rejects_negative_size(self):
         """NEW-C6: negative size is meaningless and would underflow the table
         validation; reject explicitly with a clear message."""
-        from lean_bridge import counterexample_to_lean
-
         with pytest.raises(ValueError, match="magma_size"):
             counterexample_to_lean(
                 h_text="x = y",
@@ -193,9 +175,6 @@ class TestCounterexampleToLeanSanitizer:
     @pytest.mark.unit
     def test_sanitizer_handles_parens(self):
         """``"N1 (Non-comm Non-assoc)"`` → identifier without parens."""
-        import re
-
-        from lean_bridge import counterexample_to_lean
 
         lean = counterexample_to_lean(
             h_text="x = y",
@@ -216,8 +195,6 @@ class TestCounterexampleToLeanSanitizer:
         """``"Z3 (Z/3Z addition)"`` (a real ``CANONICAL_MAGMAS`` entry) must
         produce a valid identifier — the previous narrow strip would emit
         ``op_Z3_(Z_3Z_addition)`` (parens leak through)."""
-        from lean_bridge import counterexample_to_lean
-
         lean = counterexample_to_lean(
             h_text="x = y",
             t_text="x = x",
@@ -228,7 +205,6 @@ class TestCounterexampleToLeanSanitizer:
         op_decl_line = next(line for line in lean.splitlines() if line.startswith("def op_"))
         identifier = op_decl_line.split()[1]
         # Lean identifier rule: ASCII alphanumerics and underscore
-        import re
 
         assert re.fullmatch(r"op_[A-Za-z0-9_]+", identifier), (
             f"Generated identifier {identifier!r} contains non-identifier chars"

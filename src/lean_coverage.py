@@ -23,7 +23,9 @@ machine consumption, callers can import ``scan_lean_declarations`` /
 
 from __future__ import annotations
 
+import argparse
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -192,8 +194,6 @@ def _format_report(summary: CoverageSummary, declarations: list[LeanDeclaration]
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point: ``python -m lean_coverage [path]``."""
-    import argparse
-
     description = (__doc__ or "").split("\n", maxsplit=1)[0]
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument(
@@ -214,8 +214,6 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(main())
 
 

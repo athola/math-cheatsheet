@@ -15,31 +15,28 @@ from __future__ import annotations
 
 import pytest
 
+import equation_analyzer
+import etp_equations
+import term
+from term import NodeType, Term, op, parse_equation_terms, var
+
 
 class TestCanonicalTerm:
     """The shared module exposes one Term class other modules re-export."""
 
     @pytest.mark.unit
     def test_term_module_importable(self):
-        from term import NodeType, Term
-
         assert Term is not None
         assert hasattr(NodeType, "VAR")
         assert hasattr(NodeType, "OP")
 
     @pytest.mark.unit
     def test_equation_analyzer_reexports_canonical_term(self):
-        import equation_analyzer
-        import term
-
         assert equation_analyzer.Term is term.Term
         assert equation_analyzer.NodeType is term.NodeType
 
     @pytest.mark.unit
     def test_etp_equations_reexports_canonical_term(self):
-        import etp_equations
-        import term
-
         assert etp_equations.Term is term.Term
 
 
@@ -48,8 +45,6 @@ class TestTermConstructorHelpers:
 
     @pytest.mark.unit
     def test_var_helper_builds_variable(self):
-        from term import NodeType, var
-
         t = var("x")
         assert t.node_type == NodeType.VAR
         assert t.name == "x"
@@ -58,8 +53,6 @@ class TestTermConstructorHelpers:
 
     @pytest.mark.unit
     def test_op_helper_builds_application(self):
-        from term import NodeType, op, var
-
         t = op(var("x"), var("y"))
         assert t.node_type == NodeType.OP
         assert t.left is not None and t.left.name == "x"
@@ -67,8 +60,6 @@ class TestTermConstructorHelpers:
 
     @pytest.mark.unit
     def test_is_var_property(self):
-        from term import op, var
-
         assert var("x").is_var is True
         assert op(var("x"), var("y")).is_var is False
 
@@ -78,8 +69,6 @@ class TestSharedParser:
 
     @pytest.mark.unit
     def test_parse_terms_returns_lhs_and_rhs_terms(self):
-        from term import NodeType, parse_equation_terms
-
         lhs, rhs = parse_equation_terms("x * y = y * x")
         assert lhs.node_type == NodeType.OP
         assert rhs.node_type == NodeType.OP
@@ -88,8 +77,6 @@ class TestSharedParser:
 
     @pytest.mark.unit
     def test_parse_accepts_diamond_operator(self):
-        from term import parse_equation_terms
-
         lhs1, rhs1 = parse_equation_terms("x ◇ y = y ◇ x")
         lhs2, rhs2 = parse_equation_terms("x * y = y * x")
         assert lhs1 == lhs2
@@ -97,7 +84,5 @@ class TestSharedParser:
 
     @pytest.mark.unit
     def test_parse_rejects_missing_equals(self):
-        from term import parse_equation_terms
-
         with pytest.raises(ValueError, match="'='"):
             parse_equation_terms("x * y")

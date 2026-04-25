@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from implication_oracle import ImplicationOracle
 from term import Term, op, parse_equation_terms, var
 
 __all__ = [
@@ -201,8 +202,6 @@ class ETPDataset:
         equations_path: str | Path = "research/data/etp/equations.txt",
         implications_path: str | Path = "research/data/etp/implications.csv",
     ):
-        from implication_oracle import ImplicationOracle
-
         self.equations = ETPEquations(equations_path)
         self.oracle = ImplicationOracle(implications_path)
 
