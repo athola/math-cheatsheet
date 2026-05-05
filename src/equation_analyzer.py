@@ -481,17 +481,23 @@ def _rewrite_once(term: Term, rule_lhs: Term, rule_rhs: Term) -> Term | None:
     whole term first, then the left child, then the right child. This is the
     standard leftmost-outermost (normal-order) rewrite strategy — it avoids
     wasted work on sub-terms that will be rewritten at the parent.
+
+    S2 (#63): uses Term._lr() for OP-children access so the malformed-OP
+    invariant is enforced consistently with the rest of this module
+    (Term.__post_init__ already validates at construction; _lr provides
+    the runtime access guard for any defensive remaining call site).
     """
     bindings: dict[str, Term] = {}
     if _match_pattern(rule_lhs, term, bindings):
         return rule_rhs.substitute(bindings)
-    if term.node_type == NodeType.OP and term.left is not None and term.right is not None:
-        left_new = _rewrite_once(term.left, rule_lhs, rule_rhs)
+    if term.node_type == NodeType.OP:
+        left, right = term._lr()
+        left_new = _rewrite_once(left, rule_lhs, rule_rhs)
         if left_new is not None:
-            return Term(NodeType.OP, left=left_new, right=term.right)
-        right_new = _rewrite_once(term.right, rule_lhs, rule_rhs)
+            return op(left_new, right)
+        right_new = _rewrite_once(right, rule_lhs, rule_rhs)
         if right_new is not None:
-            return Term(NodeType.OP, left=term.left, right=right_new)
+            return op(left, right_new)
     return None
 
 
@@ -578,14 +584,19 @@ def _phase6_rewrite(h: Equation, t: Equation) -> AnalysisResult | None:
 
 
 def _iter_vars(term: Term) -> Iterator[str]:
-    """Yield variable names in a term, including duplicates."""
+    """Yield variable names in a term, including duplicates.
 
-    if term.node_type == NodeType.VAR:
-        yield term.name
-    else:
-        lt, rt = term._lr()
-        yield from _iter_vars(lt)
-        yield from _iter_vars(rt)
+    S5 (#63): uses a structural ``match`` on ``term.node_type`` instead
+    of an if/else chain. The project already targets py3.10+ via the
+    ``X | None`` syntax, so match statements are in scope.
+    """
+    match term.node_type:
+        case NodeType.VAR:
+            yield term.name
+        case NodeType.OP:
+            lt, rt = term._lr()
+            yield from _iter_vars(lt)
+            yield from _iter_vars(rt)
 
 
 def _h_vars_unique(h: Equation) -> bool:
@@ -605,75 +616,45 @@ def _detect_determined_operation(eq: Equation) -> tuple[list[list[int]], str] | 
 
     Returns (table, name) if determined, None otherwise.
     Uses a 2-element magma for testing.
+
+    Notes:
+        "left absorption" here means ``x = x*y`` (forces left projection).
+        This differs from Lean's ``StdEqn.leftAbsorption`` which is the
+        standard absorption law ``x*(x*y) = x*y``. Naming difference is
+        intentional: this function detects operation-determining
+        equations, not absorption proper.
+
+    S1 (#63): the four absorption branches (x=x*y, x*y=x, x=y*x, y*x=x)
+    are collapsed into a single canonical-orientation pass that orders
+    the equation as ``(var_side, op_side)`` regardless of which side of
+    ``=`` the variable came from. This drops ~30 lines of repeated
+    AST-shape checks down to one shared shape match.
     """
-    # Note: "left absorption" here means x = x*y (forces left projection).
-    # This differs from Lean's StdEqn.leftAbsorption which is x*(x*y) = x*y
-    # (the standard absorption law). The naming difference is intentional:
-    # this function detects operation-determining equations.
+    # Canonicalise: identify which side is the bare variable. If both
+    # sides are OPs we fall through to the constant-operation branch.
+    var_side, op_side = _canonical_var_op_sides(eq)
+    if var_side is not None and op_side is not None:
+        # Both children of op_side must be variables for a determined-
+        # operation conclusion. The "anchor" variable is var_side.name;
+        # it must appear once in op_side, and the partner variable must
+        # differ from it (otherwise we have x = x*x — idempotence — not
+        # a determined operation).
+        anchor = var_side.name
+        op_left, op_right = op_side._lr()
+        if op_left.node_type == NodeType.VAR and op_right.node_type == NodeType.VAR:
+            # Left projection: x = x*y or x*y = x — anchor matches op.left,
+            # partner is op.right and differs.
+            if op_left.name == anchor and op_right.name != anchor:
+                return [[0, 0], [1, 1]], "left projection (x*y=x)"
+            # Right projection: x = y*x or y*x = x — anchor matches op.right,
+            # partner is op.left and differs.
+            if op_right.name == anchor and op_left.name != anchor:
+                return [[0, 1], [0, 1]], "right projection (x*y=y)"
 
-    # Left absorption: x = x * y → forces left projection
-    # Both children of OP must be vars, and the "other" var must differ.
-    if (
-        eq.lhs.node_type == NodeType.VAR
-        and eq.rhs.node_type == NodeType.OP
-        and eq.rhs.left is not None
-        and eq.rhs.right is not None
-        and eq.rhs.left.node_type == NodeType.VAR
-        and eq.rhs.right.node_type == NodeType.VAR
-        and eq.rhs.left.name == eq.lhs.name
-        and eq.rhs.right.name != eq.lhs.name
-    ):
-        return [[0, 0], [1, 1]], "left projection (x*y=x)"
-
-    # Also check reversed: x * y = x
-    if (
-        eq.rhs.node_type == NodeType.VAR
-        and eq.lhs.node_type == NodeType.OP
-        and eq.lhs.left is not None
-        and eq.lhs.right is not None
-        and eq.lhs.left.node_type == NodeType.VAR
-        and eq.lhs.right.node_type == NodeType.VAR
-        and eq.lhs.left.name == eq.rhs.name
-        and eq.lhs.right.name != eq.rhs.name
-    ):
-        return [[0, 0], [1, 1]], "left projection (x*y=x)"
-
-    # Right absorption: x = y * x → forces right projection
-    if (
-        eq.lhs.node_type == NodeType.VAR
-        and eq.rhs.node_type == NodeType.OP
-        and eq.rhs.right is not None
-        and eq.rhs.right.node_type == NodeType.VAR
-        and eq.rhs.right.name == eq.lhs.name
-    ):
-        rhs_left_var = eq.rhs.left
-        if (
-            rhs_left_var is not None
-            and rhs_left_var.node_type == NodeType.VAR
-            and rhs_left_var.name != eq.lhs.name
-        ):
-            return [[0, 1], [0, 1]], "right projection (x*y=y)"
-
-    # Also check reversed: y * x = x
-    if (
-        eq.rhs.node_type == NodeType.VAR
-        and eq.lhs.node_type == NodeType.OP
-        and eq.lhs.right is not None
-        and eq.lhs.right.node_type == NodeType.VAR
-        and eq.lhs.right.name == eq.rhs.name
-    ):
-        lhs_left_var = eq.lhs.left
-        if (
-            lhs_left_var is not None
-            and lhs_left_var.node_type == NodeType.VAR
-            and lhs_left_var.name != eq.rhs.name
-        ):
-            return [[0, 1], [0, 1]], "right projection (x*y=y)"
-
-    # Generalized constant law: LHS and RHS are both OP trees with disjoint variable sets,
-    # AND each variable appears exactly once in the equation (no repeats).
-    # When variables repeat (e.g. (x*y)*x), the disjoint condition alone is insufficient —
-    # a 3-element counterexample exists. With unique variables, x*y=z*w style reasoning holds.
+    # Generalized constant law: LHS and RHS are both OP trees with disjoint
+    # variable sets, AND each variable appears exactly once. When variables
+    # repeat (e.g. (x*y)*x), the disjoint condition alone is insufficient —
+    # a 3-element counterexample exists.
     if eq.lhs.node_type == NodeType.OP and eq.rhs.node_type == NodeType.OP:
         lhs_vars = eq.lhs.variables()
         rhs_vars = eq.rhs.variables()
@@ -684,3 +665,17 @@ def _detect_determined_operation(eq: Equation) -> tuple[list[list[int]], str] | 
             return [[0, 0], [0, 0]], "constant operation (x*y=c)"
 
     return None
+
+
+def _canonical_var_op_sides(eq: Equation) -> tuple[Term | None, Term | None]:
+    """Return ``(var_side, op_side)`` if the equation has the form
+    ``var = op`` or ``op = var``; otherwise ``(None, None)``.
+
+    S1 (#63) helper: collapses the four "which side is the variable"
+    branches that previously duplicated absorption detection logic.
+    """
+    if eq.lhs.node_type == NodeType.VAR and eq.rhs.node_type == NodeType.OP:
+        return eq.lhs, eq.rhs
+    if eq.rhs.node_type == NodeType.VAR and eq.lhs.node_type == NodeType.OP:
+        return eq.rhs, eq.lhs
+    return None, None

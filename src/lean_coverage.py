@@ -171,14 +171,17 @@ def compute_coverage(declarations: list[LeanDeclaration]) -> CoverageSummary:
 
     When there are zero declarations we report 0% rather than raising —
     an empty project should not crash the dashboard.
+
+    S3 (#63): kind tally uses :class:`collections.Counter` directly so the
+    accumulator and zero-init logic stay in one expression.
     """
+    from collections import Counter
+
     total = len(declarations)
     finished = sum(1 for d in declarations if not d.unfinished)
     unfinished = total - finished
     percentage = (finished / total * 100.0) if total else 0.0
-    by_kind: dict[str, int] = {}
-    for d in declarations:
-        by_kind[d.kind] = by_kind.get(d.kind, 0) + 1
+    by_kind: dict[str, int] = dict(Counter(d.kind for d in declarations))
     return CoverageSummary(
         total=total,
         finished=finished,

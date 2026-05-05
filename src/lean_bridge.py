@@ -89,12 +89,13 @@ def counterexample_to_lean(
     op_name = f"op_{sanitized}"
     # Each match arm writes one (i, j) → table[i][j] case. For a 2-element
     # carrier this is four arms; scales quadratically in size, which is fine
-    # for the size-2 scope of this issue.
-    arms: list[str] = []
-    for i in range(magma_size):
-        for j in range(magma_size):
-            arms.append(f"  | ⟨{i}, _⟩, ⟨{j}, _⟩ => ⟨{magma_table[i][j]}, by decide⟩")
-    arms_block = "\n".join(arms)
+    # for the size-2 scope of this issue. S4 (#63): generator-over-list to
+    # avoid materialising a temporary list before join.
+    arms_block = "\n".join(
+        f"  | ⟨{i}, _⟩, ⟨{j}, _⟩ => ⟨{magma_table[i][j]}, by decide⟩"
+        for i in range(magma_size)
+        for j in range(magma_size)
+    )
 
     return f"""\
 -- Counterexample witnessing that H does not imply T.
