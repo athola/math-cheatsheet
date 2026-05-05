@@ -757,6 +757,6 @@ class TestFrozenAnalysisRecords:
         # __post_init__ normaliser must convert without error.
         from src.equation_analyzer import CounterexampleMagma
 
-        m = CounterexampleMagma("L", 2, [[0, 1], [1, 0]], ["test"])
+        m = CounterexampleMagma("L", 2, [[0, 1], [1, 0]], ["test"])  # type: ignore[arg-type]
         assert m.table == ((0, 1), (1, 0))
         assert m.properties == ("test",)

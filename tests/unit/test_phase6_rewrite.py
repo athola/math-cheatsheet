@@ -38,9 +38,13 @@ class TestPhase6ReachesRewriteVerdict:
         - Phase 4/4b: every 2-element idempotent magma satisfies T too.
         - Phase 5 / Phase 7: don't apply.
 
-        Phase 6 catches it by rewriting T.RHS ``(x*x)*x`` using H:
-        ``x*x → x`` yields ``x*x``; applying H again yields ``x``,
-        which equals T.LHS.
+        Phase 6 catches it via the RHS→LHS orientation of H. H is
+        ``x = x*x`` so the RHS→LHS rule rewrites ``x*x → x`` (note: the
+        rule's LHS in this orientation is H.RHS, ``x*x``). Applied to
+        T.RHS = ``(x*x)*x``: the inner ``x*x`` reduces to ``x``, giving
+        ``x*x``; applying again yields ``x``, equal to T.LHS — so
+        Phase 6 closes the implication. NEW-I11 / S11 (#62) updated
+        this docstring to be unambiguous about which orientation fires.
         """
         h = parse_equation("x = x * x")
         t = parse_equation("x = (x * x) * x")

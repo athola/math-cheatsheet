@@ -199,8 +199,10 @@ def _size_2_satisfactions(eq: Equation) -> frozenset[int]:
     Phase 4b does not re-evaluate the same equation against the 16 size-2
     magmas on every pair it appears in. For a full-corpus run over
     ~4.7K equations, this turns the cost from O(n_pairs × 16 × evals)
-    into O(n_equations × 16 × evals + n_pairs). Bounded to 8192 entries
-    so long-running consumers don't grow unbounded (NEW-I5 / #58).
+    into O(n_equations × 16 × evals + n_pairs). The cache is per-process
+    only — it does not persist across runs, so cold-start runs pay the
+    full per-equation cost (S12 / regression #62). Bounded to 8192
+    entries so long-running consumers don't grow unbounded (NEW-I5 / #58).
     """
     return frozenset(
         i
@@ -349,7 +351,16 @@ def analyze_implication(h: Equation, t: Equation) -> AnalysisResult:
             f"Target op count ({t.total_ops()}) >> hypothesis op count ({h.total_ops()})",
         )
 
-    return AnalysisResult(ImplicationVerdict.UNKNOWN, "Phase 8", "Inconclusive - default FALSE")
+    return AnalysisResult(
+        ImplicationVerdict.UNKNOWN,
+        "Phase 8",
+        # S11 (#62): keep the verdict and the reason narrative consistent
+        # — Phase 8 emits UNKNOWN to signal "no rule fired", and the
+        # caller (DecisionProcedure) decides whether to treat that as
+        # FALSE. Embedding "default FALSE" in this analyzer's reason
+        # leaks the upstream policy and contradicts the verdict.
+        "Inconclusive — no rule fired",
+    )
 
 
 def _is_tautology(eq: Equation) -> bool:
