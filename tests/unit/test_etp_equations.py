@@ -132,6 +132,53 @@ class TestETPEquations:
         assert len(new_vars) == 0
 
 
+class TestETPLoaderErrorAggregation:
+    """Feature: collect every parse failure (NEW-I9 / #61).
+
+    Previously the loader aborted on the first malformed line, so a user
+    with five typos saw one error and re-ran four times. The loader now
+    raises a single :class:`ExceptionGroup` containing every failure.
+    """
+
+    @pytest.mark.unit
+    def test_single_bad_line_still_raises_exception_group(self, tmp_path):
+        eq_path = tmp_path / "equations.txt"
+        eq_path.write_text("x = x\n@@@ bogus\n", encoding="utf-8")
+        with pytest.raises(ExceptionGroup) as excinfo:
+            ETPEquations(eq_path)
+        assert len(excinfo.value.exceptions) == 1
+
+    @pytest.mark.unit
+    def test_multiple_bad_lines_all_reported(self, tmp_path):
+        eq_path = tmp_path / "equations.txt"
+        # Line 1 ok, lines 2/3/4 broken, line 5 ok.
+        eq_path.write_text(
+            "x = x\n"
+            "(x * y\n"  # unbalanced
+            "* x = y\n"  # bare leading operator
+            "x = (y\n"  # unbalanced
+            "x ◇ y = y ◇ x\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ExceptionGroup) as excinfo:
+            ETPEquations(eq_path)
+        assert len(excinfo.value.exceptions) == 3
+        # Every reported error must mention the equation index that failed
+        # so a user can jump straight to it.
+        messages = [str(e) for e in excinfo.value.exceptions]
+        assert any("equation 2" in m for m in messages)
+        assert any("equation 3" in m for m in messages)
+        assert any("equation 4" in m for m in messages)
+
+    @pytest.mark.unit
+    def test_clean_file_loads_without_raising(self, tmp_path):
+        """Sanity check: a fully valid file does not trigger the error path."""
+        eq_path = tmp_path / "equations.txt"
+        eq_path.write_text("x = x\nx ◇ y = y ◇ x\n", encoding="utf-8")
+        loaded = ETPEquations(eq_path)
+        assert len(loaded) == 2
+
+
 # ---------------------------------------------------------------------------
 # New tests for classification
 # ---------------------------------------------------------------------------

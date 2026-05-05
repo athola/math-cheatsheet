@@ -24,10 +24,13 @@ machine consumption, callers can import ``scan_lean_declarations`` /
 from __future__ import annotations
 
 import argparse
+import logging
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _DECLARATION_RE = re.compile(
     r"""
@@ -113,12 +116,27 @@ def scan_lean_declarations(
     ``lake-packages``, ``build``) so the dashboard reflects
     project-local proofs instead of Mathlib's 100K+ theorems. Pass an
     explicit ``exclude_dirs`` (possibly empty) to override.
+
+    Files that cannot be read (non-UTF-8 encoding, permission denied,
+    transient I/O failure) are logged at WARNING level and skipped instead
+    of aborting the whole scan (NEW-I10 / regression #61). For a coverage
+    dashboard, surfacing partial results with a warning is more useful
+    than crashing on one bad file.
     """
     results: list[LeanDeclaration] = []
     for lean_file in sorted(root.rglob("*.lean")):
         if any(part in exclude_dirs for part in lean_file.parts):
             continue
-        text = lean_file.read_text(encoding="utf-8")
+        try:
+            text = lean_file.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, PermissionError, OSError) as exc:
+            logger.warning(
+                "lean_coverage: skipping unreadable file %s (%s: %s)",
+                lean_file,
+                type(exc).__name__,
+                exc,
+            )
+            continue
         results.extend(_extract_declarations(lean_file, text))
     return results
 

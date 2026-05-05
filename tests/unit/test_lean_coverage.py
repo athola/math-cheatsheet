@@ -181,3 +181,50 @@ class TestCoverageReport:
         coverage = compute_coverage(decls)
         assert coverage.total == 0
         assert coverage.percentage == 0.0
+
+
+class TestScannerSkipsUnreadableFiles:
+    """Feature: log+skip on bad files instead of crashing (NEW-I10 / #61).
+
+    A coverage *dashboard* should keep going when one file has a non-UTF-8
+    byte or unreadable permissions; the previous behaviour aborted the
+    entire scan and reported nothing.
+    """
+
+    @pytest.mark.unit
+    def test_non_utf8_file_is_skipped_with_warning(self, tmp_path: Path, caplog):
+        good = tmp_path / "Good.lean"
+        good.write_text("theorem ok : True := by trivial\n", encoding="utf-8")
+        bad = tmp_path / "Bad.lean"
+        # Latin-1 byte 0xFF is invalid UTF-8 (continuation without start).
+        bad.write_bytes(b"theorem broken : True := by trivial\n\xff\xfe garbage\n")
+        with caplog.at_level("WARNING", logger="lean_coverage"):
+            decls = scan_lean_declarations(tmp_path)
+        names = [d.name for d in decls]
+        assert "ok" in names
+        assert "broken" not in names
+        assert any("Bad.lean" in record.message for record in caplog.records)
+
+    @pytest.mark.unit
+    def test_unreadable_file_is_skipped_with_warning(self, tmp_path: Path, caplog):
+        import os
+
+        good = tmp_path / "Visible.lean"
+        good.write_text("theorem visible : True := by trivial\n", encoding="utf-8")
+        forbidden = tmp_path / "NoRead.lean"
+        forbidden.write_text("theorem hidden : True := by trivial\n", encoding="utf-8")
+        # Strip read permission. On filesystems where chmod is a no-op
+        # (e.g. some Windows mounts) this assertion is meaningless, so we
+        # bail to keep CI green there.
+        forbidden.chmod(0o000)
+        try:
+            if os.access(forbidden, os.R_OK):
+                pytest.skip("filesystem ignores chmod; cannot reproduce permission denial")
+            with caplog.at_level("WARNING", logger="lean_coverage"):
+                decls = scan_lean_declarations(tmp_path)
+            names = [d.name for d in decls]
+            assert "visible" in names
+            assert "hidden" not in names
+            assert any("NoRead.lean" in record.message for record in caplog.records)
+        finally:
+            forbidden.chmod(0o600)  # restore so tmp_path cleanup succeeds

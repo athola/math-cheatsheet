@@ -80,11 +80,28 @@ class ETPEquations:
         self._load(Path(equations_path))
 
     def _load(self, path: Path):
+        """Parse every non-blank line as one equation.
+
+        Collects all parse failures and raises them as a single
+        :class:`ExceptionGroup` so the caller sees the full inventory of
+        malformed lines instead of just the first (NEW-I9 / regression #61).
+        Successfully parsed equations remain available via ``self.equations``
+        when an :class:`ExceptionGroup` is raised — a partial dataset is
+        useful for diagnostic tooling that wants to render what *did* load
+        alongside the errors.
+        """
+        errors: list[ValueError] = []
         with open(path, encoding="utf-8") as f:
-            for i, line in enumerate(f, 1):
-                line = line.strip()
-                if line:
+            for i, raw_line in enumerate(f, 1):
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
                     self.equations[i] = parse_equation(i, line)
+                except ValueError as exc:
+                    errors.append(exc)
+        if errors:
+            raise ExceptionGroup(f"{len(errors)} equation(s) failed to parse in {path}", errors)
 
     def __getitem__(self, eq_id: int) -> Equation:
         return self.equations[eq_id]
