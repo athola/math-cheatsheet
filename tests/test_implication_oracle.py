@@ -306,6 +306,51 @@ class TestEquivalenceClass:
         assert first == second
 
 
+class TestEquivDataNamedAccess:
+    """Feature: _equiv_data uses NamedTuple for self-documenting access (S5 / #53).
+
+    Replaces a positional ``tuple[dict, dict]`` whose ``[0]`` vs ``[1]``
+    indexing was bug-prone (transposing them returns a frozenset where an
+    int was expected).
+    """
+
+    def test_equiv_data_has_named_fields(self, oracle: ImplicationOracle):
+        from implication_oracle import _EquivData
+
+        data = oracle._equiv_data  # cached_property
+        assert isinstance(data, _EquivData)
+        # Both names must be addressable; a transposition would surface
+        # immediately as a type/key mismatch.
+        assert isinstance(data.eq_to_class, dict)
+        assert isinstance(data.classes_by_id, dict)
+        # eq_to_class maps int → int (class id)
+        any_eq = next(iter(data.eq_to_class))
+        assert isinstance(data.eq_to_class[any_eq], int)
+        # classes_by_id maps int → frozenset[int]
+        any_cid = next(iter(data.classes_by_id))
+        assert isinstance(data.classes_by_id[any_cid], frozenset)
+
+
+class TestEncodingSingleSourceOfTruth:
+    """Feature: _ENCODING drives both decode_truth and _VALID_VALUES (S4 / #53)."""
+
+    def test_decode_truth_consistent_with_valid_values(self):
+        from implication_oracle import _ENCODING
+
+        for raw, expected in _ENCODING.items():
+            assert ImplicationOracle.decode_truth(raw) is expected
+        # Anything outside the encoding decodes to None.
+        assert ImplicationOracle.decode_truth(0) is None
+        assert ImplicationOracle.decode_truth(99) is None
+
+    def test_valid_values_subset_of_encoding(self):
+        from implication_oracle import _ENCODING
+
+        # Every value the validator accepts must have a known truth-mapping.
+        for v in ImplicationOracle._VALID_VALUES:
+            assert v in _ENCODING
+
+
 class TestShapeValidation:
     """Feature: ImplicationOracle validates CSV shape on load (regression for #46)."""
 

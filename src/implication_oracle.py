@@ -42,8 +42,30 @@ from collections import Counter
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
+from typing import Final, NamedTuple
 
 import numpy as np
+
+# Single source of truth for the matrix encoding (S4 / regression #53).
+# decode_truth() and the _VALID_VALUES validator both derive from this
+# mapping so that the encoding cannot drift between the two sites.
+_ENCODING: Final[Mapping[int, bool | None]] = MappingProxyType(
+    {3: True, 4: True, -3: False, -4: False}
+)
+
+
+class _EquivData(NamedTuple):
+    """Equivalence-class views over the implication matrix (S5 / #53).
+
+    Replaces a bare ``tuple[dict, dict]`` whose positional indexing was
+    bug-prone — a transposed ``self._equiv_data[1].get(eq_id)`` would
+    return a frozenset where an int was expected. NamedTuple access via
+    ``.eq_to_class`` / ``.classes_by_id`` self-documents and prevents
+    transposition mistakes.
+    """
+
+    eq_to_class: dict[int, int]
+    classes_by_id: dict[int, frozenset[int]]
 
 
 class ImplicationOracle:
@@ -96,7 +118,10 @@ class ImplicationOracle:
                 " Run `make download-etp` to refetch a clean copy."
             )
 
-    _VALID_VALUES: tuple[int, ...] = (-4, -3, 3, 4)
+    # Final marker (S4 / #53): static analysers now flag any reassignment.
+    # Derived from the single-source-of-truth ``_ENCODING`` so the validator
+    # and ``decode_truth`` cannot drift apart.
+    _VALID_VALUES: Final[tuple[int, ...]] = tuple(sorted(_ENCODING))
 
     def _load(self):
         """Load the CSV into a numpy array for fast queries.
@@ -155,12 +180,16 @@ class ImplicationOracle:
         self._eq_to_col = {eq_id: j for j, eq_id in enumerate(self._col_eq_ids)}
 
     @functools.cached_property
-    def _equiv_data(self) -> tuple[dict[int, int], dict[int, frozenset[int]]]:
+    def _equiv_data(self) -> _EquivData:
         """Build equivalence class maps lazily (O(n²) row hashing, deferred until first use).
 
         Class members are stored as ``frozenset`` rather than ``set`` so that
         callers receiving them via :pyattr:`equivalence_classes` cannot
         corrupt the cache via ``.discard``/``.add`` (regression #52/M4).
+
+        Returns a :class:`_EquivData` named tuple so call sites use named
+        access (``.eq_to_class`` / ``.classes_by_id``) instead of positional
+        indexing (S5 / #53).
         """
         eq_to_equiv: dict[int, int] = {}
         equiv_classes_mut: dict[int, set[int]] = {}
@@ -177,11 +206,11 @@ class ImplicationOracle:
         equiv_classes: dict[int, frozenset[int]] = {
             cid: frozenset(members) for cid, members in equiv_classes_mut.items()
         }
-        return eq_to_equiv, equiv_classes
+        return _EquivData(eq_to_class=eq_to_equiv, classes_by_id=equiv_classes)
 
     def equivalence_class(self, eq_id: int) -> int | None:
         """Return the equivalence class ID for an equation, or None if out of range."""
-        return self._equiv_data[0].get(eq_id)
+        return self._equiv_data.eq_to_class.get(eq_id)
 
     @property
     def equivalence_classes(self) -> Mapping[int, frozenset[int]]:
@@ -191,7 +220,7 @@ class ImplicationOracle:
         cannot insert/replace classes; the values are :class:`frozenset` so
         callers cannot mutate class membership (regression #52/M4).
         """
-        return MappingProxyType(self._equiv_data[1])
+        return MappingProxyType(self._equiv_data.classes_by_id)
 
     @property
     def num_equations(self) -> int:
@@ -223,13 +252,11 @@ class ImplicationOracle:
         ``False`` for proven or conjectured FALSE (-3, -4),
         and ``None`` for any other value (no prior art). Centralising this
         decoding removes the duplicated ``if val in (3, 4) ...`` ladder that
-        lived in five call sites (regression #43/I1).
+        lived in five call sites (regression #43/I1). The mapping itself
+        lives in module-level ``_ENCODING`` so that the ``_VALID_VALUES``
+        validator and this decoder cannot drift apart (S4 / regression #53).
         """
-        if val in (3, 4):
-            return True
-        if val in (-3, -4):
-            return False
-        return None
+        return _ENCODING.get(int(val))
 
     def query_raw(self, hypothesis_id: int, target_id: int) -> int:
         """Return raw matrix value (3, -3, 4, -4).

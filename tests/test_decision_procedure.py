@@ -86,6 +86,22 @@ class TestPredictionResult:
         assert r.phase == "P0-self"
         assert r.reason == "Identical equations"
 
+    def test_phase_with_structural_suffix_accepted(self):
+        # P5b/P5c-structural carry a parenthesised internal-phase suffix
+        # (e.g. "P5b-structural(Phase 4)") that the validator must allow.
+        r = PredictionResult(True, "P5b-structural(Phase 4)", "x")
+        assert r.phase.startswith("P5b-structural")
+
+    def test_typoed_phase_rejected(self):
+        # S3 / #53: a typo like "P6-defualt" must fail at construction time
+        # rather than slip through string comparisons in tests/reporters.
+        with pytest.raises(ValueError, match="not in the closed taxonomy"):
+            PredictionResult(False, "P6-defualt", "typo")
+
+    def test_unknown_phase_prefix_rejected(self):
+        with pytest.raises(ValueError, match="not in the closed taxonomy"):
+            PredictionResult(True, "P99-magical", "ought to be impossible")
+
 
 class TestCollapsePrecomputation:
     def test_collapse_ids_detected(self, proc: DecisionProcedure):
