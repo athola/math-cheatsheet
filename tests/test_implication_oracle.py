@@ -8,12 +8,20 @@ Uses a small synthetic 4x4 CSV fixture representing 4 equations:
 """
 
 import csv
+import hashlib
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from implication_oracle import ImplicationOracle
+
+
+def _sha256_of(path: Path) -> str:
+    """Compute the SHA-256 hex digest of a file (test-only helper)."""
+    h = hashlib.sha256()
+    h.update(path.read_bytes())
+    return h.hexdigest()
 
 
 @pytest.fixture
@@ -269,6 +277,34 @@ class TestEquivalenceClass:
         assert eq2_class is not None
         assert classes[eq2_class] == {2}
 
+    def test_equivalence_classes_values_are_immutable(self, oracle: ImplicationOracle):
+        """Regression #52/M4: returned class members must be frozenset.
+
+        Previously a caller could do
+        ``oracle.equivalence_classes[cid].discard(eq_id)`` and silently
+        corrupt the cached row-profile mapping.
+        """
+        classes = oracle.equivalence_classes
+        for cid, members in classes.items():
+            assert isinstance(members, frozenset), (
+                f"class {cid} members are {type(members).__name__}, expected frozenset"
+            )
+
+    def test_equivalence_classes_dict_is_immutable(self, oracle: ImplicationOracle):
+        """Regression #52/M4: the outer mapping must also reject mutation."""
+        classes = oracle.equivalence_classes
+        # MappingProxyType raises TypeError on mutation; a plain dict would not.
+        with pytest.raises(TypeError):
+            classes[999] = frozenset({999})  # type: ignore[index]
+
+    def test_equivalence_classes_repeated_calls_return_consistent_state(
+        self, oracle: ImplicationOracle
+    ):
+        """Even after attempting mutation, repeated calls return the same data."""
+        first = {k: frozenset(v) for k, v in oracle.equivalence_classes.items()}
+        second = {k: frozenset(v) for k, v in oracle.equivalence_classes.items()}
+        assert first == second
+
 
 class TestShapeValidation:
     """Feature: ImplicationOracle validates CSV shape on load (regression for #46)."""
@@ -315,3 +351,63 @@ class TestShapeValidation:
         """A missing CSV must raise FileNotFoundError with remediation hint."""
         with pytest.raises(FileNotFoundError, match="download|make"):
             ImplicationOracle(tmp_path / "nope.csv")
+
+
+class TestSha256Verification:
+    """SHA-256 checksum verification (#48).
+
+    The verification logic in ImplicationOracle existed but had no tests
+    pinning it: a complete revert of ``_verify_digest`` and the kwarg
+    handling passed the rest of the suite. These tests pin each leg.
+    """
+
+    def test_matching_digest_loads_successfully(self, oracle_csv: Path):
+        """Passing the correct digest as a kwarg must not falsely reject."""
+        digest = _sha256_of(oracle_csv)
+        oracle = ImplicationOracle(oracle_csv, expected_sha256=digest)
+        assert oracle.shape == (4, 4)
+
+    def test_matching_digest_uppercase_loads_successfully(self, oracle_csv: Path):
+        """Digest comparison must be case-insensitive."""
+        digest = _sha256_of(oracle_csv).upper()
+        oracle = ImplicationOracle(oracle_csv, expected_sha256=digest)
+        assert oracle.shape == (4, 4)
+
+    def test_mismatched_digest_raises_with_remediation_hint(self, oracle_csv: Path):
+        """A wrong digest must raise ValueError mentioning the fix path."""
+        wrong = "0" * 64
+        with pytest.raises(ValueError, match="checksum mismatch"):
+            ImplicationOracle(oracle_csv, expected_sha256=wrong)
+        # Remediation hint must be present so the user knows what to do.
+        try:
+            ImplicationOracle(oracle_csv, expected_sha256=wrong)
+        except ValueError as exc:
+            assert "make download-etp" in str(exc)
+
+    def test_sidecar_digest_auto_detected(self, oracle_csv: Path):
+        """``foo.csv.sha256`` next to ``foo.csv`` is loaded automatically."""
+        sidecar = oracle_csv.with_suffix(oracle_csv.suffix + ".sha256")
+        sidecar.write_text(f"{_sha256_of(oracle_csv)}  {oracle_csv.name}\n", encoding="utf-8")
+        # No expected_sha256 kwarg — sidecar must be picked up.
+        oracle = ImplicationOracle(oracle_csv)
+        assert oracle.shape == (4, 4)
+
+    def test_sidecar_with_wrong_digest_rejects_load(self, oracle_csv: Path):
+        """A sidecar containing a wrong digest must still cause rejection."""
+        sidecar = oracle_csv.with_suffix(oracle_csv.suffix + ".sha256")
+        sidecar.write_text(f"{'0' * 64}  {oracle_csv.name}\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="checksum mismatch"):
+            ImplicationOracle(oracle_csv)
+
+    def test_explicit_kwarg_overrides_sidecar(self, oracle_csv: Path):
+        """A wrong sidecar must be ignored when an explicit (correct) kwarg is supplied."""
+        sidecar = oracle_csv.with_suffix(oracle_csv.suffix + ".sha256")
+        sidecar.write_text(f"{'0' * 64}  {oracle_csv.name}\n", encoding="utf-8")
+        digest = _sha256_of(oracle_csv)
+        oracle = ImplicationOracle(oracle_csv, expected_sha256=digest)
+        assert oracle.shape == (4, 4)
+
+    def test_no_digest_loads_without_verification(self, oracle_csv: Path):
+        """Default behaviour without kwarg or sidecar must not break loading."""
+        oracle = ImplicationOracle(oracle_csv)
+        assert oracle.shape == (4, 4)

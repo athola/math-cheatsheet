@@ -5,6 +5,7 @@ requiring API keys or network access.
 """
 
 import json
+import logging
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -59,6 +60,94 @@ class TestParseVerdict:
     def test_multiple_verdict_lines_returns_first(self):
         response = "VERDICT: TRUE\nVERDICT: FALSE\n"
         assert parse_verdict(response) is True
+
+
+class TestEvaluateWithLLMEnvironmentErrors:
+    """Library-level errors must raise, not call sys.exit (#51).
+
+    ``evaluate_with_llm`` lived in a library module but used ``sys.exit(1)``
+    when the SDK was unavailable or the API key was missing. That makes
+    the function unusable from a notebook or test that expects exceptions
+    to surface; it should raise ``EnvironmentError`` and let the CLI
+    layer translate to an exit code.
+    """
+
+    def _make_problems(self):
+        return [
+            {
+                "id": 1,
+                "equation_1": "x * y = y * x",
+                "equation_2": "x * x = x",
+                "equation_1_id": 10,
+                "equation_2_id": 20,
+                "answer": True,
+                "difficulty": "normal",
+            },
+        ]
+
+    def test_missing_api_key_raises_environment_error(self, monkeypatch):
+        """Missing ANTHROPIC_API_KEY must raise EnvironmentError (not sys.exit)."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        # Force the path that consults the env (no client passed).
+        with pytest.raises(EnvironmentError, match="ANTHROPIC_API_KEY"):
+            llm_evaluator.evaluate_with_llm(self._make_problems(), "cheatsheet", client=None)
+
+    def test_placeholder_api_key_raises_environment_error(self, monkeypatch):
+        """A literal-placeholder ``your_*`` key must be rejected too."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "your_key_here")
+        with pytest.raises(EnvironmentError, match="ANTHROPIC_API_KEY"):
+            llm_evaluator.evaluate_with_llm(self._make_problems(), "cheatsheet", client=None)
+
+    def test_missing_anthropic_module_raises_environment_error(self, monkeypatch):
+        """Without the anthropic SDK installed, library users get an exception."""
+        # Set a valid-looking key so we get past the env-var check; then patch
+        # the SDK to None so the import fallback fires.
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setattr(llm_evaluator, "anthropic", None)
+        with pytest.raises(EnvironmentError, match="anthropic"):
+            llm_evaluator.evaluate_with_llm(self._make_problems(), "cheatsheet", client=None)
+
+
+class TestParseVerdictWarnings:
+    """Pin warning emission for the ambiguous-verdict failure mode (#52/M5).
+
+    ``parse_verdict`` returns ``None`` for two distinct cases:
+    (a) the response has no VERDICT line at all (the LLM did not follow
+        the format),
+    (b) a VERDICT line is present but its value is neither TRUE nor FALSE
+        (the LLM produced an unparseable verdict — an LLM compliance
+        failure that should be visible in logs).
+    Case (b) must emit ``logger.warning`` so silent compliance failures
+    can be detected; case (a) must not (it is the non-VERDICT side of a
+    response, e.g. cheatsheet text being parsed).
+    """
+
+    def test_no_verdict_line_does_not_warn(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="llm_evaluator"):
+            assert parse_verdict("Some explanatory text without the keyword.") is None
+        warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert warnings == []
+
+    def test_unparseable_verdict_value_warns(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="llm_evaluator"):
+            assert parse_verdict("VERDICT: MAYBE\nREASONING: ambiguous") is None
+        assert any(
+            record.levelno == logging.WARNING and "verdict" in record.message.lower()
+            for record in caplog.records
+        ), f"Expected WARNING about unparseable verdict; got: {caplog.text}"
+
+    def test_empty_verdict_value_warns(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="llm_evaluator"):
+            assert parse_verdict("VERDICT:\nREASONING: blank") is None
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) >= 1
+
+    def test_valid_verdict_does_not_warn(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="llm_evaluator"):
+            assert parse_verdict("VERDICT: TRUE\nREASONING: yes") is True
+            assert parse_verdict("VERDICT: FALSE\nREASONING: no") is False
+        warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert warnings == []
 
 
 class TestLoadCheatsheet:
@@ -224,19 +313,48 @@ class TestEvalCache:
         assert "k" in data["entries"]
         assert "stats" in data
 
-    def test_cache_version_mismatch_resets(self, tmp_path: Path):
-        """If cache file has wrong version, start fresh."""
+    def test_cache_version_mismatch_resets(self, tmp_path: Path, caplog):
+        """If cache file has wrong version, start fresh AND warn (regression #50/H8).
+
+        Pre-revision tests only checked ``cache.get("old") is None`` — that
+        passes even if the ``logger.warning`` line is removed. caplog pins
+        the warning emission so silent reset can no longer regress.
+        """
         cache_path = tmp_path / "cache.json"
         cache_path.write_text(json.dumps({"version": 99, "entries": {"old": {}}}))
-        cache = EvalCache(cache_path)
+        with caplog.at_level(logging.WARNING, logger="llm_evaluator"):
+            cache = EvalCache(cache_path)
         assert cache.get("old") is None
+        # Warning must mention the version so users know why the cache was discarded.
+        assert any(
+            record.levelno == logging.WARNING and "version" in record.message.lower()
+            for record in caplog.records
+        ), f"Expected WARNING about version mismatch; got: {caplog.text}"
 
-    def test_corrupt_file_handled(self, tmp_path: Path):
-        """Corrupt JSON file doesn't crash, starts fresh."""
+    def test_corrupt_file_handled(self, tmp_path: Path, caplog):
+        """Corrupt JSON file doesn't crash, starts fresh AND warns (regression #50/H8)."""
         cache_path = tmp_path / "cache.json"
         cache_path.write_text("not valid json{{{")
-        cache = EvalCache(cache_path)
+        with caplog.at_level(logging.WARNING, logger="llm_evaluator"):
+            cache = EvalCache(cache_path)
         assert cache.get("any") is None
+        # Warning must mention "corrupt" so root cause is visible in logs.
+        assert any(
+            record.levelno == logging.WARNING and "corrupt" in record.message.lower()
+            for record in caplog.records
+        ), f"Expected WARNING about corrupt cache; got: {caplog.text}"
+
+    def test_missing_entries_key_handled(self, tmp_path: Path, caplog):
+        """Cache file missing the 'entries' key warns and resets."""
+        cache_path = tmp_path / "cache.json"
+        cache_path.write_text(json.dumps({"version": 1}))  # no 'entries'
+        with caplog.at_level(logging.WARNING, logger="llm_evaluator"):
+            cache = EvalCache(cache_path)
+        assert cache.get("any") is None
+        assert any(
+            record.levelno == logging.WARNING and "entries" in record.message.lower()
+            for record in caplog.records
+        ), f"Expected WARNING about missing entries; got: {caplog.text}"
 
 
 class TestEvaluateWithLLMCaching:

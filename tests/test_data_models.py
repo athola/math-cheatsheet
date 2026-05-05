@@ -148,6 +148,61 @@ class TestMagma:
         assert isinstance(m.elements, tuple)
 
 
+class TestMagmaValidation:
+    """Error-path tests for Magma.__post_init__ and from_dict_operation (#49).
+
+    The validation guards in data_models.py existed since PR #36 but had no
+    direct error-path tests — a full revert of __post_init__ passed every
+    other test. These tests pin each guard to a specific assertion.
+    """
+
+    def test_zero_size_rejected(self):
+        with pytest.raises(ValueError, match="size must be at least 1"):
+            Magma(size=0, operation=[])
+
+    def test_negative_size_rejected(self):
+        with pytest.raises(ValueError, match="size must be at least 1"):
+            Magma(size=-1, operation=[])
+
+    def test_wrong_row_count_rejected(self):
+        with pytest.raises(ValueError, match="must have 2 rows, got 1"):
+            Magma(size=2, operation=[[0, 1]])
+
+    def test_too_many_rows_rejected(self):
+        with pytest.raises(ValueError, match="must have 2 rows, got 3"):
+            Magma(size=2, operation=[[0, 1], [1, 0], [0, 0]])
+
+    def test_short_row_rejected(self):
+        with pytest.raises(ValueError, match=r"Row 0 must have 2 columns, got 1"):
+            Magma(size=2, operation=[[0], [1, 0]])
+
+    def test_long_row_rejected(self):
+        with pytest.raises(ValueError, match=r"Row 1 must have 2 columns, got 3"):
+            Magma(size=2, operation=[[0, 1], [1, 0, 0]])
+
+    def test_negative_cell_value_rejected(self):
+        with pytest.raises(ValueError, match=r"Entry \[0\]\[0\]=-1 out of range"):
+            Magma(size=2, operation=[[-1, 0], [0, 1]])
+
+    def test_out_of_range_cell_value_rejected(self):
+        with pytest.raises(ValueError, match=r"Entry \[1\]\[0\]=2 out of range"):
+            Magma(size=2, operation=[[0, 1], [2, 1]])
+
+    def test_from_dict_operation_non_contiguous_carrier_rejected(self):
+        op_dict = {(0, 0): 0, (0, 1): 1, (1, 0): 1, (1, 1): 0}
+        with pytest.raises(ValueError, match="carrier must be range"):
+            Magma.from_dict_operation([0, 2], op_dict)
+
+    def test_from_dict_operation_missing_entries_rejected(self):
+        with pytest.raises(ValueError, match="Missing operation entries"):
+            Magma.from_dict_operation([0, 1], {(0, 0): 0, (1, 1): 0})
+
+    def test_valid_magma_constructs_without_error(self):
+        """Sanity: known-good inputs still work after the validation guards."""
+        m = Magma(size=2, operation=[[0, 1], [1, 0]])
+        assert m.size == 2
+
+
 class TestAlgebraicEquation:
     def test_creation(self):
         eq = AlgebraicEquation(id=1, lhs="x*y", rhs="y*x")
