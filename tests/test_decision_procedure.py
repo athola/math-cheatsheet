@@ -160,25 +160,39 @@ class TestPhase4NewVariables:
 
 class TestPhase5Substitution:
     def test_substitution_instance_returns_true(self, proc: DecisionProcedure):
-        """Eq3 (x*y=y*x) specialized by y->x gives x*x=x*x (Eq1).
+        """Eq3 (x◇y=y◇x) does not specialize to Eq4 (x◇y=x).
 
-        But Eq1 is caught earlier by P1 (tautology target).
-        Test with a case where substitution applies after all earlier phases.
+        Phase pipeline (S10 / #56 — exact assertion):
+        - P0..P4 do not fire (vars match, not collapse, not tautology).
+        - P5 substitution returns False (no merge of {x,y} produces x*y=x).
+        - P5a equiv-class differs in this fixture.
+        - P5bc structural delegation finds C0 satisfies Eq3 but not Eq4 →
+          counterexample at Phase 4 of equation_analyzer.
+
+        Previous test accepted three different phases — a revert of the
+        P5bc-structural dispatch would still pass via P6-default.
         """
-        # Eq3 x*y=y*x, Eq4 x*y=x: not a substitution instance
         result = proc.predict(3, 4)
-        # Falls through P5, then structural analysis may catch it via counterexample
         assert result.prediction is False
-        assert result.phase in ("P5-substitution", "P5c-structural(Phase 4)", "P6-default")
+        assert result.phase == "P5c-structural(Phase 4)", (
+            f"P5c structural counterexample expected; got {result.phase!r}."
+            " A revert of P5bc-structural dispatch would silently pass under"
+            " the previous OR-over-three-phases assertion."
+        )
+        assert "Counterexample" in result.reason
 
 
 class TestPhase6Default:
     def test_default_false(self, proc: DecisionProcedure):
-        """When no structural rule matches, prediction is FALSE."""
+        """When structural fires, the verdict comes from P5c — not P6 default.
+
+        S10 (#56): tightened from `"P5c" in result.phase or "P6" in result.phase"`
+        which was nearly tautological. The exact P5c-structural path is what
+        we want to anchor.
+        """
         result = proc.predict(3, 4)
         assert result.prediction is False
-        # May be caught by structural analysis (counterexample) or fall to default
-        assert "P5c" in result.phase or "P6" in result.phase
+        assert result.phase == "P5c-structural(Phase 4)"
 
 
 class TestPhase5cStructuralFalse:
@@ -186,23 +200,30 @@ class TestPhase5cStructuralFalse:
 
     def test_determined_op_disproves(self, proc: DecisionProcedure):
         """
-        Eq4 (x*y=x) determines LP magma; Eq3 (comm) fails in LP → FALSE.
+        Eq4 (x◇y=x) determines LP magma; Eq3 (comm) fails in LP → FALSE.
         This tests the structural delegation path (P5b/P5c) specifically.
+
+        S10 (#56): assert the exact phase string; the previous OR-over-P5b/P5c
+        accepted either branch even though only one is sound here.
         """
         result = proc.predict(4, 3)
         assert result.prediction is False
-        # Should be caught by structural analysis, not default
-        assert "P5c" in result.phase or "P5b" in result.phase, (
-            f"Expected structural phase, got: {result.phase}"
+        assert result.phase == "P5c-structural(Phase 5)", (
+            f"P5c with Phase-5 sub-classification (determined operation) expected;"
+            f" got {result.phase!r}."
         )
 
     def test_structural_phase_provides_reason(self, proc: DecisionProcedure):
-        """Structural analysis should explain WHY the implication fails."""
+        """Structural analysis names the determined magma in the reason.
+
+        S10 (#56): the previous OR (`'left projection' in reason or 'counterexample'`)
+        was nearly always true because every structural failure mentions one or
+        the other. Pin the reason to the LP-determined-operation narrative
+        which is what Phase 5 of equation_analyzer actually emits here.
+        """
         result = proc.predict(4, 3)
-        assert result.reason != ""
-        assert (
-            "left projection" in result.reason.lower() or "counterexample" in result.reason.lower()
-        )
+        assert "left projection" in result.reason.lower()
+        assert "T fails in that magma" in result.reason
 
 
 class TestStructuralFallthrough:
