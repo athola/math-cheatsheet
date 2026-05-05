@@ -19,9 +19,11 @@ from __future__ import annotations
 
 import functools
 import itertools
+import logging
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Literal
 
 from term import (
     NodeType,
@@ -30,6 +32,14 @@ from term import (
     parse_equation_terms,
     var,
 )
+
+logger = logging.getLogger(__name__)
+
+# Observability of Phase 6 rewriting (NEW-I1 / regression #60).
+# Callers that care about the *cause* of a rewrite stopping (normal form
+# vs. step-budget exhaustion vs. cycle detection) can inspect this status
+# alongside the rewritten term.
+RewriteStatus = Literal["normal_form", "budget", "cycle"]
 
 # Re-export canonical names for existing callers.
 __all__ = [
@@ -371,14 +381,22 @@ _PHASE6_MAX_STEPS = 8
 
 
 def _match_pattern(pattern: Term, target: Term, bindings: dict[str, Term]) -> bool:
-    """First-order match: is ``target`` an instance of ``pattern``?
+    """Non-linear first-order match: is ``target`` an instance of ``pattern``?
 
-    Extends ``bindings`` in place. Pattern variables may bind to arbitrary
-    target sub-terms; every occurrence of a pattern variable must bind to the
-    same sub-term (linear-match would miss rules like ``x*x → x``). Returns
-    True on success, leaving bindings populated; returns False on failure.
-    The bindings dict may be partially mutated on failure — callers should
-    discard it.
+    The matcher is *non-linear in the pattern*: every occurrence of the
+    same pattern variable must bind to the same target sub-term. That
+    non-linearity is what enables rules such as ``x*x → x`` (the two
+    leaf ``x`` positions must collapse to the same sub-term). A purely
+    linear matcher would miss them.
+
+    Extends ``bindings`` in place on success. On failure the dict is
+    rolled back to the snapshot captured on entry (NEW-I2 / regression
+    #60), so it is safe to reuse a single ``bindings`` dict across
+    sibling sub-matches: the right-side recursion no longer leaks
+    partial left-side bindings if the right side fails. Today's
+    ``_rewrite_once`` allocates a fresh dict per call and is unaffected,
+    but any AC-matching extension or pattern-cache reuse would have
+    silently produced wrong matches without this snapshot/restore.
     """
     if pattern.node_type == NodeType.VAR:
         existing = bindings.get(pattern.name)
@@ -391,7 +409,17 @@ def _match_pattern(pattern: Term, target: Term, bindings: dict[str, Term]) -> bo
         return False
     p_l, p_r = pattern._lr()
     t_l, t_r = target._lr()
-    return _match_pattern(p_l, t_l, bindings) and _match_pattern(p_r, t_r, bindings)
+    snapshot = bindings.copy()
+    if not _match_pattern(p_l, t_l, bindings):
+        # Left side itself rolls back on failure; nothing extra to do.
+        return False
+    if not _match_pattern(p_r, t_r, bindings):
+        # Right side failed but left side may have committed bindings —
+        # restore the snapshot so the caller sees a clean state.
+        bindings.clear()
+        bindings.update(snapshot)
+        return False
+    return True
 
 
 def _rewrite_once(term: Term, rule_lhs: Term, rule_rhs: Term) -> Term | None:
@@ -417,23 +445,35 @@ def _rewrite_once(term: Term, rule_lhs: Term, rule_rhs: Term) -> Term | None:
 
 def _rewrite_to_normal_form(
     term: Term, rule_lhs: Term, rule_rhs: Term, max_steps: int = _PHASE6_MAX_STEPS
-) -> Term:
+) -> tuple[Term, RewriteStatus]:
     """Apply the rule until nothing matches, a cycle is detected, or the budget is spent.
 
-    Returns the final term. Termination is guaranteed by ``max_steps`` even
-    for non-terminating (size-increasing) orientations.
+    Returns ``(final_term, status)`` where ``status`` is one of:
+
+    - ``"normal_form"`` — no further match exists; rewriting is complete.
+    - ``"cycle"`` — the next rewrite would re-enter a previously seen term;
+      the rule never terminates from here, so rewriting was aborted.
+    - ``"budget"`` — ``max_steps`` was exhausted without reaching either
+      condition; the result may not be a normal form.
+
+    Reporting the cause of termination (NEW-I1 / regression #60) lets the
+    caller distinguish "no further reductions exist" from "we ran out of
+    steps" and tune ``max_steps`` if the budget is biting in practice.
+    Phase 6 verdict TRUE remains sound (each rewrite step is sound), but
+    silently missing implications because of a budget hit is now
+    observable at DEBUG level.
     """
     seen: set[Term] = set()
     current = term
     for _ in range(max_steps):
         if current in seen:
-            break  # cycle — rewriting would go on forever
+            return current, "cycle"
         seen.add(current)
         next_term = _rewrite_once(current, rule_lhs, rule_rhs)
         if next_term is None:
-            break  # normal form reached
+            return current, "normal_form"
         current = next_term
-    return current
+    return current, "budget"
 
 
 def _rule_is_sound(rule_lhs: Term, rule_rhs: Term) -> bool:
@@ -456,6 +496,10 @@ def _phase6_rewrite(h: Equation, t: Equation) -> AnalysisResult | None:
     reach the same term, the target holds as an instance of H-derivation.
     Returns the phase result on success, or None if neither orientation
     closes T.
+
+    Logs at DEBUG level when an orientation hits the rewrite step budget
+    (NEW-I1 / #60) so practitioners can identify implications that might
+    be discoverable by raising ``_PHASE6_MAX_STEPS``.
     """
     for lhs, rhs, label in (
         (h.lhs, h.rhs, "LHS→RHS"),
@@ -463,8 +507,15 @@ def _phase6_rewrite(h: Equation, t: Equation) -> AnalysisResult | None:
     ):
         if not _rule_is_sound(lhs, rhs):
             continue
-        reduced_t_lhs = _rewrite_to_normal_form(t.lhs, lhs, rhs)
-        reduced_t_rhs = _rewrite_to_normal_form(t.rhs, lhs, rhs)
+        reduced_t_lhs, status_lhs = _rewrite_to_normal_form(t.lhs, lhs, rhs)
+        reduced_t_rhs, status_rhs = _rewrite_to_normal_form(t.rhs, lhs, rhs)
+        if "budget" in (status_lhs, status_rhs):
+            logger.debug(
+                "Phase 6 budget exhausted (%s) on H=%s, T=%s — verdict may be incomplete",
+                label,
+                h,
+                t,
+            )
         if reduced_t_lhs == reduced_t_rhs:
             return AnalysisResult(
                 ImplicationVerdict.TRUE,
