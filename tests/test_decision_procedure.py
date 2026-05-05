@@ -7,6 +7,7 @@ Includes slow integration tests for accuracy on the full 22M matrix.
 
 import csv
 import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -203,6 +204,43 @@ class TestPredictBool:
     def test_returns_bool(self, proc: DecisionProcedure):
         assert proc.predict_bool(2, 2) is True
         assert proc.predict_bool(1, 3) is False
+
+
+class TestPredictLogging:
+    """Pin DEBUG-level logging emission in DecisionProcedure.predict (#50/H7).
+
+    Regression #30 added ``logger.debug`` emission of the deciding phase
+    for every predict call so that error analysis can replay decisions.
+    Without an explicit caplog assertion, a revert of the ``logger.debug``
+    line passes every other test — these tests block that revert.
+    """
+
+    def test_predict_emits_debug_log_with_phase(self, proc: DecisionProcedure, caplog):
+        caplog.set_level(logging.DEBUG, logger="decision_procedure")
+        proc.predict(1, 1)
+        # Pattern: "E1 => E1 : True (P0-self)"
+        assert any(
+            "E1 => E1" in record.message and "P0-self" in record.message
+            for record in caplog.records
+        ), f"Expected debug log mentioning E1 => E1 and P0-self; got: {caplog.text}"
+        debug_records = [r for r in caplog.records if r.levelno == logging.DEBUG]
+        assert len(debug_records) >= 1
+
+    def test_predict_logs_phase_for_each_call(self, proc: DecisionProcedure, caplog):
+        """Every predict call should emit one debug record."""
+        caplog.set_level(logging.DEBUG, logger="decision_procedure")
+        proc.predict(1, 2)
+        proc.predict(2, 3)
+        proc.predict(3, 4)
+        debug_records = [r for r in caplog.records if r.name == "decision_procedure"]
+        assert len(debug_records) == 3
+
+    def test_predict_default_level_does_not_log(self, proc: DecisionProcedure, caplog):
+        """At default WARNING level, debug records are suppressed."""
+        # Default caplog level is WARNING; do not raise it.
+        proc.predict(1, 1)
+        debug_records = [r for r in caplog.records if r.levelno == logging.DEBUG]
+        assert len(debug_records) == 0
 
 
 class TestWithoutOracle:

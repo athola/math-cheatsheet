@@ -87,3 +87,110 @@ class TestSamplePairs:
         oracle = _FakeOracle(truth)
         with pytest.raises(RuntimeError, match="Could only draw"):
             sim.sample_pairs(oracle, 5, random.Random(0))
+
+
+class TestMainIntegration:
+    """End-to-end smoke test for competition_sim.main (#51).
+
+    Pre-existing tests covered ``wilson_ci`` and ``sample_pairs`` in
+    isolation; ``main`` itself was never invoked, so a regression in the
+    JSON output schema or the argparse wiring would slip through.
+    """
+
+    @pytest.fixture
+    def synthetic_oracle_csv(self, tmp_path):
+        """A 5x5 ETP-encoded matrix with a tautology, collapse, and three weak rows."""
+        import csv as _csv
+
+        csv_path = tmp_path / "implications.csv"
+        matrix = [
+            [3, -3, -3, -3, -3],
+            [3, 3, 3, 3, 3],
+            [3, -3, 3, -3, -3],
+            [3, -3, -3, 3, -3],
+            [3, -3, -3, -3, 3],
+        ]
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = _csv.writer(f)
+            for row in matrix:
+                writer.writerow(row)
+        return csv_path
+
+    @pytest.fixture
+    def synthetic_equations_file(self, tmp_path):
+        eq_path = tmp_path / "equations.txt"
+        eq_path.write_text(
+            "x = x\nx = y\nx ◇ y = y ◇ x\nx ◇ y = x\nx ◇ y = z\n",
+            encoding="utf-8",
+        )
+        return eq_path
+
+    @pytest.mark.unit
+    def test_main_writes_results_json_with_expected_schema(
+        self, tmp_path, synthetic_oracle_csv, synthetic_equations_file
+    ):
+        out_path = tmp_path / "result.json"
+        cheatsheet = tmp_path / "cheatsheet.txt"
+        cheatsheet.write_text("dummy cheatsheet", encoding="utf-8")
+
+        rc = sim.main(
+            [
+                "--n",
+                "3",
+                "--seed",
+                "1",
+                "--oracle",
+                str(synthetic_oracle_csv),
+                "--equations",
+                str(synthetic_equations_file),
+                "--cheatsheet",
+                str(cheatsheet),
+                "--out",
+                str(out_path),
+            ]
+        )
+        assert rc == 0
+        assert out_path.exists()
+
+        import json as _json
+
+        result = _json.loads(out_path.read_text(encoding="utf-8"))
+        assert result["n"] == 3
+        assert result["seed"] == 1
+        assert 0 <= result["accuracy"] <= 1.0
+        assert 0 <= result["ci95_low"] <= result["ci95_high"] <= 1.0
+        assert len(result["per_problem"]) == 3
+        for entry in result["per_problem"]:
+            assert set(entry.keys()) == {"h_id", "t_id", "actual", "predicted", "correct"}
+            assert isinstance(entry["correct"], bool)
+
+    @pytest.mark.unit
+    def test_main_default_seed_is_reproducible(
+        self, tmp_path, synthetic_oracle_csv, synthetic_equations_file
+    ):
+        """Same seed → identical per-problem output (catches RNG drift)."""
+        cheatsheet = tmp_path / "cheatsheet.txt"
+        cheatsheet.write_text("dummy", encoding="utf-8")
+
+        out_a = tmp_path / "a.json"
+        out_b = tmp_path / "b.json"
+        common = [
+            "--n",
+            "5",
+            "--seed",
+            "42",
+            "--oracle",
+            str(synthetic_oracle_csv),
+            "--equations",
+            str(synthetic_equations_file),
+            "--cheatsheet",
+            str(cheatsheet),
+        ]
+        sim.main([*common, "--out", str(out_a)])
+        sim.main([*common, "--out", str(out_b)])
+
+        import json as _json
+
+        a = _json.loads(out_a.read_text(encoding="utf-8"))
+        b = _json.loads(out_b.read_text(encoding="utf-8"))
+        assert a["per_problem"] == b["per_problem"]

@@ -39,7 +39,9 @@ import csv
 import functools
 import hashlib
 from collections import Counter
+from collections.abc import Mapping
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 
@@ -153,10 +155,15 @@ class ImplicationOracle:
         self._eq_to_col = {eq_id: j for j, eq_id in enumerate(self._col_eq_ids)}
 
     @functools.cached_property
-    def _equiv_data(self) -> tuple[dict[int, int], dict[int, set[int]]]:
-        """Build equivalence class maps lazily (O(n²) row hashing, deferred until first use)."""
+    def _equiv_data(self) -> tuple[dict[int, int], dict[int, frozenset[int]]]:
+        """Build equivalence class maps lazily (O(n²) row hashing, deferred until first use).
+
+        Class members are stored as ``frozenset`` rather than ``set`` so that
+        callers receiving them via :pyattr:`equivalence_classes` cannot
+        corrupt the cache via ``.discard``/``.add`` (regression #52/M4).
+        """
         eq_to_equiv: dict[int, int] = {}
-        equiv_classes: dict[int, set[int]] = {}
+        equiv_classes_mut: dict[int, set[int]] = {}
         row_hash_to_class: dict[bytes, int] = {}
         class_id = 0
         for i, eq_id in enumerate(self._eq_ids):
@@ -166,7 +173,10 @@ class ImplicationOracle:
                 class_id += 1
             cid = row_hash_to_class[row_bytes]
             eq_to_equiv[eq_id] = cid
-            equiv_classes.setdefault(cid, set()).add(eq_id)
+            equiv_classes_mut.setdefault(cid, set()).add(eq_id)
+        equiv_classes: dict[int, frozenset[int]] = {
+            cid: frozenset(members) for cid, members in equiv_classes_mut.items()
+        }
         return eq_to_equiv, equiv_classes
 
     def equivalence_class(self, eq_id: int) -> int | None:
@@ -174,9 +184,14 @@ class ImplicationOracle:
         return self._equiv_data[0].get(eq_id)
 
     @property
-    def equivalence_classes(self) -> dict[int, set[int]]:
-        """Return all equivalence classes: class_id -> set of equation IDs."""
-        return self._equiv_data[1]
+    def equivalence_classes(self) -> Mapping[int, frozenset[int]]:
+        """Return all equivalence classes: class_id -> frozenset of equation IDs.
+
+        The mapping itself is a :class:`types.MappingProxyType` view so callers
+        cannot insert/replace classes; the values are :class:`frozenset` so
+        callers cannot mutate class membership (regression #52/M4).
+        """
+        return MappingProxyType(self._equiv_data[1])
 
     @property
     def num_equations(self) -> int:
