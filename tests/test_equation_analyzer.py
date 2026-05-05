@@ -19,6 +19,7 @@ from src.equation_analyzer import (
     _check_simple_substitutions,
     analyze_implication,
     parse_equation,
+    var,
 )
 
 
@@ -609,15 +610,25 @@ class TestCoverageGaps:
     """
 
     @pytest.mark.unit
-    def test_lr_raises_for_op_node_with_missing_children(self):
-        """Line 41: _lr() defensive guard for malformed OP nodes.
-
-        An OP node constructed without left/right children violates the
-        invariant; _lr() must raise rather than silently return None.
+    def test_op_node_with_missing_children_rejected_at_construction(self):
+        """NEW-I4 (#58): construction-time validation in Term.__post_init__
+        catches malformed OP nodes at the construction site rather than at
+        every traversal that runs _lr().
         """
-        bad = Term(NodeType.OP)
-        with pytest.raises(ValueError, match="OP node must have left and right children"):
-            bad._lr()
+        with pytest.raises(ValueError, match="OP node must have both left and right"):
+            Term(NodeType.OP)
+        with pytest.raises(ValueError, match="OP node must have both left and right"):
+            Term(NodeType.OP, left=var("x"))
+        with pytest.raises(ValueError, match="OP node must have both left and right"):
+            Term(NodeType.OP, right=var("x"))
+
+    @pytest.mark.unit
+    def test_var_node_invariants_enforced_at_construction(self):
+        """NEW-I4 (#58): VAR nodes must be leaves with non-empty names."""
+        with pytest.raises(ValueError, match="VAR node must have a non-empty name"):
+            Term(NodeType.VAR)
+        with pytest.raises(ValueError, match="VAR node must not have children"):
+            Term(NodeType.VAR, name="x", left=var("y"))
 
     @pytest.mark.unit
     def test_parse_expr_raises_on_empty_rhs(self):
@@ -702,3 +713,50 @@ class TestCoverageGaps:
         assert "then" in result.reason, (
             f"Reason should mention two-step chain; got: {result.reason!r}."
         )
+
+
+class TestFrozenAnalysisRecords:
+    """NEW-I3 (#58): AnalysisResult and CounterexampleMagma are frozen so
+    a returned verdict / canonical magma cannot be mutated by downstream
+    consumers (error analysers, reporters, caches).
+    """
+
+    @pytest.mark.unit
+    def test_analysis_result_is_frozen(self):
+        from src.equation_analyzer import AnalysisResult
+
+        r = AnalysisResult(ImplicationVerdict.TRUE, "Phase 1a", "x=x")
+        with pytest.raises(Exception):  # FrozenInstanceError
+            r.phase = "Phase 99"  # type: ignore[misc]
+
+    @pytest.mark.unit
+    def test_counterexample_magma_is_frozen(self):
+        m = CANONICAL_MAGMAS[0]
+        with pytest.raises(Exception):  # FrozenInstanceError
+            m.name = "tampered"  # type: ignore[misc]
+
+    @pytest.mark.unit
+    def test_canonical_table_and_properties_are_tuples(self):
+        m = CANONICAL_MAGMAS[0]
+        assert isinstance(m.table, tuple)
+        assert all(isinstance(row, tuple) for row in m.table)
+        assert isinstance(m.properties, tuple)
+
+    @pytest.mark.unit
+    def test_size_2_magma_table_is_tuple_of_tuples(self):
+        # ALL_SIZE_2_MAGMAS is the cache-key surface for _size_2_satisfactions;
+        # the table must be hashable for the lru_cache to function.
+        m = ALL_SIZE_2_MAGMAS[0]
+        assert isinstance(m.table, tuple)
+        assert all(isinstance(row, tuple) for row in m.table)
+        assert hash(m) == hash(ALL_SIZE_2_MAGMAS[0])
+
+    @pytest.mark.unit
+    def test_counterexample_magma_accepts_list_input_for_back_compat(self):
+        # Existing callers wrote literal list-of-list tables; the
+        # __post_init__ normaliser must convert without error.
+        from src.equation_analyzer import CounterexampleMagma
+
+        m = CounterexampleMagma("L", 2, [[0, 1], [1, 0]], ["test"])  # type: ignore[arg-type]
+        assert m.table == ((0, 1), (1, 0))
+        assert m.properties == ("test",)

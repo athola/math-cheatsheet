@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
+from typing import Final, Literal
 
 from equation_analyzer import (
     ImplicationVerdict,
@@ -38,17 +39,66 @@ from implication_oracle import ImplicationOracle
 logger = logging.getLogger(__name__)
 
 
+# S3 (#53): the phase taxonomy is a closed set of prefixes. Some phases
+# (P5b/P5c-structural) extend the prefix with a parenthesised sub-phase
+# suffix from equation_analyzer, so the literal type is a Literal of
+# *prefixes*; the runtime check below validates the constructed string
+# against this prefix set so a typo like "P6-defualt" fails fast at
+# construction time rather than slipping through string comparisons.
+DecisionPhase = Literal[
+    "P0-self",
+    "P1-taut-target",
+    "P2-collapse",
+    "P3-taut-hyp",
+    "P4-new-vars",
+    "P5-substitution",
+    "P5a-equiv-class",
+    "P5b-structural",
+    "P5c-structural",
+    "P5bc-parse-error",
+    "P6-default",
+]
+
+_VALID_PHASE_PREFIXES: Final[tuple[str, ...]] = (
+    "P0-self",
+    "P1-taut-target",
+    "P2-collapse",
+    "P3-taut-hyp",
+    "P4-new-vars",
+    "P5-substitution",
+    "P5a-equiv-class",
+    "P5b-structural",
+    "P5c-structural",
+    "P5bc-parse-error",
+    "P6-default",
+)
+
+
 @dataclass(frozen=True)
 class PredictionResult:
     """Outcome of one decision-procedure call.
 
     Frozen so downstream consumers (error analysis, reporters) cannot mutate
     a prediction after the fact (regression #43/I4).
+
+    The ``phase`` field must start with one of ``_VALID_PHASE_PREFIXES``;
+    construction with a typo (e.g. ``"P6-defualt"``) raises ValueError at
+    init time. This makes the closed taxonomy machine-checkable without
+    breaking the existing ``"P5c" in result.phase`` comparison style used
+    in tests (S3 / regression #53).
     """
 
     prediction: bool
     phase: str
     reason: str
+
+    def __post_init__(self) -> None:
+        if not any(self.phase.startswith(p) for p in _VALID_PHASE_PREFIXES):
+            raise ValueError(
+                f"PredictionResult.phase {self.phase!r} is not in the closed taxonomy."
+                f" Allowed prefixes: {_VALID_PHASE_PREFIXES}."
+                " Add to _VALID_PHASE_PREFIXES if introducing a new phase."
+            )
 
 
 class DecisionProcedure:

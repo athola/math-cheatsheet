@@ -101,3 +101,124 @@ class TestPhaseOrderingInvariants:
             f"Tautology short-circuit missed: {result.phase}. "
             "Check that Phase 1b runs before Phase 7 heuristics."
         )
+
+
+class TestPhase6BeatsPhase7cInteraction:
+    """S8 (#59): Phase 6 and Phase 7c can both fire on the same pair, but
+    Phase 6's TRUE proof must beat Phase 7c's op-count FALSE.
+    """
+
+    @pytest.mark.unit
+    def test_phase6_true_overrides_phase7c_false_op_count(self):
+        """H: x = x*x; T: x = ((x*x)*x)*x.
+
+        - Phase 6 reduces T.RHS to x via x*x→x and proves TRUE.
+        - Phase 7c (op-count: t.ops > 2*h.ops + 2) would have triggered
+          FALSE in isolation: T has 3 ops, H has 1 op, 3 > 2*1+2=4 is False
+          (so this specific pair is not actually a 7c trigger). Need a
+          larger T to force the 7c branch.
+
+        Use T = x = (((x*x)*x)*x)*x (5 ops). 5 > 2*1+2=4 is True →
+        Phase 7c would fire FALSE. But because H has the variable x
+        repeating (so _h_vars_unique returns False), Phase 7c is gated
+        off and Phase 6 still gets to prove TRUE. The combination
+        verifies both the gate AND that Phase 6 fires before Phase 7c.
+        """
+        h = parse_equation("x = x * x")
+        t = parse_equation("x = (((x * x) * x) * x) * x")
+        result = analyze_implication(h, t)
+        assert result.verdict == ImplicationVerdict.TRUE, (
+            f"Phase 6 should derive TRUE despite t.ops > 2*h.ops + 2;"
+            f" got {result.verdict} at {result.phase}: {result.reason}"
+        )
+        assert result.phase == "Phase 6"
+
+
+class TestPhase4bCacheCallReduction:
+    """S9 (#59): pin the cache complexity claim with a holds_in call counter
+    so a regression that bypasses the cache (or stops being hashable) shows
+    up as a failing assertion rather than a silent perf regression.
+    """
+
+    @pytest.mark.unit
+    def test_size_2_satisfactions_caches_per_equation(self):
+        from unittest import mock
+
+        from equation_analyzer import _size_2_satisfactions
+
+        # Clear any prior cache entries so the call count is deterministic.
+        _size_2_satisfactions.cache_clear()
+        h = parse_equation("x * y = y * x")
+        # Wrap holds_in to count invocations from the cache function.
+        original_holds_in = type(h).holds_in
+        with mock.patch.object(type(h), "holds_in", autospec=True) as mocked:
+            mocked.side_effect = original_holds_in
+            _size_2_satisfactions(h)
+            first_call_count = mocked.call_count
+            assert first_call_count == 16, (
+                f"First evaluation must check all 16 size-2 magmas; got {first_call_count} calls."
+            )
+            _size_2_satisfactions(h)
+            assert mocked.call_count == first_call_count, (
+                "Cached lookup must not call holds_in again;"
+                f" got {mocked.call_count - first_call_count} extra calls."
+            )
+
+
+class TestSoundnessOnRandomEquations:
+    """S7 (#59): hypothesis-driven soundness check.
+
+    For every TRUE verdict from analyze_implication on a randomly
+    generated (H, T) pair, T must hold in every magma where H holds —
+    bounded to size ≤ 3 magmas to keep the test fast. A regression that
+    introduces an unsound rewrite or a false-TRUE structural shortcut
+    surfaces as a counterexample-via-Hypothesis rather than as an
+    unexplained accuracy delta on the full corpus.
+    """
+
+    @pytest.mark.slow
+    def test_true_verdict_holds_in_every_h_satisfying_magma_size_3(self):
+        from itertools import product
+
+        from hypothesis import HealthCheck, given, settings
+        from hypothesis import strategies as st
+
+        equation_strs = st.sampled_from(
+            [
+                "x = x",
+                "x * y = y * x",
+                "(x * y) * z = x * (y * z)",
+                "x * x = x",
+                "x = x * x",
+                "x * y = x",
+                "x * y = y",
+                "x * (y * z) = (x * y) * z",
+                "(x * y) * z = (x * z) * y",
+            ]
+        )
+
+        @given(equation_strs, equation_strs)
+        @settings(
+            max_examples=30,
+            deadline=2000,
+            suppress_health_check=[HealthCheck.function_scoped_fixture],
+        )
+        def check(h_str: str, t_str: str) -> None:
+            h = parse_equation(h_str)
+            t = parse_equation(t_str)
+            result = analyze_implication(h, t)
+            if result.verdict != ImplicationVerdict.TRUE:
+                return  # Only TRUE verdicts carry soundness obligations.
+            # If H ⇒ T is claimed, every magma satisfying H must also
+            # satisfy T. Check exhaustively for sizes 1..3.
+            for size in (1, 2, 3):
+                for table_flat in product(range(size), repeat=size * size):
+                    table = [list(table_flat[i * size : (i + 1) * size]) for i in range(size)]
+                    if h.holds_in(table, size) and not t.holds_in(table, size):
+                        raise AssertionError(
+                            f"Soundness violation: {h} ⇒ {t} claimed at "
+                            f"{result.phase}, but size-{size} magma {table} "
+                            f"satisfies H and not T."
+                        )
+
+        check()

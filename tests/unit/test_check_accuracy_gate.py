@@ -80,3 +80,50 @@ class TestMain:
         """Scenario: harness output has no accuracy line → exit 2."""
         monkeypatch.setattr(gate, "run_harness", lambda _p: "harness broke\n")
         assert gate.main(["--threshold", "98.0"]) == 2
+
+
+class TestRunHarness:
+    """Cover ``run_harness`` subprocess invocation and SystemExit path (#51).
+
+    Previously the only paths exercised were through patched ``run_harness``;
+    the function's own ``subprocess.run`` invocation and the
+    ``raise SystemExit`` branch on non-zero return code had no coverage.
+    """
+
+    @pytest.mark.unit
+    def test_returns_combined_stdout_and_stderr_on_success(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
+        """A zero-status subprocess returns its stdout+stderr concatenated."""
+        from types import SimpleNamespace
+
+        captured: dict = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            captured["cwd"] = kwargs.get("cwd")
+            captured["check"] = kwargs.get("check")
+            return SimpleNamespace(returncode=0, stdout="Accuracy: 99.10%\n", stderr="info\n")
+
+        monkeypatch.setattr(gate.subprocess, "run", fake_run)
+        result = gate.run_harness(tmp_path / "cheatsheet.txt")
+        assert "Accuracy: 99.10%" in result
+        assert "info" in result
+        # The harness must be invoked via ``-m cheatsheet_harness accuracy``.
+        assert "cheatsheet_harness" in " ".join(captured["cmd"])
+        # check=False so we control the failure path ourselves.
+        assert captured["check"] is False
+
+    @pytest.mark.unit
+    def test_nonzero_returncode_raises_systemexit(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
+        """A non-zero subprocess return must surface as SystemExit (not return)."""
+        from types import SimpleNamespace
+
+        def fake_run(cmd, **kwargs):
+            return SimpleNamespace(returncode=2, stdout="boom\n", stderr="traceback\n")
+
+        monkeypatch.setattr(gate.subprocess, "run", fake_run)
+        with pytest.raises(SystemExit, match="status 2"):
+            gate.run_harness(tmp_path / "cheatsheet.txt")

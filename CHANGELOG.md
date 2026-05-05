@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- SHA-256 checksum verification test coverage for ImplicationOracle:
+  matching/uppercase digest, mismatched-with-remediation, sidecar
+  auto-detection, kwarg-overrides-sidecar, and no-digest paths (#48)
+- Magma validation error-path tests: zero/negative size, wrong row count,
+  short/long row, negative/out-of-range cells, non-contiguous carrier,
+  missing operation entries (#49)
+- caplog-backed assertions for debug logging in `DecisionProcedure.predict`
+  and warning emission for `EvalCache` version-mismatch, corrupt-file,
+  and missing-entries paths (#50)
+- `competition_sim.main()` integration test verifying JSON schema and
+  seeded reproducibility, plus `check_accuracy_gate.run_harness`
+  subprocess and `SystemExit`-on-nonzero coverage (#51)
+
+### Changed
+- `evaluate_with_llm` raises `OSError`/`EnvironmentError` instead of
+  calling `sys.exit` when the SDK or `ANTHROPIC_API_KEY` is missing;
+  the CLI `main()` translates the exception to a process exit so
+  the script behaviour is unchanged (#51)
+- `ImplicationOracle.equivalence_classes` returns a `MappingProxyType`
+  view over `frozenset` values; the cached row-profile mapping can no
+  longer be corrupted by callers via `.discard`/`.add` (#52/M4)
+- `parse_verdict` emits `logger.warning` when a `VERDICT:` line is
+  present but unparseable, distinguishing LLM-compliance failures from
+  the legitimate "no verdict line at all" case (#52/M5)
+
 ## [0.2.1] - 2026-04-23
 
 ### Added

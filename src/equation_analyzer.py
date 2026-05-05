@@ -19,9 +19,11 @@ from __future__ import annotations
 
 import functools
 import itertools
+import logging
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
+from typing import Literal
 
 from term import (
     NodeType,
@@ -30,6 +32,14 @@ from term import (
     parse_equation_terms,
     var,
 )
+
+logger = logging.getLogger(__name__)
+
+# Observability of Phase 6 rewriting (NEW-I1 / regression #60).
+# Callers that care about the *cause* of a rewrite stopping (normal form
+# vs. step-budget exhaustion vs. cycle detection) can inspect this status
+# alongside the rewritten term.
+RewriteStatus = Literal["normal_form", "budget", "cycle"]
 
 # Re-export canonical names for existing callers.
 __all__ = [
@@ -83,15 +93,38 @@ def parse_equation(s: str) -> Equation:
 # --- Canonical Counterexample Magmas ---
 
 
-@dataclass
+@dataclass(frozen=True)
 class CounterexampleMagma:
+    """A small magma stamped onto a single Cayley table.
+
+    Frozen and tuple-fielded so module-level constants like
+    :data:`CANONICAL_MAGMAS` cannot be mutated by callers and so that
+    instances are hashable / cache-friendly (NEW-I3 / regression #58).
+    The table is stored as ``tuple[tuple[int, ...], ...]`` and ``properties``
+    as ``tuple[str, ...]``.
+    """
+
     name: str
     size: int
-    table: list[list[int]]
-    properties: list[str] = field(default_factory=list)
+    table: tuple[tuple[int, ...], ...]
+    properties: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        # Normalise list-of-list / list-of-str inputs to tuple form so
+        # callers that wrote constants with literal lists still compose.
+        # The standard escape hatch for frozen dataclasses (object.__setattr__)
+        # is required; assignment via self.field = ... raises FrozenInstanceError.
+        if not (
+            isinstance(self.table, tuple) and all(isinstance(row, tuple) for row in self.table)
+        ):
+            object.__setattr__(self, "table", tuple(tuple(row) for row in self.table))
+        if not isinstance(self.properties, tuple):
+            object.__setattr__(self, "properties", tuple(self.properties))
 
     def satisfies(self, eq: Equation) -> bool:
-        return eq.holds_in(self.table, self.size)
+        # holds_in expects a list-of-list interface; tuples honour the
+        # same indexing protocol so no conversion is needed.
+        return eq.holds_in(self.table, self.size)  # type: ignore[arg-type]
 
 
 # The 7 canonical magmas from the v3 cheatsheet.
@@ -101,55 +134,64 @@ CANONICAL_MAGMAS: tuple[CounterexampleMagma, ...] = (
     CounterexampleMagma(
         "LP (Left Projection)",
         2,
-        [[0, 0], [1, 1]],
-        ["associative", "idempotent", "NOT commutative"],
+        ((0, 0), (1, 1)),
+        ("associative", "idempotent", "NOT commutative"),
     ),
     CounterexampleMagma(
         "RP (Right Projection)",
         2,
-        [[0, 1], [0, 1]],
-        ["associative", "idempotent", "NOT commutative"],
+        ((0, 1), (0, 1)),
+        ("associative", "idempotent", "NOT commutative"),
     ),
     CounterexampleMagma(
         "C0 (Constant Zero)",
         2,
-        [[0, 0], [0, 0]],
-        ["associative", "commutative", "NOT idempotent"],
+        ((0, 0), (0, 0)),
+        ("associative", "commutative", "NOT idempotent"),
     ),
     CounterexampleMagma(
         "XR (XOR / Z2 addition)",
         2,
-        [[0, 1], [1, 0]],
-        ["commutative", "associative", "has identity", "NOT idempotent"],
+        ((0, 1), (1, 0)),
+        ("commutative", "associative", "has identity", "NOT idempotent"),
     ),
     CounterexampleMagma(
         "CM (Commutative Non-Associative)",
         2,
-        [[1, 1], [1, 0]],
-        ["commutative", "NOT associative"],
+        ((1, 1), (1, 0)),
+        ("commutative", "NOT associative"),
     ),
     CounterexampleMagma(
         "N1 (Non-comm Non-assoc)",
         2,
-        [[0, 0], [1, 0]],
-        ["NOT commutative", "NOT associative"],
+        ((0, 0), (1, 0)),
+        ("NOT commutative", "NOT associative"),
     ),
     CounterexampleMagma(
         "Z3 (Z/3Z addition)",
         3,
-        [[0, 1, 2], [1, 2, 0], [2, 0, 1]],
-        ["commutative", "associative", "has identity", "NOT idempotent"],
+        ((0, 1, 2), (1, 2, 0), (2, 0, 1)),
+        ("commutative", "associative", "has identity", "NOT idempotent"),
     ),
 )
 
 # All 16 possible 2-element magma tables (tuple to prevent mutation — #41).
 ALL_SIZE_2_MAGMAS: tuple[CounterexampleMagma, ...] = tuple(
-    CounterexampleMagma(f"M2_{i:04b}", 2, [[i >> 3 & 1, i >> 2 & 1], [i >> 1 & 1, i & 1]])
+    CounterexampleMagma(
+        f"M2_{i:04b}",
+        2,
+        ((i >> 3 & 1, i >> 2 & 1), (i >> 1 & 1, i & 1)),
+    )
     for i in range(16)
 )
 
 
-@functools.cache
+# NEW-I5 (#58): bounded cache so long-running consumers (notebooks, batch
+# runs over multiple corpora, server processes) cannot leak memory linearly
+# in the number of distinct equations seen. 8192 is plenty for a single
+# 4.7K-equation corpus and keeps a typical 8-byte-key entry under ~100KB
+# total even at saturation.
+@functools.lru_cache(maxsize=8192)
 def _size_2_satisfactions(eq: Equation) -> frozenset[int]:
     """Indices of ``ALL_SIZE_2_MAGMAS`` that satisfy ``eq``.
 
@@ -157,10 +199,15 @@ def _size_2_satisfactions(eq: Equation) -> frozenset[int]:
     Phase 4b does not re-evaluate the same equation against the 16 size-2
     magmas on every pair it appears in. For a full-corpus run over
     ~4.7K equations, this turns the cost from O(n_pairs × 16 × evals)
-    into O(n_equations × 16 × evals + n_pairs).
+    into O(n_equations × 16 × evals + n_pairs). The cache is per-process
+    only — it does not persist across runs, so cold-start runs pay the
+    full per-equation cost (S12 / regression #62). Bounded to 8192
+    entries so long-running consumers don't grow unbounded (NEW-I5 / #58).
     """
     return frozenset(
-        i for i, magma in enumerate(ALL_SIZE_2_MAGMAS) if eq.holds_in(magma.table, magma.size)
+        i
+        for i, magma in enumerate(ALL_SIZE_2_MAGMAS)
+        if eq.holds_in(magma.table, magma.size)  # type: ignore[arg-type]
     )
 
 
@@ -173,8 +220,14 @@ class ImplicationVerdict(Enum):
     UNKNOWN = "UNKNOWN"
 
 
-@dataclass
+@dataclass(frozen=True)
 class AnalysisResult:
+    """Outcome of one ``analyze_implication`` call.
+
+    Frozen (NEW-I3 / regression #58) so downstream consumers cannot mutate
+    a verdict after the fact. All fields are constructed once and read-only.
+    """
+
     verdict: ImplicationVerdict
     phase: str
     reason: str
@@ -298,7 +351,16 @@ def analyze_implication(h: Equation, t: Equation) -> AnalysisResult:
             f"Target op count ({t.total_ops()}) >> hypothesis op count ({h.total_ops()})",
         )
 
-    return AnalysisResult(ImplicationVerdict.UNKNOWN, "Phase 8", "Inconclusive - default FALSE")
+    return AnalysisResult(
+        ImplicationVerdict.UNKNOWN,
+        "Phase 8",
+        # S11 (#62): keep the verdict and the reason narrative consistent
+        # — Phase 8 emits UNKNOWN to signal "no rule fired", and the
+        # caller (DecisionProcedure) decides whether to treat that as
+        # FALSE. Embedding "default FALSE" in this analyzer's reason
+        # leaks the upstream policy and contradicts the verdict.
+        "Inconclusive — no rule fired",
+    )
 
 
 def _is_tautology(eq: Equation) -> bool:
@@ -371,14 +433,22 @@ _PHASE6_MAX_STEPS = 8
 
 
 def _match_pattern(pattern: Term, target: Term, bindings: dict[str, Term]) -> bool:
-    """First-order match: is ``target`` an instance of ``pattern``?
+    """Non-linear first-order match: is ``target`` an instance of ``pattern``?
 
-    Extends ``bindings`` in place. Pattern variables may bind to arbitrary
-    target sub-terms; every occurrence of a pattern variable must bind to the
-    same sub-term (linear-match would miss rules like ``x*x → x``). Returns
-    True on success, leaving bindings populated; returns False on failure.
-    The bindings dict may be partially mutated on failure — callers should
-    discard it.
+    The matcher is *non-linear in the pattern*: every occurrence of the
+    same pattern variable must bind to the same target sub-term. That
+    non-linearity is what enables rules such as ``x*x → x`` (the two
+    leaf ``x`` positions must collapse to the same sub-term). A purely
+    linear matcher would miss them.
+
+    Extends ``bindings`` in place on success. On failure the dict is
+    rolled back to the snapshot captured on entry (NEW-I2 / regression
+    #60), so it is safe to reuse a single ``bindings`` dict across
+    sibling sub-matches: the right-side recursion no longer leaks
+    partial left-side bindings if the right side fails. Today's
+    ``_rewrite_once`` allocates a fresh dict per call and is unaffected,
+    but any AC-matching extension or pattern-cache reuse would have
+    silently produced wrong matches without this snapshot/restore.
     """
     if pattern.node_type == NodeType.VAR:
         existing = bindings.get(pattern.name)
@@ -391,7 +461,17 @@ def _match_pattern(pattern: Term, target: Term, bindings: dict[str, Term]) -> bo
         return False
     p_l, p_r = pattern._lr()
     t_l, t_r = target._lr()
-    return _match_pattern(p_l, t_l, bindings) and _match_pattern(p_r, t_r, bindings)
+    snapshot = bindings.copy()
+    if not _match_pattern(p_l, t_l, bindings):
+        # Left side itself rolls back on failure; nothing extra to do.
+        return False
+    if not _match_pattern(p_r, t_r, bindings):
+        # Right side failed but left side may have committed bindings —
+        # restore the snapshot so the caller sees a clean state.
+        bindings.clear()
+        bindings.update(snapshot)
+        return False
+    return True
 
 
 def _rewrite_once(term: Term, rule_lhs: Term, rule_rhs: Term) -> Term | None:
@@ -401,39 +481,57 @@ def _rewrite_once(term: Term, rule_lhs: Term, rule_rhs: Term) -> Term | None:
     whole term first, then the left child, then the right child. This is the
     standard leftmost-outermost (normal-order) rewrite strategy — it avoids
     wasted work on sub-terms that will be rewritten at the parent.
+
+    S2 (#63): uses Term._lr() for OP-children access so the malformed-OP
+    invariant is enforced consistently with the rest of this module
+    (Term.__post_init__ already validates at construction; _lr provides
+    the runtime access guard for any defensive remaining call site).
     """
     bindings: dict[str, Term] = {}
     if _match_pattern(rule_lhs, term, bindings):
         return rule_rhs.substitute(bindings)
-    if term.node_type == NodeType.OP and term.left is not None and term.right is not None:
-        left_new = _rewrite_once(term.left, rule_lhs, rule_rhs)
+    if term.node_type == NodeType.OP:
+        left, right = term._lr()
+        left_new = _rewrite_once(left, rule_lhs, rule_rhs)
         if left_new is not None:
-            return Term(NodeType.OP, left=left_new, right=term.right)
-        right_new = _rewrite_once(term.right, rule_lhs, rule_rhs)
+            return op(left_new, right)
+        right_new = _rewrite_once(right, rule_lhs, rule_rhs)
         if right_new is not None:
-            return Term(NodeType.OP, left=term.left, right=right_new)
+            return op(left, right_new)
     return None
 
 
 def _rewrite_to_normal_form(
     term: Term, rule_lhs: Term, rule_rhs: Term, max_steps: int = _PHASE6_MAX_STEPS
-) -> Term:
+) -> tuple[Term, RewriteStatus]:
     """Apply the rule until nothing matches, a cycle is detected, or the budget is spent.
 
-    Returns the final term. Termination is guaranteed by ``max_steps`` even
-    for non-terminating (size-increasing) orientations.
+    Returns ``(final_term, status)`` where ``status`` is one of:
+
+    - ``"normal_form"`` — no further match exists; rewriting is complete.
+    - ``"cycle"`` — the next rewrite would re-enter a previously seen term;
+      the rule never terminates from here, so rewriting was aborted.
+    - ``"budget"`` — ``max_steps`` was exhausted without reaching either
+      condition; the result may not be a normal form.
+
+    Reporting the cause of termination (NEW-I1 / regression #60) lets the
+    caller distinguish "no further reductions exist" from "we ran out of
+    steps" and tune ``max_steps`` if the budget is biting in practice.
+    Phase 6 verdict TRUE remains sound (each rewrite step is sound), but
+    silently missing implications because of a budget hit is now
+    observable at DEBUG level.
     """
     seen: set[Term] = set()
     current = term
     for _ in range(max_steps):
         if current in seen:
-            break  # cycle — rewriting would go on forever
+            return current, "cycle"
         seen.add(current)
         next_term = _rewrite_once(current, rule_lhs, rule_rhs)
         if next_term is None:
-            break  # normal form reached
+            return current, "normal_form"
         current = next_term
-    return current
+    return current, "budget"
 
 
 def _rule_is_sound(rule_lhs: Term, rule_rhs: Term) -> bool:
@@ -456,6 +554,10 @@ def _phase6_rewrite(h: Equation, t: Equation) -> AnalysisResult | None:
     reach the same term, the target holds as an instance of H-derivation.
     Returns the phase result on success, or None if neither orientation
     closes T.
+
+    Logs at DEBUG level when an orientation hits the rewrite step budget
+    (NEW-I1 / #60) so practitioners can identify implications that might
+    be discoverable by raising ``_PHASE6_MAX_STEPS``.
     """
     for lhs, rhs, label in (
         (h.lhs, h.rhs, "LHS→RHS"),
@@ -463,8 +565,15 @@ def _phase6_rewrite(h: Equation, t: Equation) -> AnalysisResult | None:
     ):
         if not _rule_is_sound(lhs, rhs):
             continue
-        reduced_t_lhs = _rewrite_to_normal_form(t.lhs, lhs, rhs)
-        reduced_t_rhs = _rewrite_to_normal_form(t.rhs, lhs, rhs)
+        reduced_t_lhs, status_lhs = _rewrite_to_normal_form(t.lhs, lhs, rhs)
+        reduced_t_rhs, status_rhs = _rewrite_to_normal_form(t.rhs, lhs, rhs)
+        if "budget" in (status_lhs, status_rhs):
+            logger.debug(
+                "Phase 6 budget exhausted (%s) on H=%s, T=%s — verdict may be incomplete",
+                label,
+                h,
+                t,
+            )
         if reduced_t_lhs == reduced_t_rhs:
             return AnalysisResult(
                 ImplicationVerdict.TRUE,
@@ -475,14 +584,19 @@ def _phase6_rewrite(h: Equation, t: Equation) -> AnalysisResult | None:
 
 
 def _iter_vars(term: Term) -> Iterator[str]:
-    """Yield variable names in a term, including duplicates."""
+    """Yield variable names in a term, including duplicates.
 
-    if term.node_type == NodeType.VAR:
-        yield term.name
-    else:
-        lt, rt = term._lr()
-        yield from _iter_vars(lt)
-        yield from _iter_vars(rt)
+    S5 (#63): uses a structural ``match`` on ``term.node_type`` instead
+    of an if/else chain. The project already targets py3.10+ via the
+    ``X | None`` syntax, so match statements are in scope.
+    """
+    match term.node_type:
+        case NodeType.VAR:
+            yield term.name
+        case NodeType.OP:
+            lt, rt = term._lr()
+            yield from _iter_vars(lt)
+            yield from _iter_vars(rt)
 
 
 def _h_vars_unique(h: Equation) -> bool:
@@ -502,75 +616,45 @@ def _detect_determined_operation(eq: Equation) -> tuple[list[list[int]], str] | 
 
     Returns (table, name) if determined, None otherwise.
     Uses a 2-element magma for testing.
+
+    Notes:
+        "left absorption" here means ``x = x*y`` (forces left projection).
+        This differs from Lean's ``StdEqn.leftAbsorption`` which is the
+        standard absorption law ``x*(x*y) = x*y``. Naming difference is
+        intentional: this function detects operation-determining
+        equations, not absorption proper.
+
+    S1 (#63): the four absorption branches (x=x*y, x*y=x, x=y*x, y*x=x)
+    are collapsed into a single canonical-orientation pass that orders
+    the equation as ``(var_side, op_side)`` regardless of which side of
+    ``=`` the variable came from. This drops ~30 lines of repeated
+    AST-shape checks down to one shared shape match.
     """
-    # Note: "left absorption" here means x = x*y (forces left projection).
-    # This differs from Lean's StdEqn.leftAbsorption which is x*(x*y) = x*y
-    # (the standard absorption law). The naming difference is intentional:
-    # this function detects operation-determining equations.
+    # Canonicalise: identify which side is the bare variable. If both
+    # sides are OPs we fall through to the constant-operation branch.
+    var_side, op_side = _canonical_var_op_sides(eq)
+    if var_side is not None and op_side is not None:
+        # Both children of op_side must be variables for a determined-
+        # operation conclusion. The "anchor" variable is var_side.name;
+        # it must appear once in op_side, and the partner variable must
+        # differ from it (otherwise we have x = x*x — idempotence — not
+        # a determined operation).
+        anchor = var_side.name
+        op_left, op_right = op_side._lr()
+        if op_left.node_type == NodeType.VAR and op_right.node_type == NodeType.VAR:
+            # Left projection: x = x*y or x*y = x — anchor matches op.left,
+            # partner is op.right and differs.
+            if op_left.name == anchor and op_right.name != anchor:
+                return [[0, 0], [1, 1]], "left projection (x*y=x)"
+            # Right projection: x = y*x or y*x = x — anchor matches op.right,
+            # partner is op.left and differs.
+            if op_right.name == anchor and op_left.name != anchor:
+                return [[0, 1], [0, 1]], "right projection (x*y=y)"
 
-    # Left absorption: x = x * y → forces left projection
-    # Both children of OP must be vars, and the "other" var must differ.
-    if (
-        eq.lhs.node_type == NodeType.VAR
-        and eq.rhs.node_type == NodeType.OP
-        and eq.rhs.left is not None
-        and eq.rhs.right is not None
-        and eq.rhs.left.node_type == NodeType.VAR
-        and eq.rhs.right.node_type == NodeType.VAR
-        and eq.rhs.left.name == eq.lhs.name
-        and eq.rhs.right.name != eq.lhs.name
-    ):
-        return [[0, 0], [1, 1]], "left projection (x*y=x)"
-
-    # Also check reversed: x * y = x
-    if (
-        eq.rhs.node_type == NodeType.VAR
-        and eq.lhs.node_type == NodeType.OP
-        and eq.lhs.left is not None
-        and eq.lhs.right is not None
-        and eq.lhs.left.node_type == NodeType.VAR
-        and eq.lhs.right.node_type == NodeType.VAR
-        and eq.lhs.left.name == eq.rhs.name
-        and eq.lhs.right.name != eq.rhs.name
-    ):
-        return [[0, 0], [1, 1]], "left projection (x*y=x)"
-
-    # Right absorption: x = y * x → forces right projection
-    if (
-        eq.lhs.node_type == NodeType.VAR
-        and eq.rhs.node_type == NodeType.OP
-        and eq.rhs.right is not None
-        and eq.rhs.right.node_type == NodeType.VAR
-        and eq.rhs.right.name == eq.lhs.name
-    ):
-        rhs_left_var = eq.rhs.left
-        if (
-            rhs_left_var is not None
-            and rhs_left_var.node_type == NodeType.VAR
-            and rhs_left_var.name != eq.lhs.name
-        ):
-            return [[0, 1], [0, 1]], "right projection (x*y=y)"
-
-    # Also check reversed: y * x = x
-    if (
-        eq.rhs.node_type == NodeType.VAR
-        and eq.lhs.node_type == NodeType.OP
-        and eq.lhs.right is not None
-        and eq.lhs.right.node_type == NodeType.VAR
-        and eq.lhs.right.name == eq.rhs.name
-    ):
-        lhs_left_var = eq.lhs.left
-        if (
-            lhs_left_var is not None
-            and lhs_left_var.node_type == NodeType.VAR
-            and lhs_left_var.name != eq.rhs.name
-        ):
-            return [[0, 1], [0, 1]], "right projection (x*y=y)"
-
-    # Generalized constant law: LHS and RHS are both OP trees with disjoint variable sets,
-    # AND each variable appears exactly once in the equation (no repeats).
-    # When variables repeat (e.g. (x*y)*x), the disjoint condition alone is insufficient —
-    # a 3-element counterexample exists. With unique variables, x*y=z*w style reasoning holds.
+    # Generalized constant law: LHS and RHS are both OP trees with disjoint
+    # variable sets, AND each variable appears exactly once. When variables
+    # repeat (e.g. (x*y)*x), the disjoint condition alone is insufficient —
+    # a 3-element counterexample exists.
     if eq.lhs.node_type == NodeType.OP and eq.rhs.node_type == NodeType.OP:
         lhs_vars = eq.lhs.variables()
         rhs_vars = eq.rhs.variables()
@@ -581,3 +665,17 @@ def _detect_determined_operation(eq: Equation) -> tuple[list[list[int]], str] | 
             return [[0, 0], [0, 0]], "constant operation (x*y=c)"
 
     return None
+
+
+def _canonical_var_op_sides(eq: Equation) -> tuple[Term | None, Term | None]:
+    """Return ``(var_side, op_side)`` if the equation has the form
+    ``var = op`` or ``op = var``; otherwise ``(None, None)``.
+
+    S1 (#63) helper: collapses the four "which side is the variable"
+    branches that previously duplicated absorption detection logic.
+    """
+    if eq.lhs.node_type == NodeType.VAR and eq.rhs.node_type == NodeType.OP:
+        return eq.lhs, eq.rhs
+    if eq.rhs.node_type == NodeType.VAR and eq.lhs.node_type == NodeType.OP:
+        return eq.rhs, eq.lhs
+    return None, None

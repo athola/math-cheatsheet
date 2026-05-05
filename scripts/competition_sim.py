@@ -31,9 +31,26 @@ def wilson_ci(successes: int, total: int, z: float = 1.96) -> tuple[float, float
     Returns ``(lower, upper)`` in ``[0, 1]``. The Wilson form is preferred over
     the normal approximation because it behaves sensibly when the empirical
     proportion is at or near the 0/1 boundaries.
+
+    Raises:
+        ValueError: if ``total < 0`` or ``successes`` is not in
+            ``[0, total]``. Previously such inputs were silently clamp-masked
+            into a meaningless interval (S7 / regression #54), hiding caller
+            bugs (e.g. accuracy passed as a float instead of a count).
     """
-    if total <= 0:
+    if total < 0:
+        raise ValueError(f"wilson_ci: total must be non-negative, got {total}")
+    if total == 0:
+        if successes != 0:
+            raise ValueError(
+                f"wilson_ci: successes must be 0 when total=0, got {successes}"
+            )
         return (0.0, 0.0)
+    if not (0 <= successes <= total):
+        raise ValueError(
+            f"wilson_ci: successes must satisfy 0 <= successes <= total;"
+            f" got successes={successes}, total={total}"
+        )
     p = successes / total
     denom = 1 + z * z / total
     centre = (p + z * z / (2 * total)) / denom

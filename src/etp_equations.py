@@ -80,11 +80,28 @@ class ETPEquations:
         self._load(Path(equations_path))
 
     def _load(self, path: Path):
+        """Parse every non-blank line as one equation.
+
+        Collects all parse failures and raises them as a single
+        :class:`ExceptionGroup` so the caller sees the full inventory of
+        malformed lines instead of just the first (NEW-I9 / regression #61).
+        Successfully parsed equations remain available via ``self.equations``
+        when an :class:`ExceptionGroup` is raised — a partial dataset is
+        useful for diagnostic tooling that wants to render what *did* load
+        alongside the errors.
+        """
+        errors: list[ValueError] = []
         with open(path, encoding="utf-8") as f:
-            for i, line in enumerate(f, 1):
-                line = line.strip()
-                if line:
+            for i, raw_line in enumerate(f, 1):
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
                     self.equations[i] = parse_equation(i, line)
+                except ValueError as exc:
+                    errors.append(exc)
+        if errors:
+            raise ExceptionGroup(f"{len(errors)} equation(s) failed to parse in {path}", errors)
 
     def __getitem__(self, eq_id: int) -> Equation:
         return self.equations[eq_id]
@@ -102,42 +119,46 @@ class ETPEquations:
         """Detect collapse equations from structure alone.
 
         A collapse equation forces |M|=1. Key patterns:
-        - x = y (distinct vars equated directly)
-        - x = y ◇ z (var equals op of two other vars)
-        - More complex: LHS is a variable, RHS contains variables not in LHS
-          and the equation forces all elements equal.
+        - ``x = y`` (distinct vars equated directly).
+        - ``x = y ◇ z`` (or its mirror ``y ◇ z = x``) where the ``var``
+          side has no overlap with the ``op`` side's vars.
 
-        Conservative approach: if LHS is a single variable and RHS introduces
-        a new variable not in LHS, this MAY be collapse. But we need to be
-        more careful.
+        S6 (#63): the two ``var = op`` mirror branches share their logic
+        — orient them as ``(var_side, op_side)`` first, then apply the
+        single condition. Same canonicalisation trick as S1 in
+        :func:`equation_analyzer._detect_determined_operation`.
 
-        The definitive test: an equation is collapse iff it's satisfied only
-        by magmas of size 1. We check this against the oracle externally.
+        The definitive test: an equation is collapse iff it's satisfied
+        only by magmas of size 1. We check this against the oracle
+        externally; this method is a fast structural pre-filter.
         """
         eq = self.equations[eq_id]
 
-        # x = y pattern: two distinct variables equated
+        # Pattern 1: distinct vars equated directly (x = y).
         if eq.lhs.is_var and eq.rhs.is_var and eq.lhs.name != eq.rhs.name:
             return True
 
-        # x = y ◇ z where y,z are vars not equal to x
-        if eq.lhs.is_var and not eq.rhs.is_var:
-            lhs_vars = eq.lhs.variables()
-            rhs_vars = eq.rhs.variables()
-            new_vars = rhs_vars - lhs_vars
-            # If RHS has 2+ new vars AND it's a single operation, likely collapse
-            if len(new_vars) >= 2 and eq.rhs.size() == 1:
-                return True
-
-        # Symmetric: y ◇ z = x
-        if eq.rhs.is_var and not eq.lhs.is_var:
-            lhs_vars = eq.lhs.variables()
-            rhs_vars = eq.rhs.variables()
-            new_vars = lhs_vars - rhs_vars
-            if len(new_vars) >= 2 and eq.lhs.size() == 1:
+        # Pattern 2: var = op (or op = var) with single op and ≥2 fresh
+        # variables on the op side. Canonicalise side roles first so the
+        # condition is written once.
+        var_side, op_side = self._canonical_var_op_sides(eq)
+        if var_side is not None and op_side is not None:
+            new_vars = op_side.variables() - var_side.variables()
+            if len(new_vars) >= 2 and op_side.size() == 1:
                 return True
 
         return False
+
+    @staticmethod
+    def _canonical_var_op_sides(eq: Equation) -> tuple[Term | None, Term | None]:
+        """Return ``(var_side, op_side)`` for a ``var = op`` shape, else
+        ``(None, None)``. S6 (#63) helper for symmetric-pattern checks.
+        """
+        if eq.lhs.is_var and not eq.rhs.is_var:
+            return eq.lhs, eq.rhs
+        if eq.rhs.is_var and not eq.lhs.is_var:
+            return eq.rhs, eq.lhs
+        return None, None
 
     def vars_in_target_not_in_hypothesis(self, h_id: int, t_id: int) -> frozenset[str]:
         """Variables in target equation not present in hypothesis."""

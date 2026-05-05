@@ -97,3 +97,19 @@ class TestPhase4bRegression:
         t = parse_equation("x = (x * x) * x")
         result = analyze_implication(h, t)
         assert result.verdict == ImplicationVerdict.TRUE
+
+
+class TestSize2SatisfactionsCacheBound:
+    """NEW-I5 (#58): the cache is bounded so long-running consumers cannot
+    leak memory linearly in the number of distinct equations seen.
+    """
+
+    @pytest.mark.unit
+    def test_cache_is_lru_bounded(self):
+        from equation_analyzer import _size_2_satisfactions
+
+        # functools.lru_cache exposes cache_info().maxsize; functools.cache
+        # would expose maxsize=None (unbounded). 8192 protects against
+        # leaks while remaining ample for the 4.7K-equation corpus.
+        info = _size_2_satisfactions.cache_info()
+        assert info.maxsize == 8192

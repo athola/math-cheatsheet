@@ -86,3 +86,55 @@ class TestSharedParser:
     def test_parse_rejects_missing_equals(self):
         with pytest.raises(ValueError, match="'='"):
             parse_equation_terms("x * y")
+
+
+class TestParserErrorPaths:
+    """Cover every parser error branch (NEW-I7 / #59).
+
+    Coverage previously missed each of these branches; one bad refactor
+    could silently flip the wrong error class without a regression
+    surfacing.
+    """
+
+    @pytest.mark.unit
+    def test_unbalanced_open_paren_on_lhs(self):
+        # _parse_primary recurses into (x*y, runs out of tokens before ')'.
+        with pytest.raises(ValueError, match=r"Expected '\)'"):
+            parse_equation_terms("(x*y = z")
+
+    @pytest.mark.unit
+    def test_unbalanced_open_paren_on_rhs(self):
+        with pytest.raises(ValueError, match=r"Expected '\)'"):
+            parse_equation_terms("x = (y")
+
+    @pytest.mark.unit
+    def test_bare_leading_operator(self):
+        # Tokens [*, x] — _parse_primary sees '*' first and falls through to
+        # the "Unexpected token" branch.
+        with pytest.raises(ValueError, match="Unexpected token"):
+            parse_equation_terms("* x = y")
+
+    @pytest.mark.unit
+    def test_trailing_operator(self):
+        # Tokens [x, *] — _parse_expr enters the "*" branch and calls
+        # _parse_primary at pos = len(tokens), hitting "Unexpected end".
+        with pytest.raises(ValueError, match="Unexpected end of expression"):
+            parse_equation_terms("x * = y")
+
+    @pytest.mark.unit
+    def test_op_term_with_missing_left_child_rejected(self):
+        # NEW-I4 (#58) — Term construction now validates the OP/VAR
+        # invariant; previously this produced a "successful" Term that
+        # only failed at access via _lr().
+        with pytest.raises(ValueError, match="OP node must have both left and right"):
+            Term(NodeType.OP, left=None, right=var("x"))
+
+    @pytest.mark.unit
+    def test_op_term_with_missing_right_child_rejected(self):
+        with pytest.raises(ValueError, match="OP node must have both left and right"):
+            Term(NodeType.OP, left=var("x"), right=None)
+
+    @pytest.mark.unit
+    def test_op_term_with_no_children_rejected(self):
+        with pytest.raises(ValueError, match="OP node must have both left and right"):
+            Term(NodeType.OP)
