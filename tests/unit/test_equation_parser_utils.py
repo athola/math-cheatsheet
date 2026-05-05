@@ -88,3 +88,52 @@ class TestTokenizeEquation:
         Then tokens are ['x', '=', 'x']
         """
         assert tokenize_equation("x = x") == ["x", "=", "x"]
+
+
+class TestUnknownCharsSurfacing:
+    """Feature: tokenize_equation surfaces unrecognised characters (S6 / #54).
+
+    Previous behaviour silently dropped digits, punctuation, and stray
+    unicode operators, so ``x1 * y`` and ``x * y`` produced the same tokens.
+    Now the dropped characters trigger a warning by default and raise under
+    ``strict=True``.
+    """
+
+    @pytest.mark.unit
+    def test_digit_in_variable_warns(self):
+        with pytest.warns(UserWarning, match="dropped 1 unrecognised char"):
+            tokens = tokenize_equation("x1 * y")
+        # Existing behaviour preserved for non-strict callers: stray chars
+        # are dropped but the rest tokenises.
+        assert tokens == ["x", "*", "y"]
+
+    @pytest.mark.unit
+    def test_unknown_unicode_operator_warns(self):
+        with pytest.warns(UserWarning, match="dropped"):
+            tokens = tokenize_equation("x ⊕ y")
+        assert tokens == ["x", "y"]
+
+    @pytest.mark.unit
+    def test_strict_mode_raises(self):
+        with pytest.raises(ValueError, match="dropped"):
+            tokenize_equation("x1 * y", strict=True)
+
+    @pytest.mark.unit
+    def test_strict_mode_passes_clean_input(self):
+        # A clean input must not raise even with strict=True.
+        assert tokenize_equation("x * y = y * x", strict=True) == [
+            "x",
+            "*",
+            "y",
+            "=",
+            "y",
+            "*",
+            "x",
+        ]
+
+    @pytest.mark.unit
+    def test_message_truncates_offender_list(self):
+        # Six unknown characters should produce a "+1 more" suffix so the
+        # message stays bounded for pathological inputs.
+        with pytest.warns(UserWarning, match=r"\+1 more"):
+            tokenize_equation("123456")

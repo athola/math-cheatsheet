@@ -47,6 +47,29 @@ class TestWilsonCI:
     def test_zero_total_returns_zero_zero(self):
         assert sim.wilson_ci(0, 0) == (0.0, 0.0)
 
+    @pytest.mark.unit
+    def test_negative_successes_raises(self):
+        # S7/#54: previously clamp-masked into a meaningless interval.
+        with pytest.raises(ValueError, match="0 <= successes <= total"):
+            sim.wilson_ci(-1, 100)
+
+    @pytest.mark.unit
+    def test_successes_exceeds_total_raises(self):
+        with pytest.raises(ValueError, match="0 <= successes <= total"):
+            sim.wilson_ci(101, 100)
+
+    @pytest.mark.unit
+    def test_negative_total_raises(self):
+        with pytest.raises(ValueError, match="total must be non-negative"):
+            sim.wilson_ci(0, -5)
+
+    @pytest.mark.unit
+    def test_successes_with_zero_total_raises(self):
+        # Catches the "I forgot to count" caller bug: total=0 must imply
+        # successes=0 too, otherwise the inputs are inconsistent.
+        with pytest.raises(ValueError, match="successes must be 0 when total=0"):
+            sim.wilson_ci(3, 0)
+
 
 class _FakeOracle:
     """Minimal oracle stand-in for sample_pairs tests."""
