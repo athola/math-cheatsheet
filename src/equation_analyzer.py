@@ -21,7 +21,7 @@ import functools
 import itertools
 import logging
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
 
@@ -93,15 +93,38 @@ def parse_equation(s: str) -> Equation:
 # --- Canonical Counterexample Magmas ---
 
 
-@dataclass
+@dataclass(frozen=True)
 class CounterexampleMagma:
+    """A small magma stamped onto a single Cayley table.
+
+    Frozen and tuple-fielded so module-level constants like
+    :data:`CANONICAL_MAGMAS` cannot be mutated by callers and so that
+    instances are hashable / cache-friendly (NEW-I3 / regression #58).
+    The table is stored as ``tuple[tuple[int, ...], ...]`` and ``properties``
+    as ``tuple[str, ...]``.
+    """
+
     name: str
     size: int
-    table: list[list[int]]
-    properties: list[str] = field(default_factory=list)
+    table: tuple[tuple[int, ...], ...]
+    properties: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        # Normalise list-of-list / list-of-str inputs to tuple form so
+        # callers that wrote constants with literal lists still compose.
+        # The standard escape hatch for frozen dataclasses (object.__setattr__)
+        # is required; assignment via self.field = ... raises FrozenInstanceError.
+        if not (
+            isinstance(self.table, tuple) and all(isinstance(row, tuple) for row in self.table)
+        ):
+            object.__setattr__(self, "table", tuple(tuple(row) for row in self.table))
+        if not isinstance(self.properties, tuple):
+            object.__setattr__(self, "properties", tuple(self.properties))
 
     def satisfies(self, eq: Equation) -> bool:
-        return eq.holds_in(self.table, self.size)
+        # holds_in expects a list-of-list interface; tuples honour the
+        # same indexing protocol so no conversion is needed.
+        return eq.holds_in(self.table, self.size)  # type: ignore[arg-type]
 
 
 # The 7 canonical magmas from the v3 cheatsheet.
@@ -111,55 +134,64 @@ CANONICAL_MAGMAS: tuple[CounterexampleMagma, ...] = (
     CounterexampleMagma(
         "LP (Left Projection)",
         2,
-        [[0, 0], [1, 1]],
-        ["associative", "idempotent", "NOT commutative"],
+        ((0, 0), (1, 1)),
+        ("associative", "idempotent", "NOT commutative"),
     ),
     CounterexampleMagma(
         "RP (Right Projection)",
         2,
-        [[0, 1], [0, 1]],
-        ["associative", "idempotent", "NOT commutative"],
+        ((0, 1), (0, 1)),
+        ("associative", "idempotent", "NOT commutative"),
     ),
     CounterexampleMagma(
         "C0 (Constant Zero)",
         2,
-        [[0, 0], [0, 0]],
-        ["associative", "commutative", "NOT idempotent"],
+        ((0, 0), (0, 0)),
+        ("associative", "commutative", "NOT idempotent"),
     ),
     CounterexampleMagma(
         "XR (XOR / Z2 addition)",
         2,
-        [[0, 1], [1, 0]],
-        ["commutative", "associative", "has identity", "NOT idempotent"],
+        ((0, 1), (1, 0)),
+        ("commutative", "associative", "has identity", "NOT idempotent"),
     ),
     CounterexampleMagma(
         "CM (Commutative Non-Associative)",
         2,
-        [[1, 1], [1, 0]],
-        ["commutative", "NOT associative"],
+        ((1, 1), (1, 0)),
+        ("commutative", "NOT associative"),
     ),
     CounterexampleMagma(
         "N1 (Non-comm Non-assoc)",
         2,
-        [[0, 0], [1, 0]],
-        ["NOT commutative", "NOT associative"],
+        ((0, 0), (1, 0)),
+        ("NOT commutative", "NOT associative"),
     ),
     CounterexampleMagma(
         "Z3 (Z/3Z addition)",
         3,
-        [[0, 1, 2], [1, 2, 0], [2, 0, 1]],
-        ["commutative", "associative", "has identity", "NOT idempotent"],
+        ((0, 1, 2), (1, 2, 0), (2, 0, 1)),
+        ("commutative", "associative", "has identity", "NOT idempotent"),
     ),
 )
 
 # All 16 possible 2-element magma tables (tuple to prevent mutation — #41).
 ALL_SIZE_2_MAGMAS: tuple[CounterexampleMagma, ...] = tuple(
-    CounterexampleMagma(f"M2_{i:04b}", 2, [[i >> 3 & 1, i >> 2 & 1], [i >> 1 & 1, i & 1]])
+    CounterexampleMagma(
+        f"M2_{i:04b}",
+        2,
+        ((i >> 3 & 1, i >> 2 & 1), (i >> 1 & 1, i & 1)),
+    )
     for i in range(16)
 )
 
 
-@functools.cache
+# NEW-I5 (#58): bounded cache so long-running consumers (notebooks, batch
+# runs over multiple corpora, server processes) cannot leak memory linearly
+# in the number of distinct equations seen. 8192 is plenty for a single
+# 4.7K-equation corpus and keeps a typical 8-byte-key entry under ~100KB
+# total even at saturation.
+@functools.lru_cache(maxsize=8192)
 def _size_2_satisfactions(eq: Equation) -> frozenset[int]:
     """Indices of ``ALL_SIZE_2_MAGMAS`` that satisfy ``eq``.
 
@@ -167,10 +199,13 @@ def _size_2_satisfactions(eq: Equation) -> frozenset[int]:
     Phase 4b does not re-evaluate the same equation against the 16 size-2
     magmas on every pair it appears in. For a full-corpus run over
     ~4.7K equations, this turns the cost from O(n_pairs × 16 × evals)
-    into O(n_equations × 16 × evals + n_pairs).
+    into O(n_equations × 16 × evals + n_pairs). Bounded to 8192 entries
+    so long-running consumers don't grow unbounded (NEW-I5 / #58).
     """
     return frozenset(
-        i for i, magma in enumerate(ALL_SIZE_2_MAGMAS) if eq.holds_in(magma.table, magma.size)
+        i
+        for i, magma in enumerate(ALL_SIZE_2_MAGMAS)
+        if eq.holds_in(magma.table, magma.size)  # type: ignore[arg-type]
     )
 
 
@@ -183,8 +218,14 @@ class ImplicationVerdict(Enum):
     UNKNOWN = "UNKNOWN"
 
 
-@dataclass
+@dataclass(frozen=True)
 class AnalysisResult:
+    """Outcome of one ``analyze_implication`` call.
+
+    Frozen (NEW-I3 / regression #58) so downstream consumers cannot mutate
+    a verdict after the fact. All fields are constructed once and read-only.
+    """
+
     verdict: ImplicationVerdict
     phase: str
     reason: str

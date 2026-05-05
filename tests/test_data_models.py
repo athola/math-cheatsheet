@@ -203,6 +203,57 @@ class TestMagmaValidation:
         assert m.size == 2
 
 
+class TestMagmaImmutability:
+    """S8 (#55): Magma is frozen and the operation table is tuple-of-tuples,
+    so a constructed magma cannot have its Cayley table mutated afterwards.
+    """
+
+    def test_magma_field_assignment_rejected(self):
+        m = Magma(size=2, operation=[[0, 1], [1, 0]])
+        with pytest.raises(Exception):  # FrozenInstanceError or AttributeError
+            m.size = 99  # type: ignore[misc]
+
+    def test_operation_table_is_tuple_of_tuples(self):
+        m = Magma(size=2, operation=[[0, 1], [1, 0]])
+        assert isinstance(m.operation, tuple)
+        assert all(isinstance(row, tuple) for row in m.operation)
+
+    def test_operation_row_mutation_rejected(self):
+        m = Magma(size=2, operation=[[0, 1], [1, 0]])
+        with pytest.raises(TypeError):
+            m.operation[0][0] = 99  # type: ignore[index]
+
+    def test_magma_is_hashable(self):
+        # Frozen + tuple table → hashable; can live in a set or dict key.
+        m1 = Magma(size=2, operation=[[0, 1], [1, 0]])
+        m2 = Magma(size=2, operation=[[0, 1], [1, 0]])
+        assert hash(m1) == hash(m2)
+        assert {m1, m2} == {m1}  # equal magmas dedupe
+
+
+class TestFromDictOperationCarrierOptional:
+    """S9 (#55): carrier=None infers size from op_dict, removing the
+    redundant parameter for new callers while keeping backward compat.
+    """
+
+    def test_carrier_none_infers_size(self):
+        op_dict = {(0, 0): 0, (0, 1): 1, (1, 0): 1, (1, 1): 0}
+        m = Magma.from_dict_operation(None, op_dict)
+        assert m.size == 2
+        assert m.operation == ((0, 1), (1, 0))
+
+    def test_carrier_none_with_empty_dict_rejected(self):
+        with pytest.raises(ValueError, match="op_dict is empty"):
+            Magma.from_dict_operation(None, {})
+
+    def test_carrier_passed_must_match_inferred_size(self):
+        # When the caller does pass a carrier, the contiguous-range
+        # constraint still applies so legacy code paths fail the same way.
+        op_dict = {(0, 0): 0, (0, 1): 1, (1, 0): 1, (1, 1): 0}
+        with pytest.raises(ValueError, match="carrier must be range"):
+            Magma.from_dict_operation([0, 5], op_dict)
+
+
 class TestAlgebraicEquation:
     def test_creation(self):
         eq = AlgebraicEquation(id=1, lhs="x*y", rhs="y*x")

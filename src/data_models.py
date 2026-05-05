@@ -5,8 +5,10 @@ Unified data structures for equations, problems, magmas, and counterexamples
 used across the Python codebase (src/, tla/python/, experiments/).
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import cast
 
 
 class Property(Enum):
@@ -83,17 +85,28 @@ class AlgebraicEquation:
         return f"{self.lhs} = {self.rhs}"
 
 
-@dataclass
+@dataclass(frozen=True)
 class Magma:
     """A finite magma with carrier set and binary operation.
 
-    Stores the Cayley table as a 2D list (operation[i][j] = i * j). The carrier
-    set is always ``range(size)``, exposed via the computed ``elements``
-    property so it cannot drift from ``size`` (regression #39).
+    Stores the Cayley table as a tuple-of-tuples (``operation[i][j] = i * j``).
+    The dataclass is frozen and the table is hashable, so a constructed
+    ``Magma`` cannot have its operation mutated post-hoc (S8 / regression
+    #55: ``m.operation[0][0] = 99`` previously produced an invalid magma
+    with no error). Callers may still pass ``list[list[int]]`` for
+    convenience; ``__post_init__`` deep-copies into tuples via
+    ``object.__setattr__`` (the standard escape hatch for frozen
+    dataclasses).
+
+    The carrier set is always ``range(size)``, exposed via the computed
+    ``elements`` property so it cannot drift from ``size`` (regression #39).
     """
 
     size: int
-    operation: list[list[int]]
+    # Accepts lists or tuples at construction; normalised to tuples in
+    # __post_init__ so the dataclass remains hashable and the table is
+    # immutable for downstream consumers.
+    operation: tuple[tuple[int, ...], ...]
 
     def __post_init__(self):
         if self.size < 1:
@@ -108,6 +121,20 @@ class Magma:
             for j, val in enumerate(row):
                 if not (0 <= val < self.size):
                     raise ValueError(f"Entry [{i}][{j}]={val} out of range [0, {self.size})")
+        # Freeze the table: deep-convert any list-of-list to tuple-of-tuple
+        # so callers who pass a mutable nested list cannot retroactively
+        # invalidate this magma. Frozen dataclasses forbid normal
+        # assignment in __post_init__ — object.__setattr__ is the
+        # standard escape hatch for one-shot normalisation.
+        if not (
+            isinstance(self.operation, tuple)
+            and all(isinstance(row, tuple) for row in self.operation)
+        ):
+            object.__setattr__(
+                self,
+                "operation",
+                tuple(tuple(row) for row in self.operation),
+            )
 
     @property
     def elements(self) -> tuple[int, ...]:
@@ -161,23 +188,49 @@ class Magma:
 
     @classmethod
     def from_dict_operation(
-        cls, carrier: list[int], op_dict: dict[tuple[int, int], int]
+        cls,
+        carrier: Sequence[int] | None,
+        op_dict: dict[tuple[int, int], int],
     ) -> "Magma":
-        """Create from dict-based operation (counterexample_db format)."""
-        size = len(carrier)
+        """Create from dict-based operation (counterexample_db format).
+
+        S9 (#55): the ``carrier`` parameter has exactly one legal value —
+        ``range(size)`` — because :class:`Magma` requires a 0-indexed
+        contiguous carrier. The parameter is now optional: when ``None``
+        the size is inferred from ``op_dict``'s keys. When a non-None
+        carrier is supplied, it must equal ``range(size)`` or
+        ``ValueError`` is raised. New callers should pass ``carrier=None``
+        and let the size derive from the dict.
+        """
+        if carrier is not None:
+            size = len(carrier)
+        else:
+            # Infer size from the largest key. The keys must already form
+            # a contiguous square for the validation below to succeed.
+            keys = list(op_dict.keys())
+            if not keys:
+                raise ValueError("from_dict_operation: op_dict is empty")
+            size = max(max(a, b) for a, b in keys) + 1
         expected_keys = {(a, b) for a in range(size) for b in range(size)}
         missing = expected_keys - set(op_dict.keys())
         if missing:
             raise ValueError(f"Missing operation entries for pairs: {sorted(missing)}")
-        table = [[0] * size for _ in range(size)]
+        table_rows = [[0] * size for _ in range(size)]
         for (a, b), result in op_dict.items():
-            table[a][b] = result
-        if list(carrier) != list(range(size)):
+            table_rows[a][b] = result
+        if carrier is not None and list(carrier) != list(range(size)):
             raise ValueError(
                 f"Magma carrier must be range(size); got {list(carrier)}."
-                " Re-index your operation table so keys are 0..size-1."
+                " Re-index your operation table so keys are 0..size-1, or"
+                " pass carrier=None to infer size from op_dict."
             )
-        return cls(size=size, operation=table)
+        return cls(
+            size=size,
+            operation=cast(
+                tuple[tuple[int, ...], ...],
+                tuple(tuple(row) for row in table_rows),
+            ),
+        )
 
     def to_tla(self) -> str:
         """Convert to TLA+ representation."""

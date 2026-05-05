@@ -34,12 +34,33 @@ class Term:
     Uses ``NodeType`` rather than a boolean flag so that new node kinds
     (e.g. constants for Phase 6 rewrite analysis) can be added without
     a boolean explosion.
+
+    Field invariants (validated in ``__post_init__`` per NEW-I4 / #58):
+
+    - VAR nodes must have a non-empty ``name`` and no children. A
+      ``Term(NodeType.VAR, name="", left=op(x,y))`` previously constructed
+      successfully and only raised at access time inside ``_lr()``.
+    - OP nodes must have both ``left`` and ``right`` children.
+
+    Validating at construction surfaces the malformed-term bug at the
+    construction site (where the caller can see the bug) instead of at
+    a downstream traversal that pays the runtime check on every access.
     """
 
     node_type: NodeType
     name: str = ""
     left: Term | None = None
     right: Term | None = None
+
+    def __post_init__(self) -> None:
+        if self.node_type == NodeType.VAR:
+            if not self.name:
+                raise ValueError("VAR node must have a non-empty name")
+            if self.left is not None or self.right is not None:
+                raise ValueError("VAR node must not have children")
+        else:  # OP
+            if self.left is None or self.right is None:
+                raise ValueError("OP node must have both left and right children")
 
     @property
     def is_var(self) -> bool:
