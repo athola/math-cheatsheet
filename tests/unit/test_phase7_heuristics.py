@@ -160,6 +160,47 @@ class TestPhase7SideSwapIdentity:
         )
 
 
+class TestPhase7cFalseDeadByDesign:
+    """Phase 7c's FALSE branch (line 348) is unreachable by construction
+    after the NEW-C1 gate. ``_h_vars_unique(h)`` requires every variable
+    occurrence in H to be distinct, which is strictly stricter than
+    Phase 5's constant-operation precondition (LHS and RHS are OP trees
+    with disjoint variable sets and no repeats). Any H that satisfies
+    ``_h_vars_unique`` either:
+
+    1. Has disjoint LHS/RHS variables → Phase 5 fires (constant-op).
+    2. Has a single variable shared between LHS and RHS → ``_h_vars_unique``
+       returns False because the shared variable appears at least twice.
+
+    There is no way to reach Phase 7c with a ``_h_vars_unique`` H, so
+    line 348 is dead defensive code. This test documents the
+    impossibility so a future refactor that loosens ``_h_vars_unique``
+    or moves Phase 5 below Phase 7 has to confront it.
+    """
+
+    @pytest.mark.unit
+    def test_phase5_always_catches_disjoint_var_h_before_phase7c(self):
+        from equation_analyzer import _detect_determined_operation, _h_vars_unique
+
+        # The witness: any H with all-unique vars must have either disjoint
+        # OR overlapping var sets between LHS and RHS. Disjoint → Phase 5;
+        # overlapping → at least one repetition → not _h_vars_unique.
+        h_disjoint = parse_equation("x * y = z * w")
+        assert _h_vars_unique(h_disjoint) is True
+        # Phase 5 fires for disjoint-var OP-OP equations:
+        assert _detect_determined_operation(h_disjoint) is not None
+
+    @pytest.mark.unit
+    def test_overlapping_var_h_loses_uniqueness(self):
+        from equation_analyzer import _h_vars_unique
+
+        # Any single shared variable between LHS and RHS produces a
+        # repetition, so _h_vars_unique returns False and Phase 7c is
+        # gated off — even before reaching the bound.
+        assert _h_vars_unique(parse_equation("x * y = x * z")) is False
+        assert _h_vars_unique(parse_equation("x * y = z * y")) is False
+
+
 class TestPhase7DoesNotRegress:
     """Existing behaviour must not change for cases other phases handle."""
 

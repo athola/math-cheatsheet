@@ -183,6 +183,103 @@ class TestCoverageReport:
         assert coverage.percentage == 0.0
 
 
+class TestScannerExcludesVendorDirs:
+    """Coverage: line 129 ``if any(part in exclude_dirs ...) : continue``.
+
+    The default exclusion set contains ``.lake``, ``lake-packages`` and
+    ``build``. A .lean file inside one of those dirs must be skipped so
+    the dashboard reflects project-local proofs rather than Mathlib's
+    100K theorems.
+    """
+
+    @pytest.mark.unit
+    def test_files_inside_lake_dir_are_skipped(self, tmp_path: Path):
+        # Project-local file: counted.
+        (tmp_path / "Project.lean").write_text(
+            "theorem project_thm : True := by trivial\n", encoding="utf-8"
+        )
+        # Vendored file inside .lake: skipped by default exclusion set.
+        vendor = tmp_path / ".lake" / "packages" / "mathlib"
+        vendor.mkdir(parents=True)
+        (vendor / "Vendor.lean").write_text(
+            "theorem vendor_thm : True := by trivial\n", encoding="utf-8"
+        )
+        decls = scan_lean_declarations(tmp_path)
+        names = [d.name for d in decls]
+        assert "project_thm" in names
+        assert "vendor_thm" not in names
+
+    @pytest.mark.unit
+    def test_explicit_empty_exclusion_set_includes_vendored_files(self, tmp_path: Path):
+        # Override default with empty set → everything counts.
+        vendor = tmp_path / ".lake"
+        vendor.mkdir()
+        (vendor / "Vendor.lean").write_text(
+            "theorem vendor_thm : True := by trivial\n", encoding="utf-8"
+        )
+        decls = scan_lean_declarations(tmp_path, exclude_dirs=frozenset())
+        names = [d.name for d in decls]
+        assert "vendor_thm" in names
+
+
+class TestFormatReportAndMain:
+    """Coverage: _format_report (lines 196-213) and main() CLI (218-234).
+
+    The dashboard's human-readable output and argparse harness round
+    out the module to ~95% coverage.
+    """
+
+    @pytest.mark.unit
+    def test_format_report_includes_summary_and_unfinished_listing(self, tmp_path: Path, capsys):
+        from lean_coverage import _format_report, compute_coverage
+
+        (tmp_path / "Mixed.lean").write_text(
+            "theorem done : True := by trivial\n"
+            "theorem todo : True := by sorry\n"
+            "def helper : Nat := 0\n",
+            encoding="utf-8",
+        )
+        decls = scan_lean_declarations(tmp_path)
+        report = _format_report(compute_coverage(decls), decls)
+        assert "Lean 4 Proof Coverage" in report
+        assert "Total declarations: 3" in report
+        # Unfinished listing only appears when at least one declaration
+        # is unfinished.
+        assert "Unfinished declarations" in report
+        assert "todo" in report
+
+    @pytest.mark.unit
+    def test_format_report_omits_unfinished_section_when_all_done(self, tmp_path: Path):
+        from lean_coverage import _format_report, compute_coverage
+
+        (tmp_path / "Done.lean").write_text("theorem done : True := by trivial\n", encoding="utf-8")
+        decls = scan_lean_declarations(tmp_path)
+        report = _format_report(compute_coverage(decls), decls)
+        assert "Unfinished declarations" not in report
+
+    @pytest.mark.unit
+    def test_main_exits_2_when_path_missing(self, tmp_path: Path, capsys):
+        from lean_coverage import main
+
+        missing = tmp_path / "no-such-dir"
+        rc = main([str(missing)])
+        assert rc == 2
+        captured = capsys.readouterr()
+        assert "No such directory" in captured.out
+
+    @pytest.mark.unit
+    def test_main_returns_zero_on_existing_path(self, tmp_path: Path, capsys):
+        from lean_coverage import main
+
+        (tmp_path / "Sample.lean").write_text(
+            "theorem sample : True := by trivial\n", encoding="utf-8"
+        )
+        rc = main([str(tmp_path)])
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "Lean 4 Proof Coverage" in captured.out
+
+
 class TestScannerSkipsUnreadableFiles:
     """Feature: log+skip on bad files instead of crashing (NEW-I10 / #61).
 

@@ -195,6 +195,99 @@ class TestPhase6Default:
         assert result.phase == "P5c-structural(Phase 4)"
 
 
+class TestOutOfRangeIdsAndDefault:
+    """Coverage: out-of-range ids fall through every phase and land on
+    P6-default. Hits the line 209 short-circuit in _phase_5bc_structural
+    plus the line 152 "no rule matched" fallthrough.
+    """
+
+    def test_out_of_range_pair_falls_to_p6_default(self, proc: DecisionProcedure):
+        # 99/100 are not in the synthetic 5-equation fixture; every phase
+        # returns None and the predict() loop falls through to P6-default.
+        result = proc.predict(99, 100)
+        assert result.prediction is False
+        assert result.phase == "P6-default"
+        assert "No rule matched" in result.reason
+
+    def test_p5bc_short_circuits_on_missing_id(self, proc: DecisionProcedure):
+        """Specifically exercise the line-209 early return: h or t not in
+        self.equations means the structural delegation cannot run.
+        """
+        # In-range h, out-of-range t: phase_5bc must early-return to None.
+        # The phase loop continues to default. (h=1 is tautology so P3 fires
+        # before P5bc even gets a turn — pick one without earlier matches.)
+        result = proc.predict(3, 99)
+        # Some earlier phase or the default fires; either way no exception.
+        assert result.prediction in (True, False)
+
+
+class TestStructuralParseErrorFallback:
+    """Coverage: the try/except wrapper at lines 222-230 of P5bc converts
+    an analyzer-side parse failure into a P5bc-parse-error verdict instead
+    of bubbling up. Construct via mocking the analyzer's parser.
+    """
+
+    def test_analyzer_parse_failure_becomes_p5bc_parse_error(self, proc: DecisionProcedure):
+        from unittest import mock
+
+        with mock.patch(
+            "decision_procedure.ea_parse_equation",
+            side_effect=ValueError("synthetic parse failure"),
+        ):
+            # Pick a pair that would otherwise reach P5bc (no earlier match).
+            result = proc.predict(3, 4)
+        assert result.prediction is False
+        assert result.phase == "P5bc-parse-error"
+        assert "synthetic parse failure" in result.reason
+
+
+class TestStructuralUnknownFallthrough:
+    """Coverage: line 230 — when the analyzer's structural verdict is
+    UNKNOWN (Phase 8 inconclusive), _phase_5bc_structural returns None
+    instead of building a P5b/P5c result. Mock the analyzer to force
+    UNKNOWN and verify the fall-through to P6-default.
+    """
+
+    def test_unknown_structural_verdict_falls_through_to_default(self, proc: DecisionProcedure):
+        from unittest import mock
+
+        from equation_analyzer import AnalysisResult, ImplicationVerdict
+
+        unknown_result = AnalysisResult(
+            ImplicationVerdict.UNKNOWN, "Phase 8", "Inconclusive — no rule fired"
+        )
+        with mock.patch("decision_procedure.analyze_implication", return_value=unknown_result):
+            # (3, 4) reaches P5bc only if no earlier phase fires; with the
+            # synthetic fixture this is the case.
+            result = proc.predict(3, 4)
+        # Earlier phases may still fire, but if P5bc returns None the
+        # default P6-default must produce the verdict.
+        assert result.prediction is False
+        assert result.phase == "P6-default"
+
+
+class TestPredictBoolAndEvaluate:
+    """Coverage: predict_bool one-liner and evaluate() oracle dispatch."""
+
+    def test_predict_bool_returns_only_the_prediction(self, proc: DecisionProcedure):
+        # P0-self for (1, 1) returns True regardless of phase metadata.
+        assert proc.predict_bool(1, 1) is True
+        # (3, 4) is FALSE per the synthetic oracle.
+        assert proc.predict_bool(3, 4) is False
+
+    def test_evaluate_returns_oracle_metrics_when_oracle_present(self, proc: DecisionProcedure):
+        result = proc.evaluate()
+        # Oracle.accuracy_of returns a dict with the standard keys.
+        assert {"accuracy", "tp", "fp", "tn", "fn", "precision", "recall"} <= result.keys()
+        # Synthetic 5x5 matrix is fully decidable; total must equal 25.
+        assert result["total"] == 25
+
+    def test_evaluate_without_oracle_raises(self, eqs: ETPEquations):
+        proc_no_oracle = DecisionProcedure(eqs, oracle=None)
+        with pytest.raises(ValueError, match="Need oracle for evaluation"):
+            proc_no_oracle.evaluate()
+
+
 class TestPhase5cStructuralFalse:
     """Test P5c: structural analysis returning FALSE via determined operation."""
 

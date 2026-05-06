@@ -306,6 +306,45 @@ class TestEquivalenceClass:
         assert first == second
 
 
+class TestVerifyDigestEarlyReturn:
+    """Coverage: line 108 of implication_oracle.py — _verify_digest's
+    early return when no expected digest was supplied. The caller
+    already gates on this condition, but the defensive guard is the
+    second line of defence and worth pinning.
+    """
+
+    def test_verify_digest_returns_silently_when_no_expected_sha(self, oracle: ImplicationOracle):
+        # Force the no-digest state and call _verify_digest directly.
+        original = oracle._expected_sha256
+        oracle._expected_sha256 = None
+        try:
+            # Must not raise and must not even open the file.
+            assert oracle._verify_digest() is None
+        finally:
+            oracle._expected_sha256 = original
+
+
+class TestAccuracyOfNoneSentinel:
+    """Coverage: line 338 — accuracy_of skips matrix cells where
+    decode_truth returns None. The CSV validator normally rejects such
+    values at load time; mutate the matrix directly to exercise the
+    defensive skip.
+    """
+
+    def test_accuracy_of_skips_undefined_cells(self, oracle: ImplicationOracle):
+        # Inject an out-of-encoding value (0) directly into the matrix.
+        # The accuracy_of loop must skip it via the `actual is None` guard.
+        original_value = int(oracle._matrix[0, 0])
+        oracle._matrix[0, 0] = 0
+        try:
+            result = oracle.accuracy_of(lambda h, t: True)
+            # The skipped cell reduces the total by 1 vs a fully-defined
+            # 4x4 matrix (16 cells → 15 counted).
+            assert result["total"] == 15
+        finally:
+            oracle._matrix[0, 0] = original_value
+
+
 class TestEquivDataNamedAccess:
     """Feature: _equiv_data uses NamedTuple for self-documenting access (S5 / #53).
 

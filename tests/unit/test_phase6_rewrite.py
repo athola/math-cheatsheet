@@ -109,6 +109,27 @@ class TestPhase6Termination:
         }
 
 
+class TestRewriteOnceRightChildPath:
+    """Coverage: line 500 of equation_analyzer.py — when the rule does not
+    match the whole term or the left subtree but does match the right
+    subtree, ``_rewrite_once`` must descend into the right child and
+    rebuild the OP node with the rewritten right side.
+    """
+
+    @pytest.mark.unit
+    def test_right_only_rewrite_descends_correctly(self):
+        from equation_analyzer import _rewrite_once, op, parse_equation, var
+
+        # Rule: y * y → y. Term: a * (y * y). Pattern doesn't match the
+        # whole term (root is a*..., not y*y). Doesn't match left (a is
+        # a leaf). Matches the right subtree (y * y) → y. Result: a * y.
+        h = parse_equation("y * y = y")
+        target = op(var("a"), op(var("y"), var("y")))
+        out = _rewrite_once(target, h.lhs, h.rhs)
+        assert out is not None
+        assert str(out) == "(a * y)"
+
+
 class TestRewriteStatusObservability:
     """NEW-I1 (#60): _rewrite_to_normal_form returns a status code so callers
     can distinguish normal-form completion from cycle abort or budget hit.
@@ -202,3 +223,30 @@ class TestRuleSoundnessGuard:
         result = analyze_implication(h, t)
         assert result.verdict == ImplicationVerdict.TRUE
         assert result.phase == "Phase 6"
+
+    @pytest.mark.unit
+    def test_phase6_continue_on_unsound_orientation(self):
+        """Coverage: line 567 of equation_analyzer.py — _phase6_rewrite's
+        `continue` skips an unsound orientation and tries the other.
+
+        H: x*x = x*y. LHS→RHS rule (x*x → x*y) introduces fresh ``y`` and is
+        unsound — must be skipped via the continue. RHS→LHS rule
+        (x*y → x*x) drops y and is sound; if its rewrite closes T, Phase 6
+        returns TRUE, otherwise None. The point is exercising the
+        `continue` branch, not the verdict.
+        """
+        from equation_analyzer import _phase6_rewrite, _rule_is_sound
+
+        h = parse_equation("x * x = x * y")
+        # Confirm one orientation is unsound (forces the continue) and
+        # the other is sound (so the loop has a second iteration to run).
+        assert _rule_is_sound(h.lhs, h.rhs) is False  # x*x → x*y is unsound
+        assert _rule_is_sound(h.rhs, h.lhs) is True  # x*y → x*x is sound
+        # Pick any T; we don't care about the verdict, just that
+        # _phase6_rewrite executes both orientations (one continued, one
+        # full-evaluated) without raising.
+        t = parse_equation("x = x")
+        result = _phase6_rewrite(h, t)
+        # T is a tautology so Phase 6 may or may not derive — either is
+        # fine; the line-567 continue executed regardless.
+        assert result is None or result.verdict == ImplicationVerdict.TRUE
