@@ -87,13 +87,17 @@ class TestEvaluateWithLLMEnvironmentErrors:
 
     def test_missing_api_key_raises_environment_error(self, monkeypatch):
         """Missing ANTHROPIC_API_KEY must raise EnvironmentError (not sys.exit)."""
+        # The ``anthropic`` SDK is an optional extra (``[llm]``); CI installs
+        # only ``[dev]``. Pin it to a truthy sentinel so the SDK-missing branch
+        # is bypassed and the API-key branch is the one under test.
+        monkeypatch.setattr(llm_evaluator, "anthropic", object())
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        # Force the path that consults the env (no client passed).
         with pytest.raises(EnvironmentError, match="ANTHROPIC_API_KEY"):
             llm_evaluator.evaluate_with_llm(self._make_problems(), "cheatsheet", client=None)
 
     def test_placeholder_api_key_raises_environment_error(self, monkeypatch):
         """A literal-placeholder ``your_*`` key must be rejected too."""
+        monkeypatch.setattr(llm_evaluator, "anthropic", object())
         monkeypatch.setenv("ANTHROPIC_API_KEY", "your_key_here")
         with pytest.raises(EnvironmentError, match="ANTHROPIC_API_KEY"):
             llm_evaluator.evaluate_with_llm(self._make_problems(), "cheatsheet", client=None)
