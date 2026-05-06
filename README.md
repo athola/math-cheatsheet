@@ -40,8 +40,8 @@ counterexamples.
 | Competition submission  | 9,851 bytes (`competition-v1.txt`) |
 | Equations covered       | 4,694         |
 | Decision procedure phases | 11 (P0-P7 + structural) |
-| Test suite              | 580+ tests (100% equation_analyzer.py) |
-| Lean 4 bridge           | Python → Lean counterexamples (`src/lean_bridge.py`) |
+| Test suite              | 697 tests, 88% coverage (100% on `equation_analyzer.py`, `term.py`, `lean_bridge.py`) |
+| Lean 4 bridge           | Python → Lean counterexample theorems with `decide` discharge (`src/lean_bridge.py`) |
 
 ## Quick Start
 
@@ -62,7 +62,7 @@ verification targets; `make test` works with Python alone.
 
 ```bash
 make setup            # create venv, install Python deps
-make test             # run Python test suite (580+ tests)
+make test             # run Python test suite (697 tests)
 make test-rust        # run Rust proptest suite
 make lean-check       # check Lean 4 proofs
 make harness          # 5-angle cheatsheet validation
@@ -142,7 +142,7 @@ math-cheatsheet/
 ├── rust/                 # Rust PyO3 extension (magma_core)
 ├── lean/                 # Lean 4 formal proofs
 ├── tla/                  # TLA+ specs and Python bridge
-├── tests/                # pytest suite (580+ tests)
+├── tests/                # pytest suite (697 tests, 88% coverage)
 ├── cheatsheet/           # Cheatsheet versions (v1 → final, competition)
 ├── scripts/              # CLI utilities, TLA+ automation, Lean scaffolding
 ├── docs/                 # Specification, plans, analysis, bibliography
