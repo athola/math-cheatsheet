@@ -33,11 +33,26 @@ def wilson_ci(successes: int, total: int, z: float = 1.96) -> tuple[float, float
     proportion is at or near the 0/1 boundaries.
 
     Raises:
-        ValueError: if ``total < 0`` or ``successes`` is not in
-            ``[0, total]``. Previously such inputs were silently clamp-masked
-            into a meaningless interval (S7 / regression #54), hiding caller
-            bugs (e.g. accuracy passed as a float instead of a count).
+        ValueError: if ``successes`` or ``total`` is not an ``int`` (``bool``
+            also rejected since ``bool`` subclasses ``int``), if ``total < 0``,
+            or if ``successes`` is not in ``[0, total]``. Previously such
+            inputs were silently clamp-masked into a meaningless interval
+            (S7 / regression #54), hiding caller bugs such as accuracy
+            passed as a float instead of a count.
     """
+    # Reject bool-or-non-int counts up front: passing a float
+    # (``wilson_ci(0.5, 1.0)``) silently produced a meaningless
+    # interval before #54; the int check below closes that hole.
+    if isinstance(successes, bool) or isinstance(total, bool):
+        raise ValueError(
+            f"wilson_ci: successes/total must be int, not bool;"
+            f" got successes={successes!r}, total={total!r}"
+        )
+    if not isinstance(successes, int) or not isinstance(total, int):
+        raise ValueError(
+            f"wilson_ci: successes/total must be int;"
+            f" got successes={type(successes).__name__}, total={type(total).__name__}"
+        )
     if total < 0:
         raise ValueError(f"wilson_ci: total must be non-negative, got {total}")
     if total == 0:

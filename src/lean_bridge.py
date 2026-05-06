@@ -163,8 +163,9 @@ def {op_name} : Fin {magma_size} → Fin {magma_size} → Fin {magma_size}
 {arms_block}
 
 -- H_prop and T_prop are decidable because every quantifier ranges over
--- Fin {magma_size}; ¬(H → T) ≡ H ∧ ¬T, and `decide` evaluates the
--- conjunction directly on the finite carrier.
+-- Fin {magma_size}; ¬(H → T) ≡ H ∧ ¬T. `decide` evaluates the
+-- negation-of-implication form as written; both sides are decidable
+-- because each quantifier ranges over the finite carrier.
 theorem {theorem_name} :
     ¬ (({h_prop}) → ({t_prop})) := by decide
 """

@@ -209,8 +209,12 @@ class TestMagmaImmutability:
     """
 
     def test_magma_field_assignment_rejected(self):
+        import dataclasses
+
         m = Magma(size=2, operation=[[0, 1], [1, 0]])
-        with pytest.raises(Exception):  # FrozenInstanceError or AttributeError
+        # Narrow the expected exception so a typo elsewhere in the test body
+        # cannot be silently swallowed by ``Exception``.
+        with pytest.raises((dataclasses.FrozenInstanceError, AttributeError)):
             m.size = 99  # type: ignore[misc]
 
     def test_operation_table_is_tuple_of_tuples(self):

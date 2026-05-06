@@ -212,13 +212,17 @@ class TestOutOfRangeIdsAndDefault:
     def test_p5bc_short_circuits_on_missing_id(self, proc: DecisionProcedure):
         """Specifically exercise the line-209 early return: h or t not in
         self.equations means the structural delegation cannot run.
+
+        Pin a specific phase rather than ``in (True, False)`` (which is
+        tautological for a bool) — a regression that turned the early
+        return into a raise would now fail this test instead of silently
+        passing.
         """
-        # In-range h, out-of-range t: phase_5bc must early-return to None.
-        # The phase loop continues to default. (h=1 is tautology so P3 fires
-        # before P5bc even gets a turn — pick one without earlier matches.)
+        # In-range h, out-of-range t: phase_5bc must early-return to None
+        # and the phase loop must fall through to P6-default.
         result = proc.predict(3, 99)
-        # Some earlier phase or the default fires; either way no exception.
-        assert result.prediction in (True, False)
+        assert result.prediction is False
+        assert result.phase == "P6-default"
 
 
 class TestStructuralParseErrorFallback:

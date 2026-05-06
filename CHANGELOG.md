@@ -55,8 +55,8 @@ All notable changes to this project will be documented in this file.
   regression fails an assertion rather than just slowing the corpus (#59)
 
 ### Changed
-- `evaluate_with_llm` raises `OSError`/`EnvironmentError` instead of
-  calling `sys.exit` when the SDK or `ANTHROPIC_API_KEY` is missing;
+- `evaluate_with_llm` raises `OSError` instead of calling `sys.exit`
+  when the SDK or `ANTHROPIC_API_KEY` is missing;
   the CLI `main()` translates the exception to a process exit so
   the script behaviour is unchanged (#51)
 - `ImplicationOracle.equivalence_classes` returns a `MappingProxyType`

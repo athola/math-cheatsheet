@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import Final, Literal
+from typing import Final, Literal, get_args
 
 from equation_analyzer import (
     ImplicationVerdict,
@@ -59,19 +59,10 @@ DecisionPhase = Literal[
     "P6-default",
 ]
 
-_VALID_PHASE_PREFIXES: Final[tuple[str, ...]] = (
-    "P0-self",
-    "P1-taut-target",
-    "P2-collapse",
-    "P3-taut-hyp",
-    "P4-new-vars",
-    "P5-substitution",
-    "P5a-equiv-class",
-    "P5b-structural",
-    "P5c-structural",
-    "P5bc-parse-error",
-    "P6-default",
-)
+# Single source of truth: the runtime tuple is derived from the static
+# Literal alias above, so a new phase prefix only needs to be added in
+# one place. Mirrors the ``_ENCODING`` SoT pattern in implication_oracle.
+_VALID_PHASE_PREFIXES: Final[tuple[str, ...]] = get_args(DecisionPhase)
 
 
 @dataclass(frozen=True)

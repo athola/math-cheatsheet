@@ -16,6 +16,7 @@ here so that:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
 
@@ -54,8 +55,11 @@ class Term:
 
     def __post_init__(self) -> None:
         if self.node_type == NodeType.VAR:
-            if not self.name:
-                raise ValueError("VAR node must have a non-empty name")
+            # Strip-then-check rejects whitespace-only names too — a
+            # tokenizer that ever emits " " or "\t" must not silently
+            # produce an ambiguous-looking variable here.
+            if not self.name or not self.name.strip():
+                raise ValueError("VAR node must have a non-empty, non-whitespace name")
             if self.left is not None or self.right is not None:
                 raise ValueError("VAR node must not have children")
         else:  # OP
@@ -98,7 +102,7 @@ class Term:
         lt, rt = self._lr()
         return Term(NodeType.OP, left=lt.substitute(mapping), right=rt.substitute(mapping))
 
-    def evaluate(self, table: list[list[int]], assignment: dict[str, int]) -> int:
+    def evaluate(self, table: Sequence[Sequence[int]], assignment: dict[str, int]) -> int:
         """Evaluate this term in a finite magma given variable assignments."""
         if self.is_var:
             return assignment[self.name]

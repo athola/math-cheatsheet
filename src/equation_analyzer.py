@@ -20,7 +20,7 @@ from __future__ import annotations
 import functools
 import itertools
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
@@ -71,7 +71,7 @@ class Equation:
     def substitute(self, mapping: dict[str, Term]) -> Equation:
         return Equation(self.lhs.substitute(mapping), self.rhs.substitute(mapping))
 
-    def holds_in(self, table: list[list[int]], n: int) -> bool:
+    def holds_in(self, table: Sequence[Sequence[int]], n: int) -> bool:
         """Check if this equation holds in the magma with n elements."""
         variables = sorted(self.variables())
         for assignment_tuple in itertools.product(range(n), repeat=len(variables)):
@@ -122,9 +122,7 @@ class CounterexampleMagma:
             object.__setattr__(self, "properties", tuple(self.properties))
 
     def satisfies(self, eq: Equation) -> bool:
-        # holds_in expects a list-of-list interface; tuples honour the
-        # same indexing protocol so no conversion is needed.
-        return eq.holds_in(self.table, self.size)  # type: ignore[arg-type]
+        return eq.holds_in(self.table, self.size)
 
 
 # The 7 canonical magmas from the v3 cheatsheet.
@@ -188,9 +186,9 @@ ALL_SIZE_2_MAGMAS: tuple[CounterexampleMagma, ...] = tuple(
 
 # NEW-I5 (#58): bounded cache so long-running consumers (notebooks, batch
 # runs over multiple corpora, server processes) cannot leak memory linearly
-# in the number of distinct equations seen. 8192 is plenty for a single
-# 4.7K-equation corpus and keeps a typical 8-byte-key entry under ~100KB
-# total even at saturation.
+# in the number of distinct equations seen. 8192 covers the 4694-equation
+# corpus comfortably; saturated memory is bounded (frozenset values plus
+# Equation hash keys carrying full term ASTs) but is not negligible.
 @functools.lru_cache(maxsize=8192)
 def _size_2_satisfactions(eq: Equation) -> frozenset[int]:
     """Indices of ``ALL_SIZE_2_MAGMAS`` that satisfy ``eq``.
@@ -205,9 +203,7 @@ def _size_2_satisfactions(eq: Equation) -> frozenset[int]:
     entries so long-running consumers don't grow unbounded (NEW-I5 / #58).
     """
     return frozenset(
-        i
-        for i, magma in enumerate(ALL_SIZE_2_MAGMAS)
-        if eq.holds_in(magma.table, magma.size)  # type: ignore[arg-type]
+        i for i, magma in enumerate(ALL_SIZE_2_MAGMAS) if eq.holds_in(magma.table, magma.size)
     )
 
 
@@ -567,18 +563,27 @@ def _phase6_rewrite(h: Equation, t: Equation) -> AnalysisResult | None:
             continue
         reduced_t_lhs, status_lhs = _rewrite_to_normal_form(t.lhs, lhs, rhs)
         reduced_t_rhs, status_rhs = _rewrite_to_normal_form(t.rhs, lhs, rhs)
-        if "budget" in (status_lhs, status_rhs):
-            logger.debug(
-                "Phase 6 budget exhausted (%s) on H=%s, T=%s — verdict may be incomplete",
-                label,
-                h,
-                t,
-            )
-        if reduced_t_lhs == reduced_t_rhs:
+        closed = reduced_t_lhs == reduced_t_rhs
+        if closed:
             return AnalysisResult(
                 ImplicationVerdict.TRUE,
                 "Phase 6",
                 f"T closes under H-rewrite ({label}): both sides normalise to {reduced_t_lhs}",
+            )
+        # Only log a non-terminating-rewrite warning when the verdict did
+        # NOT close — otherwise the "verdict may be incomplete" narrative
+        # contradicts the TRUE we already returned. Both "budget" and
+        # "cycle" indicate non-normal-form termination; both are worth
+        # surfacing because raising the budget or rewriting differently
+        # could yield a closed verdict.
+        if "budget" in (status_lhs, status_rhs) or "cycle" in (status_lhs, status_rhs):
+            logger.debug(
+                "Phase 6 inconclusive (%s, lhs=%s, rhs=%s) on H=%s, T=%s",
+                label,
+                status_lhs,
+                status_rhs,
+                h,
+                t,
             )
     return None
 

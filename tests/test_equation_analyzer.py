@@ -624,9 +624,12 @@ class TestCoverageGaps:
 
     @pytest.mark.unit
     def test_var_node_invariants_enforced_at_construction(self):
-        """NEW-I4 (#58): VAR nodes must be leaves with non-empty names."""
-        with pytest.raises(ValueError, match="VAR node must have a non-empty name"):
+        """NEW-I4 (#58): VAR nodes must be leaves with non-empty,
+        non-whitespace names (whitespace tightened in PR #66 follow-up)."""
+        with pytest.raises(ValueError, match="VAR node must have a non-empty"):
             Term(NodeType.VAR)
+        with pytest.raises(ValueError, match="VAR node must have a non-empty"):
+            Term(NodeType.VAR, name="   ")
         with pytest.raises(ValueError, match="VAR node must not have children"):
             Term(NodeType.VAR, name="x", left=var("y"))
 

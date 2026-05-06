@@ -194,13 +194,10 @@ class Magma:
     ) -> "Magma":
         """Create from dict-based operation (counterexample_db format).
 
-        S9 (#55): the ``carrier`` parameter has exactly one legal value —
-        ``range(size)`` — because :class:`Magma` requires a 0-indexed
-        contiguous carrier. The parameter is now optional: when ``None``
-        the size is inferred from ``op_dict``'s keys. When a non-None
-        carrier is supplied, it must equal ``range(size)`` or
-        ``ValueError`` is raised. New callers should pass ``carrier=None``
-        and let the size derive from the dict.
+        :class:`Magma` requires a 0-indexed contiguous carrier. When
+        ``carrier`` is supplied, it must equal ``range(size)`` or
+        ``ValueError`` is raised. ``carrier=None`` infers the size from
+        ``op_dict``'s keys; new callers should prefer that form (S9 / #55).
         """
         if carrier is not None:
             size = len(carrier)
@@ -215,6 +212,12 @@ class Magma:
         missing = expected_keys - set(op_dict.keys())
         if missing:
             raise ValueError(f"Missing operation entries for pairs: {sorted(missing)}")
+        # Reject keys outside the inferred carrier square BEFORE the write
+        # loop — otherwise table_rows[5][5] = ... raises IndexError, which
+        # contradicts the documented ValueError-only contract.
+        extra = set(op_dict.keys()) - expected_keys
+        if extra:
+            raise ValueError(f"Unexpected operation entries outside carrier range: {sorted(extra)}")
         table_rows = [[0] * size for _ in range(size)]
         for (a, b), result in op_dict.items():
             table_rows[a][b] = result
