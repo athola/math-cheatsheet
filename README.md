@@ -7,12 +7,28 @@ using Lean 4, TLA+, Rust, and Python.
 
 **98.01% accuracy** on the full 22M implication matrix
 (4,694 equations, 22,028,942 pairs) | 10,230 bytes of 10,240 limit
-| current version: `0.2.1` ([CHANGELOG](CHANGELOG.md))
+| current version: `0.2.2` ([CHANGELOG](CHANGELOG.md))
 
 The dataset and canonical proofs are sourced from the upstream
 [Equational Theories Project][etp] (Tao et al.); this repository
 distills that corpus into a cheatsheet and multi-angle verification
 harness.
+
+## Contents
+
+- [Competition Context](#competition-context)
+- [Status](#status)
+- [Example](#example)
+- [Quick Start](#quick-start)
+- [Architecture](#architecture)
+- [Verification Pipeline](#verification-pipeline)
+- [Decision Procedure](#decision-procedure)
+- [Project Structure](#project-structure)
+- [Development](#development)
+- [Continuous Integration](#continuous-integration)
+- [Documentation](#documentation)
+- [Acknowledgments](#acknowledgments)
+- [Links](#links)
 
 ## Competition Context
 
@@ -42,6 +58,38 @@ counterexamples.
 | Decision procedure phases | 11 (P0-P7 + structural) |
 | Test suite              | 697 tests, 88% coverage (100% on `equation_analyzer.py`, `term.py`, `lean_bridge.py`) |
 | Lean 4 bridge           | Python → Lean counterexample theorems with `decide` discharge (`src/lean_bridge.py`) |
+
+## Example
+
+The cheatsheet is backed by a decision procedure that classifies
+implications between equational laws. For canonical magma properties
+the procedure emits explicit size-3 witnesses:
+
+```text
+$ make demo-counterexamples
+
+=== Classic Non-Implication Witnesses (size 3) ===
+Comm but not Assoc: 666 counterexamples
+First counterexample Cayley table:
+   0 1 2
+  -------
+0| 1 0 0
+1| 0 0 0
+2| 0 0 0
+
+Assoc but not Comm: 50 counterexamples
+First counterexample Cayley table:
+   0 1 2
+  -------
+0| 0 0 0
+1| 1 1 1
+2| 0 0 0
+```
+
+Each table is a magma operation `op(row, col)`. The first witnesses
+that commutativity does not imply associativity; the second witnesses
+the converse. The same engine drives the 22M-pair evaluation
+reported in [Status](#status).
 
 ## Quick Start
 
@@ -82,6 +130,11 @@ Four languages cover complementary verification angles:
 | Fast search    | Rust (PyO3) | Exhaustive magma enumeration, counterexample search |
 | Formal proofs  | Lean 4      | Machine-checked implication proofs via mathlib     |
 | Model checking | TLA+        | State-space exploration of magma specifications    |
+
+Sub-project READMEs:
+[`lean/README.md`](lean/README.md) (proof scaffolding) and
+[`tla/README.md`](tla/README.md) (TLA+ specifications and TLC
+configurations).
 
 ## Verification Pipeline
 
@@ -191,6 +244,15 @@ make demo-counterexamples # find counterexamples to non-implications
 make demo-cheatsheet      # show cheatsheet stats and byte count
 ```
 
+## Continuous Integration
+
+GitHub Actions runs lint (ruff), type-checking (mypy), and the full
+Python test suite on push and pull request to `master`. The workflow
+lives at [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Lean,
+Rust, and TLA+ targets remain local-only because their toolchains
+(elan, cargo, `tla2tools.jar`) are heavier than the Python suite
+warrants for per-PR runs.
+
 ## Documentation
 
 - [Specification](docs/specification.md) — cheatsheet requirements
@@ -203,9 +265,20 @@ make demo-cheatsheet      # show cheatsheet stats and byte count
   Lean 4 and TLA+ approach, tool versions, verified implications
 - [Project brief](docs/project-brief.md) — origin, scope, and success
   criteria
-- [Research index](research/INDEX.md) — domain research notes and
-  bibliography
+- [Research index](research/archive/INDEX.md) — domain research
+  notes and bibliography
 - [CHANGELOG](CHANGELOG.md) — release history
+
+## Acknowledgments
+
+The 4,694-equation catalog and the canonical implication graph are
+the work of the [Equational Theories Project][etp] (Tao, Davis, and
+contributors), released under Apache-2.0. This repository reuses
+that dataset and replicates a fraction of its results inside a
+10,240-byte cheatsheet plus an independent multi-language
+verification harness; nothing here supersedes the upstream proofs.
+See [`docs/formal-verification-summary.md`](docs/formal-verification-summary.md)
+for which implications are derived locally vs. cited from upstream.
 
 ## Links
 

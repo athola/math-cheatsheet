@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-05-06
+
 ### Added
 - SHA-256 checksum verification test coverage for ImplicationOracle:
   matching/uppercase digest, mismatched-with-remediation, sidecar
