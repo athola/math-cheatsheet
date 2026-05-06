@@ -192,15 +192,16 @@ class TestETPLoaderErrorAggregation:
 
 
 class TestETPCanonicalVarOpSidesMirror:
-    """Coverage: _canonical_var_op_sides second branch (rhs is var, lhs is
-    op) — line 160 of etp_equations.py. Exercised via is_collapse_structural
-    on a ``op = var`` shaped equation.
+    """Coverage: ``term.canonical_var_op_sides`` second branch (rhs is var,
+    lhs is op). Exercised via ``is_collapse_structural`` on a ``op = var``
+    shaped equation. Pins the post-S1 (#63) consolidation that moved the
+    helper out of ``etp_equations``.
     """
 
     @pytest.mark.unit
     def test_collapse_structural_detects_op_equals_var_form(self, tmp_path):
         # "y ◇ z = x" — RHS is var x, LHS is op y◇z. The mirror branch
-        # in _canonical_var_op_sides returns (rhs, lhs) so the collapse
+        # in canonical_var_op_sides returns (rhs, lhs) so the collapse
         # detection runs.
         eq_path = tmp_path / "equations.txt"
         eq_path.write_text("y ◇ z = x\n", encoding="utf-8")

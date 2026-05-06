@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Literal
 
 from implication_oracle import ImplicationOracle
-from term import Term, op, parse_equation_terms, var
+from term import Term, canonical_var_op_sides, op, parse_equation_terms, var
 
 __all__ = [
     "Term",
@@ -141,24 +141,13 @@ class ETPEquations:
         # Pattern 2: var = op (or op = var) with single op and ≥2 fresh
         # variables on the op side. Canonicalise side roles first so the
         # condition is written once.
-        var_side, op_side = self._canonical_var_op_sides(eq)
+        var_side, op_side = canonical_var_op_sides(eq.lhs, eq.rhs)
         if var_side is not None and op_side is not None:
             new_vars = op_side.variables() - var_side.variables()
             if len(new_vars) >= 2 and op_side.size() == 1:
                 return True
 
         return False
-
-    @staticmethod
-    def _canonical_var_op_sides(eq: Equation) -> tuple[Term | None, Term | None]:
-        """Return ``(var_side, op_side)`` for a ``var = op`` shape, else
-        ``(None, None)``. S6 (#63) helper for symmetric-pattern checks.
-        """
-        if eq.lhs.is_var and not eq.rhs.is_var:
-            return eq.lhs, eq.rhs
-        if eq.rhs.is_var and not eq.lhs.is_var:
-            return eq.rhs, eq.lhs
-        return None, None
 
     def vars_in_target_not_in_hypothesis(self, h_id: int, t_id: int) -> frozenset[str]:
         """Variables in target equation not present in hypothesis."""

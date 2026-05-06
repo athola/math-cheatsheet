@@ -28,6 +28,7 @@ from typing import Literal
 from term import (
     NodeType,
     Term,
+    canonical_var_op_sides,
     op,
     parse_equation_terms,
     var,
@@ -637,7 +638,7 @@ def _detect_determined_operation(eq: Equation) -> tuple[list[list[int]], str] | 
     """
     # Canonicalise: identify which side is the bare variable. If both
     # sides are OPs we fall through to the constant-operation branch.
-    var_side, op_side = _canonical_var_op_sides(eq)
+    var_side, op_side = canonical_var_op_sides(eq.lhs, eq.rhs)
     if var_side is not None and op_side is not None:
         # Both children of op_side must be variables for a determined-
         # operation conclusion. The "anchor" variable is var_side.name;
@@ -670,17 +671,3 @@ def _detect_determined_operation(eq: Equation) -> tuple[list[list[int]], str] | 
             return [[0, 0], [0, 0]], "constant operation (x*y=c)"
 
     return None
-
-
-def _canonical_var_op_sides(eq: Equation) -> tuple[Term | None, Term | None]:
-    """Return ``(var_side, op_side)`` if the equation has the form
-    ``var = op`` or ``op = var``; otherwise ``(None, None)``.
-
-    S1 (#63) helper: collapses the four "which side is the variable"
-    branches that previously duplicated absorption detection logic.
-    """
-    if eq.lhs.node_type == NodeType.VAR and eq.rhs.node_type == NodeType.OP:
-        return eq.lhs, eq.rhs
-    if eq.rhs.node_type == NodeType.VAR and eq.lhs.node_type == NodeType.OP:
-        return eq.rhs, eq.lhs
-    return None, None

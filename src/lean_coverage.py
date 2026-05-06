@@ -27,6 +27,7 @@ import argparse
 import logging
 import re
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -175,8 +176,6 @@ def compute_coverage(declarations: list[LeanDeclaration]) -> CoverageSummary:
     S3 (#63): kind tally uses :class:`collections.Counter` directly so the
     accumulator and zero-init logic stay in one expression.
     """
-    from collections import Counter
-
     total = len(declarations)
     finished = sum(1 for d in declarations if not d.unfinished)
     unfinished = total - finished

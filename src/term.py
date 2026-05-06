@@ -126,6 +126,25 @@ def op(left: Term, right: Term) -> Term:
     return Term(NodeType.OP, left=left, right=right)
 
 
+def canonical_var_op_sides(lhs: Term, rhs: Term) -> tuple[Term | None, Term | None]:
+    """Return ``(var_side, op_side)`` if exactly one side is a leaf variable.
+
+    Returns ``(None, None)`` when neither or both sides are variables. The
+    binary VAR/OP ADT means ``not is_var`` is equivalent to ``is_op``, so
+    the second slot is always an OP node when the result is non-None and
+    callers can safely invoke ``op_side._lr()``.
+
+    S1 (#63 follow-up): consolidates a helper that previously lived in
+    both ``equation_analyzer`` and ``etp_equations`` so the var/op
+    canonicalisation logic has one source of truth.
+    """
+    if lhs.is_var and not rhs.is_var:
+        return lhs, rhs
+    if rhs.is_var and not lhs.is_var:
+        return rhs, lhs
+    return None, None
+
+
 # --- Parsing ---
 
 
@@ -190,6 +209,7 @@ __all__ = [
     "Term",
     "var",
     "op",
+    "canonical_var_op_sides",
     "parse_term",
     "parse_equation_terms",
 ]
