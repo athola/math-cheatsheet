@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import random
+import re
 import sys
 import time
 from datetime import UTC, datetime
@@ -154,10 +155,12 @@ def parse_verdict(response: str) -> bool | None:
         line = line.strip()
         if line.upper().startswith("VERDICT:"):
             verdict_str = line.split(":", 1)[1].strip().upper()
-            if "TRUE" in verdict_str:
-                return True
-            if "FALSE" in verdict_str:
-                return False
+            # Anchor on the leading token so "NOT TRUE" / "TRUE BUT FALSE" are
+            # not misread by a naive substring check (review B4). Trailing
+            # punctuation (e.g. "TRUE.") is tolerated by the word boundary.
+            m = re.match(r"(TRUE|FALSE)\b", verdict_str)
+            if m:
+                return m.group(1) == "TRUE"
     return None
 
 

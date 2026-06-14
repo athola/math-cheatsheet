@@ -13,10 +13,21 @@ The emitted source is intentionally minimal scaffolding:
   of indices so the Cayley table is visible in the source.
 - Carrier is ``Fin n`` (standard Mathlib choice for small finite types).
 - One placeholder ``example : True := by trivial`` so the snippet
-  type-checks. Note: this body is a tautology — it does **not** witness
-  the implication. Upgrading to ``theorem h_not_implies_t : ¬ ... := by
-  decide`` once the equations are emitted as Lean propositions is
-  tracked as backlog issue O1 from PR #57 review.
+  type-checks.
+
+IMPORTANT — this bridge does NOT produce verified output. The placeholder
+body is a tautology: ``trivial`` proves ``True`` regardless of the magma or
+the equations, so a snippet that "type-checks" says nothing about whether H
+fails to imply T. The Cayley table is rendered faithfully, but the
+implication itself is unproven. Do not describe this output as "verified" or
+"machine-checked"; it is a scaffold awaiting a real proof.
+
+For a fully-proven example of the intended end state, see
+``lean/EquationalTheories/Invariants.lean`` (``idemp_not_implies_comm``),
+which discharges ``¬ implies …`` from an explicit ``Fin 2`` countermodel.
+Upgrading this generator to emit such a ``theorem … := by decide`` (by also
+emitting the equations as Lean propositions) is tracked as backlog issue O1
+from the PR #57 review.
 
 Callers intending to verify with ``lean --stdin`` should concatenate the
 snippet after whatever imports they need (typically just
@@ -69,10 +80,11 @@ def counterexample_to_lean(
     Returns:
         Lean 4 source as a single string. Contains one ``def`` for the
         binary operation and one ``example : True := by trivial`` block
-        annotated with both equation texts. The placeholder body type-checks
-        but does **not** discharge the implication — it is scaffolding so
-        the file compiles. Upgrading to a real ``decide``-discharged
-        theorem is backlog issue O1.
+        annotated with both equation texts. The placeholder body is a
+        tautology: it type-checks but does **not** discharge (or even state)
+        the implication, so the output is NOT a verification of H ⇏ T — it is
+        scaffolding so the file compiles. Upgrading to a real
+        ``decide``-discharged theorem is backlog issue O1.
 
     Raises:
         ValueError: if ``magma_name`` is empty / whitespace-only, if
@@ -105,9 +117,11 @@ def counterexample_to_lean(
 def {op_name} : Fin {magma_size} → Fin {magma_size} → Fin {magma_size}
 {arms_block}
 
--- The carrier satisfies H but not T; therefore H ⇏ T.
--- (Equation-level obligations should be discharged with `decide`
--- once the match definition is in scope.)
+-- PLACEHOLDER ONLY -- NOT A PROOF. The body below proves `True`, which is a
+-- tautology: it does NOT witness that this magma satisfies H but not T, and
+-- it does NOT establish H ⇏ T. Replace with a real
+-- `theorem … : ¬ implies H T := by decide` (backlog O1) before treating any
+-- of this as verified.
 example : True := by trivial
 """
 

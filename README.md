@@ -1,9 +1,16 @@
 # Math Cheatsheet — Equational Theories
 
-A formally verified 10KB reference for determining equational implication
-in magmas. Built for the
-[SAIR Mathematics Distillation Challenge][sair-challenge],
+A 10KB reference for determining equational implication in magmas,
+built for the [SAIR Mathematics Distillation Challenge][sair-challenge]
 using Lean 4, TLA+, Rust, and Python.
+
+Correctness is established empirically — 98.01% on the full 22M-pair
+matrix (see Status) — backed by a small core of machine-checked Lean 4
+lemmas and one TLC-checked size-2 magma model. The cheatsheet as a whole
+is *not* formally verified; the formal artifacts cover foundational laws
+and representative witnesses, not every catalogued implication. See
+[docs/formal-verification-summary.md](docs/formal-verification-summary.md)
+for exactly what is and is not proven.
 
 **98.01% accuracy** on the full 22M implication matrix
 (4,694 equations, 22,028,942 pairs) | 10,230 bytes of 10,240 limit
@@ -52,8 +59,8 @@ counterexamples.
 | Python    | >=3.12         | core pipeline, cheatsheet harness |
 | `uv`      | latest         | dependency management           |
 | Rust      | stable (1.75+) | `magma_core` PyO3 extension     |
-| Lean 4    | via `elan`, mathlib v4.28.0 | formal proofs (`make lean-check`) |
-| TLA+ tools | `tla2tools.jar` (Java 17+) | model checking (`make tla-check`) |
+| Lean 4    | via `elan`, mathlib v4.28.0 | machine-checked core lemmas (`make lean-check`) |
+| TLA+ tools | `tla2tools.jar` (Java 17+) | size-2 model check (`make tla-check`) |
 
 Rust, Lean, and TLA+ are only required for the matching
 verification targets; `make test` works with Python alone.
@@ -64,9 +71,9 @@ verification targets; `make test` works with Python alone.
 make setup            # create venv, install Python deps
 make test             # run Python test suite (580+ tests)
 make test-rust        # run Rust proptest suite
-make lean-check       # check Lean 4 proofs
+make lean-check       # check Lean 4 core lemmas
 make harness          # 5-angle cheatsheet validation
-make tla-check        # run TLC model checker on all TLA+ modules
+make tla-check        # run TLC on the size-2 model (Size2Check)
 make check            # all quality gates (lint + typecheck + test + rust)
 ```
 
@@ -80,8 +87,8 @@ Four languages cover complementary verification angles:
 |----------------|-------------|---------------------------------------------------|
 | Core pipeline  | Python 3.12 | Equation parsing, analysis, evaluation, harness   |
 | Fast search    | Rust (PyO3) | Exhaustive magma enumeration, counterexample search |
-| Formal proofs  | Lean 4      | Machine-checked implication proofs via mathlib     |
-| Model checking | TLA+        | State-space exploration of magma specifications    |
+| Formal proofs  | Lean 4      | Machine-checked core lemmas: preorder laws, Bool/XOR/AND witnesses, one `Fin 2` countermodel (`idemp ⇏ comm`) |
+| Model checking | TLA+        | TLC-checked size-2 magma enumeration (`Size2Check`); other `.tla` files are illustrative pseudo-specs |
 
 ## Verification Pipeline
 
@@ -140,7 +147,7 @@ math-cheatsheet/
 │   ├── llm_evaluator.py       # Claude API evaluation (with caching)
 │   └── cheatsheet_harness.py  # 5-angle validation
 ├── rust/                 # Rust PyO3 extension (magma_core)
-├── lean/                 # Lean 4 formal proofs
+├── lean/                 # Lean 4 core lemmas (preorder laws, witnesses, one countermodel)
 ├── tla/                  # TLA+ specs and Python bridge
 ├── tests/                # pytest suite (580+ tests)
 ├── cheatsheet/           # Cheatsheet versions (v1 → final, competition)
@@ -177,7 +184,7 @@ make check                # lint + typecheck + test + rust
 python src/error_analyzer.py          # break down 22M matrix errors by pattern
 python src/competition_evaluator.py   # batch scoring with category breakdown
 python src/counterexample_generator.py # exhaustive magma counterexample search
-make tla-check                        # run TLC model checker on TLA+ specs
+make tla-check                        # run TLC on the size-2 model (Size2Check)
 make etp-status                       # show ETP dataset summary
 ```
 
@@ -200,7 +207,8 @@ make demo-cheatsheet      # show cheatsheet stats and byte count
 - [Competition rules analysis](docs/competition-rules-analysis.md) —
   constraint deep-dive
 - [Formal verification summary](docs/formal-verification-summary.md) —
-  Lean 4 and TLA+ approach, tool versions, verified implications
+  Lean 4 and TLA+ approach, tool versions, and a precise account of what
+  is machine-checked vs. empirically validated
 - [Project brief](docs/project-brief.md) — origin, scope, and success
   criteria
 - [Research index](research/INDEX.md) — domain research notes and

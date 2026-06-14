@@ -1,13 +1,18 @@
 ----------------------------- MODULE CounterexampleExplorer -----------------------------
 (*
+  STATUS: ILLUSTRATIVE PSEUDO-SPEC -- NOT MACHINE-CHECKED.
+  This module does NOT parse under SANY/TLC. Known defects include:
+  `\A assignment : Nat -> S` (invalid, and an infinite domain TLC cannot
+  enumerate); Lean-style `/- -/` comments; integer-range `..` applied to
+  sets; invented syntax (`SET OF STRING`, real-number literals like 0.87);
+  and `AllMagmasOfSize(4)` = 4^16 operations, which is intractable and
+  inconsistent with the Python search cap of size 3. It is retained only
+  to sketch the intended counterexample-search workflow. The executable,
+  TLC-verified spec is ../MagmaSpecifications/Size2Check.tla. Do not cite
+  this file as evidence that any result was model-checked.
+
   Systematic exploration of finite magmas to find counterexamples
   to false equation implications.
-
-  This module provides:
-  - Generation of all magmas up to size n
-  - Testing equation satisfaction on each magma
-  - Finding counterexamples to implications E1 => E2
-  - Recording "red flag" patterns for cheatsheet
 *)
 
 EXTENDS Naturals, Sequences, FiniteSets, Magma, EquationChecking
@@ -191,10 +196,15 @@ CommonRedFlags(E1, E2) ==
     Cardinality(relevant) > 0.5}
 
 \* Generate report for cheatsheet
+\* NOTE: a search finding zero counterexamples up to the (small) size cap
+\* does NOT prove the implication is true -- a witness may exist only at a
+\* larger carrier size. The previous `count = 0 => "always_true"` label was
+\* unsound and has been replaced with "no_counterexample_found_le_cap",
+\* which states only what the bounded search actually established.
 GenerateImplicationReport(E1, E2) ==
   LET count == CounterexampleCount(E1, E2)
       flags == CommonRedFlags(E1, E2)
-      likelihood == IF count = 0 THEN "always_true"
+      likelihood == IF count = 0 THEN "no_counterexample_found_le_cap"
                     ELSE IF count > 100 THEN "very_likely_false"
                     ELSE IF count > 10 THEN "likely_false"
                     ELSE "sometimes_false"

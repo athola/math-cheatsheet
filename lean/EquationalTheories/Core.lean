@@ -152,8 +152,14 @@ end StdEqn
 
 /-- Equation e₁ implies equation e₂ if every magma satisfying e₁ also satisfies e₂.
     This is the central notion for the STEP dataset.
-    Note: quantifies over Type (= Type 0). For finite magma competition use this
-    suffices; for full generality, use `Type*` or explicit universe variables. -/
+
+    Universe note (math-L2): `implies` quantifies only over `α : Type` (i.e.
+    `Type 0`). This is sound and sufficient for the work done here, which is
+    *negative* results — a single concrete finite countermodel (e.g. on
+    `Fin 2`) lives in `Type 0` and refutes the implication. For a *positive*
+    implication proof to be fully general one must quantify over `Type*`
+    (all universes), since a model could in principle live in any universe.
+    Generalize this definition to `Type*` before attempting positive proofs. -/
 def implies (e₁ e₂ : Equation) : Prop :=
   ∀ {α : Type} (m : Magma α),
     MagmaSatisfies m e₁ → MagmaSatisfies m e₂

@@ -267,13 +267,19 @@ class ImplicationOracle:
         return self.row_true_count(eq_id) == self.num_equations
 
     def classify(self, eq_id: int) -> str:
-        """Classify equation by implication strength."""
+        """Classify equation by implication strength (row true-count buckets).
+
+        Note: a row count of exactly 1 means the equation implies only itself
+        (the diagonal). That is NOT the same as being a tautology (``x=x``), so
+        the label is ``implies_self_only`` rather than ``tautology`` (review B9)
+        — structural tautology detection lives in equation classification.
+        """
         n = self.row_true_count(eq_id)
         total = self.num_equations
         if n == total:
             return "collapse"
         if n == 1:
-            return "tautology"
+            return "implies_self_only"
         if n <= 5:
             return "weak"
         if n <= 1000:

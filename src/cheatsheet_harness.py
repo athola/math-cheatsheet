@@ -725,7 +725,10 @@ def main(argv: list[str] | None = None) -> int:
     report = run_harness(path, angles)
     print_report(report)
 
-    # JSON output to stderr for machine consumption
+    # JSON output to stdout for machine consumption / piping, appended after the
+    # human-readable report. (Review B6: the prior comment claimed stderr while
+    # the code and the test contract both use stdout — comment corrected to match
+    # the intended behavior rather than silently changing the output stream.)
     if "--json" in args:
         # Serialize with fallback for non-serializable fields
         def _ser(obj):

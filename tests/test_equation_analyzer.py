@@ -345,16 +345,18 @@ class TestImplicationAnalysis:
     @pytest.mark.unit
     def test_new_variable_false(self):
         """
-        Scenario: New variable in target means FALSE (Phase 2)
-        Given H has {x} and T has {x, y}
+        Scenario: New variable in target is no longer a refutation by itself.
+        Given H = x*(x*x)=x and T = x*y=y*x (T introduces y)
         When I analyze the implication
-        Then the verdict is FALSE (new variable y unconstrained)
+        Then the verdict is FALSE — but established SOUNDLY by a counterexample
+        (left projection satisfies H, is not commutative), not by the unsound
+        "new variable" rule (review H1). Phase 2 must not be the deciding phase.
         """
         h = parse_equation("x * (x * x) = x")
         t = parse_equation("x * y = y * x")
         result = analyze_implication(h, t)
         assert result.verdict == ImplicationVerdict.FALSE
-        assert "Phase 2" in result.phase
+        assert "Phase 2" not in result.phase
 
     @pytest.mark.unit
     def test_substitution_detection(self):
@@ -580,24 +582,22 @@ class TestPhase7StructuralHeuristic:
         )
 
     @pytest.mark.unit
-    def test_depth_heuristic_triggers_phase_7(self):
-        """A pair where the depth gap fires after exhaustive 2-element search finds nothing.
+    def test_depth_gap_no_longer_refutes(self):
+        """A depth gap is NOT a sound refutation under congruence (review H2).
 
         H: (x*y)*x = x*y  (depth 2, not collapse, no determined op)
         T: x*(x*(y*(x*y))) = (x*y)*(x*y)  (depth 4)
-        Phase 7 condition: depth(T)=4 > depth(H)+1=3 → FALSE.
 
-        No canonical or 2-element counterexample exists for this pair, so
-        only the depth heuristic can discharge it.
+        No canonical or 2-element counterexample exists, and the old Phase 7b
+        depth rule (depth(T)=4 > depth(H)+1) would have fabricated a FALSE.
+        With that rule removed, the honest verdict is UNKNOWN (Phase 8).
         """
         h = parse_equation("(x * y) * x = x * y")
         t = parse_equation("x * (x * (y * (x * y))) = (x * y) * (x * y)")
         result = analyze_implication(h, t)
-        assert result.verdict == ImplicationVerdict.FALSE
-        assert result.phase == "Phase 7", (
-            f"Expected Phase 7 depth heuristic to fire; got {result.phase}."
-            " Check that neither canonical nor exhaustive search decides this"
-            " pair before Phase 7."
+        assert result.verdict == ImplicationVerdict.UNKNOWN
+        assert result.phase == "Phase 8", (
+            f"Expected the honest Phase 8 UNKNOWN; got {result.phase}."
         )
 
 

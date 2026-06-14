@@ -129,8 +129,8 @@ class TestRowColCounts:
 
 
 class TestClassification:
-    def test_tautology(self, oracle: ImplicationOracle):
-        assert oracle.classify(1) == "tautology"
+    def test_implies_self_only(self, oracle: ImplicationOracle):
+        assert oracle.classify(1) == "implies_self_only"
 
     def test_collapse(self, oracle: ImplicationOracle):
         assert oracle.classify(2) == "collapse"

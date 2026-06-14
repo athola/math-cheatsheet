@@ -162,13 +162,16 @@ def parse_tlc_output(module: str, output: str, returncode: int, elapsed: float) 
     )
 
 
-# Modules to check with their corresponding .cfg files (if any)
+# Modules to check with their corresponding .cfg files (if any).
+#
+# Only Size2Check is an executable, TLC-verifiable specification. The other
+# modules in tla/MagmaSpecifications (Magma, MagmaModel, EquationChecking,
+# InvariantCheck, TEST_MODEL, Invariants) are illustrative pseudo-specs that
+# do NOT parse under SANY/TLC -- each carries a STATUS banner saying so -- so
+# running TLC on them only produces noise. They are intentionally excluded
+# here; see docs/formal-verification-summary.md for the full accounting.
 MODULES_TO_CHECK = [
-    ("Magma", None),
-    ("MagmaModel", "MagmaModel.cfg"),
-    ("EquationChecking", "EquationChecking.cfg"),
-    ("InvariantCheck", None),
-    ("TEST_MODEL", None),
+    ("Size2Check", "Size2Check.cfg"),
 ]
 
 

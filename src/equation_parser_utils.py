@@ -22,11 +22,16 @@ def tokenize_equation(s: str) -> list[str]:
             tokens.append("*")
             i += 1
         elif c.isalpha():
+            # Variable names start with a letter and may continue with
+            # alphanumerics (e.g. ``x1``). The previous ``isalpha``-only scan
+            # silently dropped trailing digits, mangling such names (review B7).
             j = i
-            while j < len(s) and s[j].isalpha():
+            while j < len(s) and s[j].isalnum():
                 j += 1
             tokens.append(s[i:j])
             i = j
         else:
-            i += 1
+            # Surface malformed input instead of silently skipping characters
+            # (review B7); the old ``i += 1`` discard hid parse errors.
+            raise ValueError(f"Unexpected character {c!r} at position {i} in {s!r}")
     return tokens

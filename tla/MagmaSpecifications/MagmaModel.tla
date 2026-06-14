@@ -1,5 +1,12 @@
 ----------------------------- MODULE MagmaModel -----------------------------
 (*
+  STATUS: ILLUSTRATIVE PSEUDO-SPEC -- NOT MACHINE-CHECKED.
+  This module does NOT parse under SANY/TLC: the CASE expressions use
+  `CASE p THEN e` (IF/THEN syntax) instead of the required `CASE p -> e`.
+  It is retained only to sketch concrete example magmas. The executable,
+  TLC-verified spec is Size2Check.tla. Do not cite this file as evidence
+  that any result was model-checked.
+
   Concrete magma models for testing.
   Provides specific small magmas for model checking.
 *)

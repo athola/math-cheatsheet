@@ -217,17 +217,13 @@ def analyze_implication(h: Equation, t: Equation) -> AnalysisResult:
                 ImplicationVerdict.FALSE, "Phase 5", f"H determines {name}; T fails in that magma"
             )
 
-    # Phase 2: Variable analysis
-    h_vars = h.variables()
-    t_vars = t.variables()
-    new_vars = t_vars - h_vars
-
-    if new_vars:
-        return AnalysisResult(
-            ImplicationVerdict.FALSE,
-            "Phase 2",
-            f"Target has new variable(s) {new_vars} not in hypothesis",
-        )
+    # Phase 2: Variable analysis (NON-refuting).
+    # A fresh variable in the target is NOT grounds to refute the implication
+    # (review H1): congruence lets H prove targets with new variables, e.g.
+    # commutativity ``x◇y=y◇x`` implies ``(x◇y)◇z=(y◇x)◇z``. We therefore do not
+    # return FALSE here; the sound phases below (counterexample search, rewrite
+    # closure) decide, and a genuinely undecidable pair falls through to the
+    # Phase 8 UNKNOWN verdict rather than a fabricated FALSE.
 
     # Phase 3: Substitution check (simple cases)
     sub_result = _check_simple_substitutions(h, t)
@@ -273,32 +269,19 @@ def analyze_implication(h: Equation, t: Equation) -> AnalysisResult:
             "T is H with LHS/RHS swapped — same equational law",
         )
 
-    # 7b. Depth divergence: target is too deep to be reached by substitution.
-    if t.max_depth() > h.max_depth() + 1:
-        return AnalysisResult(
-            ImplicationVerdict.FALSE,
-            "Phase 7",
-            f"Target depth ({t.max_depth()}) >> hypothesis depth ({h.max_depth()})",
-        )
+    # 7b/7c. Depth and op-count divergence are NOT sound refutations (review H2).
+    # Under congruence, H can prove targets that are arbitrarily deeper or wider
+    # than H itself (e.g. commutativity proves ``x◇(y◇(x◇y)) = x◇(y◇(y◇x))``,
+    # whose depth exceeds ``H.depth + 1``). Syntactic size bounds do not survive
+    # congruence closure, so we no longer emit FALSE here. Such pairs reach the
+    # Phase 8 UNKNOWN verdict; any genuine non-implication was already caught by
+    # the sound counterexample search in Phases 4/4b.
 
-    # 7c. Op-count divergence: analog of depth for wide-but-shallow terms.
-    # Substitution of a variable with a k-op subterm can at most double op
-    # count per step; with one step allowed, ``T.ops > 2*H.ops + 2`` exceeds
-    # what any single substitution can produce, so H cannot imply T.
-    #
-    # Soundness precondition (NEW-C1): the bound assumes each variable in H
-    # appears once. When a variable repeats k times, substituting it with a
-    # term of size m amplifies T.ops by ``k*m`` rather than ``m``, breaking
-    # the bound. Gate the rule on globally-unique variable occurrences so the
-    # broken case (e.g. H = ``x*x = x``) cannot reach this branch.
-    if _h_vars_unique(h) and t.total_ops() > 2 * h.total_ops() + 2:
-        return AnalysisResult(
-            ImplicationVerdict.FALSE,
-            "Phase 7",
-            f"Target op count ({t.total_ops()}) >> hypothesis op count ({h.total_ops()})",
-        )
-
-    return AnalysisResult(ImplicationVerdict.UNKNOWN, "Phase 8", "Inconclusive - default FALSE")
+    return AnalysisResult(
+        ImplicationVerdict.UNKNOWN,
+        "Phase 8",
+        "Inconclusive — no sound proof or counterexample found",
+    )
 
 
 def _is_tautology(eq: Equation) -> bool:
@@ -483,18 +466,6 @@ def _iter_vars(term: Term) -> Iterator[str]:
         lt, rt = term._lr()
         yield from _iter_vars(lt)
         yield from _iter_vars(rt)
-
-
-def _h_vars_unique(h: Equation) -> bool:
-    """True iff every variable in ``h`` appears exactly once across both sides.
-
-    Phase 7c's ``2*ops + 2`` bound is sound only under this condition. When a
-    variable repeats ``k`` times in H, substituting it with a term of size
-    ``m`` adds ``k*m`` ops rather than ``m`` ops, and the bound can wrongly
-    rule out valid implications (NEW-C1 reproducer: H = ``x*x = x``).
-    """
-    occurrences = list(_iter_vars(h.lhs)) + list(_iter_vars(h.rhs))
-    return len(occurrences) == len(set(occurrences))
 
 
 def _detect_determined_operation(eq: Equation) -> tuple[list[list[int]], str] | None:

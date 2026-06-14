@@ -53,7 +53,9 @@ class Equation:
     is_tautology: bool = False
 
     def __post_init__(self):
-        self.variables = self.lhs.variables() | self.rhs.variables()
+        # frozenset so the cached variable set matches its annotation and cannot
+        # be mutated by a caller, corrupting later structural queries (review B2).
+        self.variables = frozenset(self.lhs.variables() | self.rhs.variables())
         self.var_count = len(self.variables)
         self.max_depth = max(self.lhs.depth(), self.rhs.depth())
         self.total_ops = self.lhs.size() + self.rhs.size()
@@ -116,26 +118,17 @@ class ETPEquations:
         """
         eq = self.equations[eq_id]
 
-        # x = y pattern: two distinct variables equated
-        if eq.lhs.is_var and eq.rhs.is_var and eq.lhs.name != eq.rhs.name:
+        # One side is a lone variable that does not occur on the other side.
+        # Proof it collapses: fix any p, q in M; assign the lone variable to p
+        # and every other variable to q — the equation forces p = q, so |M|=1.
+        # This subsumes "x = y" and any depth "x = f(...)" where x is absent
+        # from f (review B5: the former ``rhs.size() == 1`` guard missed
+        # depth>1 collapses such as ``x = (y ◇ z) ◇ w``), matching the general
+        # predicate in equation_analyzer._is_collapse.
+        if eq.lhs.is_var and eq.lhs.name not in eq.rhs.variables():
             return True
-
-        # x = y ◇ z where y,z are vars not equal to x
-        if eq.lhs.is_var and not eq.rhs.is_var:
-            lhs_vars = eq.lhs.variables()
-            rhs_vars = eq.rhs.variables()
-            new_vars = rhs_vars - lhs_vars
-            # If RHS has 2+ new vars AND it's a single operation, likely collapse
-            if len(new_vars) >= 2 and eq.rhs.size() == 1:
-                return True
-
-        # Symmetric: y ◇ z = x
-        if eq.rhs.is_var and not eq.lhs.is_var:
-            lhs_vars = eq.lhs.variables()
-            rhs_vars = eq.rhs.variables()
-            new_vars = lhs_vars - rhs_vars
-            if len(new_vars) >= 2 and eq.lhs.size() == 1:
-                return True
+        if eq.rhs.is_var and eq.rhs.name not in eq.lhs.variables():
+            return True
 
         return False
 
@@ -175,18 +168,22 @@ class ETPEquations:
         if len(h_vars) < 2:
             return False
 
-        # Try all pairwise variable merges
+        # Try all pairwise variable merges in BOTH directions. Merging only the
+        # later var into the earlier one (review B1) missed instances obtained by
+        # the opposite merge, e.g. H = ``x ◇ y = x`` -> T = ``y ◇ y = y`` via
+        # x := y. Both directions are universally sound specialisations.
         for i, v1 in enumerate(h_vars):
             for v2 in h_vars[i + 1 :]:
-                mapping = {v2: var(v1)}
-                specialized = Equation(
-                    id=0,
-                    text="",
-                    lhs=h.lhs.substitute(mapping),
-                    rhs=h.rhs.substitute(mapping),
-                )
-                if specialized.lhs == t.lhs and specialized.rhs == t.rhs:
-                    return True
+                for merged, survivor in ((v2, v1), (v1, v2)):
+                    mapping = {merged: var(survivor)}
+                    specialized = Equation(
+                        id=0,
+                        text="",
+                        lhs=h.lhs.substitute(mapping),
+                        rhs=h.rhs.substitute(mapping),
+                    )
+                    if specialized.lhs == t.lhs and specialized.rhs == t.rhs:
+                        return True
         return False
 
 

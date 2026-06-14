@@ -14,11 +14,15 @@ namespace EquationalTheories
 
 /-! ## Pattern Detection for Equations -/
 
-/-- Determine if an equation is the commutativity pattern (x*y = y*x). -/
+/-- Determine if an equation is the commutativity pattern (x*y = y*x).
+
+    The two variables must be *distinct*; otherwise the "pattern" also
+    matches the tautology `x*x = x*x` (where `x1 = x2 = y1 = y2`), which is
+    reflexivity, not commutativity. The `x1 != x2` guard rules that out. -/
 def isCommutativityPattern (e : Equation) : Bool :=
   match e.lhs, e.rhs with
   | Term.app (Term.var x1) (Term.var x2), Term.app (Term.var y1) (Term.var y2) =>
-    x1 = y2 && x2 = y1
+    x1 = y2 && x2 = y1 && x1 != x2
   | _, _ => false
 
 /-- Determine if an equation is the associativity pattern ((x*y)*z = x*(y*z)). -/

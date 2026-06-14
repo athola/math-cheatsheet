@@ -209,7 +209,7 @@ class CompetitionEvaluator:
     def evaluate_by_category(self) -> dict[str, EvalResult]:
         """Evaluate full matrix, broken down by hypothesis equation category.
 
-        Categories come from oracle.classify(): collapse, tautology, weak, mid, strong.
+        Categories come from oracle.classify(): collapse, implies_self_only, weak, mid, strong.
 
         Per-category ``elapsed_seconds`` is measured directly by summing the
         wall-clock span each hypothesis row takes, so categories of different
@@ -273,14 +273,24 @@ def _load_problems(path: Path) -> list[dict]:
             if line:
                 raw.append(json.loads(line))
 
-    # Normalize field names
+    # Normalize field names, validating each record (review B3). Missing ids
+    # previously fell through as ``None`` and silently predicted TRUE via the
+    # ``None == None`` self-implication check; a missing answer raised a bare
+    # KeyError. Both now raise an explanatory ValueError naming the bad record.
     problems = []
-    for obj in raw:
+    for idx, obj in enumerate(raw):
         prob: dict = {}
         h = obj.get("hypothesis_id")
         prob["hypothesis_id"] = h if h is not None else obj.get("equation_1_id")
         t = obj.get("target_id")
         prob["target_id"] = t if t is not None else obj.get("equation_2_id")
+        if prob["hypothesis_id"] is None or prob["target_id"] is None:
+            raise ValueError(
+                f"Problem record {idx} is missing hypothesis/target id "
+                f"(need hypothesis_id/equation_1_id and target_id/equation_2_id): {obj!r}"
+            )
+        if "answer" not in obj:
+            raise ValueError(f"Problem record {idx} is missing 'answer': {obj!r}")
         prob["answer"] = obj["answer"]
         problems.append(prob)
     return problems

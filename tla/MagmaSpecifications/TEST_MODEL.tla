@@ -1,7 +1,15 @@
 ----------------------------- MODULE TEST_MODEL -----------------------------
 (*
+  STATUS: ILLUSTRATIVE PSEUDO-SPEC -- NOT MACHINE-CHECKED.
+  This module does NOT parse under SANY/TLC: the CASE expressions use
+  `CASE p THEN e` instead of `CASE p -> e`, and it also asserts results
+  with THEOREM, which TLC does not check (THEOREMs require a proof system
+  such as TLAPS, not the model checker). It is retained only to sketch
+  intended test cases. The executable, TLC-verified spec is
+  Size2Check.tla. Do not cite this file as evidence that any result was
+  model-checked.
+
   Test module for verifying Magma specifications work correctly.
-  This can be run with TLC to validate the setup.
 *)
 
 EXTENDS Magma, MagmaModel, EquationChecking

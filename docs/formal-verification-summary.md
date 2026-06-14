@@ -6,6 +6,44 @@
 
 ---
 
+## Scope and Honesty Note (read first)
+
+This document originally described an aspirational dual-tool verification
+pipeline. The reality is narrower, and this note states it plainly so no
+claim here is mistaken for more than it is:
+
+- **The cheatsheet is validated empirically, not formally.** Its accuracy
+  (98.01% on the 22M-pair matrix) comes from comparison against the ETP
+  ground-truth oracle, not from machine-checked proofs.
+- **Lean 4 — what is actually proven** (`lean/EquationalTheories/`,
+  checked by `lake build`): the implication preorder laws (reflexivity,
+  transitivity, equivalence is an equivalence relation), term-evaluation
+  and well-formedness lemmas, a handful of concrete Bool witnesses
+  (XOR/AND commutative/associative/idempotent), and **one** representative
+  non-implication countermodel, `idemp_not_implies_comm` (idempotence ⇏
+  commutativity, via the left-projection magma on `Fin 2`). The
+  `knownTrue/FalseImplications` lists in `Implication.lean` are **data
+  records, not theorems** — they carry a `status`/`confidence` string and
+  are not proven in Lean. Proving the remaining catalogued implications is
+  tracked as backlog.
+- **TLA+ — what is actually checked**: only
+  `tla/MagmaSpecifications/Size2Check.tla` parses and is verified by TLC.
+  It exhaustively enumerates the 16 size-2 magmas and confirms the exact
+  associative/commutative/idempotent counts plus the existence of size-2
+  witnesses to `assoc ⇏ comm` and `idemp ⇏ comm`. The other `.tla` files
+  in this repo are **illustrative pseudo-specifications that do not parse
+  under SANY/TLC** (each carries a STATUS banner saying so) and have never
+  model-checked anything.
+- **The `src/lean_bridge.py` output is a non-verifying scaffold.** It emits
+  a faithful Cayley table plus an `example : True := by trivial`
+  placeholder; that body is a tautology and does not witness any
+  implication. It must not be described as "verified".
+
+The remainder of this document is the original methodology write-up; treat
+its tables as the *intended* design, scoped by the note above.
+
+---
+
 ## Executive Summary
 
 This document describes the formal verification methodology used to create and validate the math cheatsheet for equation implications. We employed a dual-tool approach combining **Lean 4** (proof assistant) for theorem proving and **TLA+** (model checker) for counterexample discovery.
@@ -120,24 +158,34 @@ Analyze proofs and counterexamples to extract reusable patterns:
 
 ## Verified Implications
 
-### True Implications (Lean Verified)
+### True Implications (catalog — mostly NOT Lean-proven)
 
-| Implication | Confidence | Lean Module |
-|-------------|------------|-------------|
-| Two-sided identity ⇒ unilateral identity | 100% | Core.lean |
-| Identity + commutative ⇒ two-sided identity | 100% | Implication.lean |
-| Reflexive (identical equations) | 100% | Implication.lean |
-| Standard ⇒ extended associativity | 75% | Derivable |
+These are entries the decision procedure relies on. Only reflexivity is an
+actual Lean theorem (`implication_reflexivity`); the rest are catalog
+records / empirically validated, not machine-checked. "Confidence" is a
+heuristic label, not a proof status.
 
-### False Implications (TLA+ Verified)
+| Implication | Confidence | Status |
+|-------------|------------|--------|
+| Reflexive (identical equations) | 100% | Lean theorem (`implication_reflexivity`) |
+| Two-sided identity ⇒ unilateral identity | 100% | catalog / not Lean-proven |
+| Identity + commutative ⇒ two-sided identity | 100% | catalog / not Lean-proven |
+| Standard ⇒ extended associativity | 75% | heuristic / derivable |
 
-| Implication | Confidence | Counterexample |
-|-------------|------------|----------------|
-| Associativity ⇒ commutativity | 95% | Matrix multiplication |
-| Commutativity ⇒ associativity | 95% | RPS operation |
-| Idempotence ⇒ commutativity | 90% | Asymmetric magma |
-| Left identity ⇒ right identity | 85% | Left-only structures |
-| Left identity ⇒ two-sided identity | 85% | Left-only structures |
+### False Implications (catalog — one Lean-proven, none TLA+-verified)
+
+The only machine-checked non-implication is `idemp ⇒ comm`, proven in Lean
+(`idemp_not_implies_comm`) and independently witnessed at size 2 by TLC
+(`Size2Check.tla`). The others are catalog entries from empirical search,
+not formal proofs. "Confidence" is a heuristic label.
+
+| Implication | Confidence | Status |
+|-------------|------------|--------|
+| Idempotence ⇒ commutativity | 90% | **Lean-proven** + TLC size-2 witness |
+| Associativity ⇒ commutativity | 95% | TLC size-2 witness (`Size2Check`); not Lean-proven |
+| Commutativity ⇒ associativity | 95% | catalog (needs size ≥ 3 model); not proven |
+| Left identity ⇒ right identity | 85% | catalog / empirical |
+| Left identity ⇒ two-sided identity | 85% | catalog / empirical |
 
 ---
 
@@ -163,8 +211,9 @@ Cheatsheet: "Red flag: Non-commutative operation ⇒ E₁ ⇒ commutativity FALS
 
 | Source | Confidence | Basis |
 |--------|------------|-------|
-| Lean formal proof | 100% | Mechanically verified |
-| TLA+ counterexample | 85-95% | Small exhaustive search |
+| Lean formal proof | 100% | Mechanically verified (only the lemmas listed in the Scope note above) |
+| TLC size-2 model check | high (size 2 only) | Exhaustive over the 16 size-2 magmas (`Size2Check.tla`); says nothing about larger carriers |
+| Empirical search / catalog | 85-95% | Compared against the ETP oracle; not a proof |
 | Algebraic derivation | 75% | Manual reasoning |
 | Heuristic pattern | 50-70% | Inductive inference |
 
@@ -245,9 +294,12 @@ lake exe build
 ```
 
 ### Running TLA+ Model Checker
+Only `Size2Check.tla` is executable under TLC (the other modules are
+illustrative pseudo-specs and will not parse):
 ```bash
-java -cp tla/tla2tools.jar tlc2.TLC -depth 4 \
-  tla/Counterexamples/CounterexampleExplorer.tla
+cd tla/MagmaSpecifications
+java -cp ../tools/tla2tools.jar tlc2.TLC \
+  -config Size2Check.cfg Size2Check.tla
 ```
 
 ### Running Validation

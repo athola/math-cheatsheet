@@ -78,71 +78,93 @@ theorem vars_of_app (l r : Term) :
 
 /-- Associativity equation uses exactly variables {0, 1, 2}. -/
 theorem assoc_vars : StdEqn.associativity.lhs.vars ∪ StdEqn.associativity.rhs.vars = {0, 1, 2} := by
-  simp [StdEqn.associativity, Term.vars]
-  ext x
-  simp [Finset.mem_union, Finset.mem_insert, Finset.mem_singleton]
-  omega
+  decide
 
 /-- Commutativity equation uses exactly variables {0, 1}. -/
 theorem comm_vars : StdEqn.commutativity.lhs.vars ∪ StdEqn.commutativity.rhs.vars = {0, 1} := by
-  simp [StdEqn.commutativity, Term.vars]
-  ext x
-  simp [Finset.mem_union, Finset.mem_insert, Finset.mem_singleton]
-  omega
+  decide
 
 /-- Idempotence equation uses exactly variable {0}. -/
 theorem idemp_vars : StdEqn.idempotence.lhs.vars ∪ StdEqn.idempotence.rhs.vars = {0} := by
-  simp [StdEqn.idempotence, Term.vars]
-  ext x
-  simp [Finset.mem_union, Finset.mem_singleton]
+  decide
 
 /-! ## Feature: Concrete magma property verification
 
 Verify properties on concrete finite magmas (Bool as carrier).
-These serve as compile-time witnesses that our definitions are correct. -/
+These serve as compile-time witnesses that our definitions are correct.
+
+NOTE: the magmas are stated inline (not via `let m := …`). With a
+`let`-headed goal, `intro σ` binds the let variable (the Magma) rather than
+the assignment, which left the goal unprovable; writing `MagmaSatisfies`
+directly makes `intro σ` bind the assignment as intended. -/
 
 /-- XOR on Bool is commutative. -/
 theorem bool_xor_commutative :
-    let m : Magma Bool := ⟨xor⟩
-    MagmaSatisfies m StdEqn.commutativity := by
+    MagmaSatisfies (⟨xor⟩ : Magma Bool) StdEqn.commutativity := by
   intro σ
-  simp [satisfies, StdEqn.commutativity]
+  simp only [satisfies, StdEqn.commutativity]
   cases σ 0 <;> cases σ 1 <;> rfl
 
 /-- XOR on Bool is associative. -/
 theorem bool_xor_associative :
-    let m : Magma Bool := ⟨xor⟩
-    MagmaSatisfies m StdEqn.associativity := by
+    MagmaSatisfies (⟨xor⟩ : Magma Bool) StdEqn.associativity := by
   intro σ
-  simp [satisfies, StdEqn.associativity]
+  simp only [satisfies, StdEqn.associativity]
   cases σ 0 <;> cases σ 1 <;> cases σ 2 <;> rfl
 
 /-- AND on Bool is commutative. -/
 theorem bool_and_commutative :
-    let m : Magma Bool := ⟨(· && ·)⟩
-    MagmaSatisfies m StdEqn.commutativity := by
+    MagmaSatisfies (⟨(· && ·)⟩ : Magma Bool) StdEqn.commutativity := by
   intro σ
-  simp [satisfies, StdEqn.commutativity]
+  simp only [satisfies, StdEqn.commutativity]
   cases σ 0 <;> cases σ 1 <;> rfl
 
 /-- AND on Bool is idempotent. -/
 theorem bool_and_idempotent :
-    let m : Magma Bool := ⟨(· && ·)⟩
-    MagmaSatisfies m StdEqn.idempotence := by
+    MagmaSatisfies (⟨(· && ·)⟩ : Magma Bool) StdEqn.idempotence := by
   intro σ
-  simp [satisfies, StdEqn.idempotence]
+  simp only [satisfies, StdEqn.idempotence]
   cases σ 0 <;> rfl
 
 /-! ## Feature: Non-implication witnesses
 
-To prove that commutativity does NOT imply associativity (or vice versa),
-one must construct a concrete magma where the premise holds but the conclusion
-fails. Full `¬ implies` proofs require explicit countermodels on a finite
-carrier (e.g., Fin 3 or Fin 4).
+To prove that one law does NOT imply another, we construct a concrete magma
+where the premise law holds but the conclusion law fails. The theorem below
+is a fully-proven representative: `idempotence ⇏ commutativity`, witnessed by
+the left-projection magma on `Fin 2` (`a * b = a`). This establishes the
+pattern; the data records in `Implication.lean`
+(`knownFalse/TrueImplications`) are NOT proofs — they are catalog entries.
 
-The self-implications below demonstrate the reflexivity infrastructure;
-actual non-implication witnesses are a future work item tracked in the
-project backlog. -/
+Backlog (not yet proven as Lean theorems): the remaining catalog entries,
+e.g. `associativity ⇏ commutativity`, `commutativity ⇏ associativity`,
+`medial ⇏ associativity`, `left_absorption ⇏ idempotence`. Each needs its own
+finite countermodel following the pattern below. Some (e.g. comm ⇏ assoc)
+require a carrier of size ≥ 3. -/
+
+/-- The left-projection magma on `Fin 2`: `a * b = a`. -/
+def leftProj2 : Magma (Fin 2) := ⟨fun a _ => a⟩
+
+/-- Left projection is idempotent: `x * x = x`. -/
+theorem leftProj2_idempotent : MagmaSatisfies leftProj2 StdEqn.idempotence := by
+  intro σ
+  rfl
+
+/-- Left projection is NOT commutative: `0 * 1 = 0 ≠ 1 = 1 * 0`. -/
+theorem leftProj2_not_commutative :
+    ¬ MagmaSatisfies leftProj2 StdEqn.commutativity := by
+  intro h
+  -- Instantiating the (vacuous-looking) ∀-assignment at σ 0 = 0, σ 1 = 1
+  -- forces `0 = 1` in `Fin 2`, which is false.
+  have key : (0 : Fin 2) = 1 := h (fun n => if n = 0 then (0 : Fin 2) else 1)
+  exact absurd key (by decide)
+
+/-- Representative proven non-implication: idempotence does NOT imply
+    commutativity. The left-projection magma satisfies idempotence but not
+    commutativity, so no implication can hold. -/
+theorem idemp_not_implies_comm :
+    ¬ implies StdEqn.idempotence StdEqn.commutativity := by
+  intro h
+  exact leftProj2_not_commutative (h leftProj2 leftProj2_idempotent)
 
 /-- Self-implication: Commutativity implies commutativity (reflexivity). -/
 theorem comm_implies_comm : implies StdEqn.commutativity StdEqn.commutativity :=

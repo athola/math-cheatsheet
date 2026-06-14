@@ -351,7 +351,7 @@ class TestETPDataset:
     @pytest.mark.unit
     def test_classify_oracle(self, dataset):
         """Oracle-based classification works through dataset."""
-        assert dataset.classify(1) == "tautology"
+        assert dataset.classify(1) == "implies_self_only"
         assert dataset.classify(2) == "collapse"
 
     @pytest.mark.unit
@@ -369,7 +369,7 @@ class TestETPDataset:
         assert s["total_equations"] == 4694
         assert "classification_counts" in s
         assert "collapse" in s["classification_counts"]
-        assert "tautology" in s["classification_counts"]
+        assert "implies_self_only" in s["classification_counts"]
 
     @pytest.mark.unit
     def test_equation_info(self, dataset):
@@ -406,13 +406,13 @@ class TestOracleClassificationCompleteness:
         categories_seen = set()
         for eq_id in range(1, oracle.num_equations + 1):
             categories_seen.add(oracle.classify(eq_id))
-        expected = {"collapse", "tautology", "weak", "mid", "strong"}
+        expected = {"collapse", "implies_self_only", "weak", "mid", "strong"}
         assert categories_seen == expected, f"Missing: {expected - categories_seen}"
 
     @pytest.mark.unit
     def test_every_equation_classified(self, oracle):
         """Every equation gets a valid classification."""
-        valid = {"collapse", "tautology", "weak", "mid", "strong"}
+        valid = {"collapse", "implies_self_only", "weak", "mid", "strong"}
         for eq_id in range(1, oracle.num_equations + 1):
             cls = oracle.classify(eq_id)
             assert cls in valid, f"E{eq_id} got unexpected class: {cls}"

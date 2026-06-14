@@ -1,5 +1,15 @@
 --------------------------- MODULE EquationChecking ---------------------------
 (*
+  STATUS: ILLUSTRATIVE PSEUDO-SPEC -- NOT MACHINE-CHECKED.
+  This module does NOT parse under SANY/TLC. Known defects: `RECURSIVE
+  Eval(_)` is declared with arity 1 but Eval is called with 3 arguments;
+  `CASE ... ELSE ...` is invalid (TLA+ uses `[] OTHER ->`); GetVariables
+  is used before it is declared; and EquationSatisfied quantifies over
+  `assign` but Eval reads a global VarAssignment, so the quantifier is
+  vacuous. It is retained only to sketch the intended term-evaluation
+  approach. The executable, TLC-verified spec is Size2Check.tla. Do not
+  cite this file as evidence that any result was model-checked.
+
   Module for checking equation satisfaction in magmas.
   Provides tools for verifying implications between equations.
 *)

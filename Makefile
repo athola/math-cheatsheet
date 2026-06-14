@@ -9,6 +9,7 @@ PYTEST := venv/bin/python -m pytest
 RUFF := venv/bin/ruff
 MYPY := venv/bin/mypy
 PYTHONPATH := PYTHONPATH=src:tla/python
+CARGO := cd rust && cargo
 
 # ── Core ────────────────────────────────────────────────────────
 
@@ -22,29 +23,40 @@ setup: ## Set up venv and install dependencies
 	python3 -m venv venv
 	$(PYTHON) -m pip install --quiet -e ".[dev]"
 	$(PYTHON) -m pip install --quiet pre-commit
-	$(PYTHON) -m pre_commit install
+	$(MAKE) pre-commit-install
 
 .PHONY: build-rust
 build-rust: ## Build Rust PyO3 extension (magma_core)
-	cd rust && cargo build --release
+	@command -v cargo >/dev/null || { echo "error: cargo not found (install Rust toolchain)"; exit 1; }
+	$(CARGO) build --release
 
 .PHONY: install-rust
 install-rust: ## Build and install Rust extension into venv
-	cd rust && $(PYTHON) -m pip install --quiet maturin && maturin develop --release
+	@command -v cargo >/dev/null || { echo "error: cargo not found (install Rust toolchain)"; exit 1; }
+	cd rust && "$(CURDIR)/$(PYTHON)" -m pip install --quiet maturin && "$(CURDIR)/$(PYTHON)" -m maturin develop --release
 
 .PHONY: lean-check
 lean-check: ## Check Lean 4 formal proofs
+	@command -v lake >/dev/null || { echo "error: lake not found (install Lean 4 / elan)"; exit 1; }
 	cd lean && lake build
 
 # ── Quality ─────────────────────────────────────────────────────
 
 .PHONY: test
-test: ## Run all tests
-	$(PYTHONPATH) $(PYTEST) -v
+test: ## Run tests (excludes slow CI-only suites for fast local feedback)
+	$(PYTHONPATH) $(PYTEST) -v -m "not slow"
 
 .PHONY: test-quick
-test-quick: ## Run tests (no verbose, fail-fast)
-	$(PYTHONPATH) $(PYTEST) -x -q
+test-quick: ## Run tests fast (no verbose, fail-fast, excludes slow)
+	$(PYTHONPATH) $(PYTEST) -x -q -m "not slow"
+
+.PHONY: test-slow
+test-slow: ## Run ONLY the slow CI-only suites (full 22M-matrix accuracy, ~50 min)
+	$(PYTHONPATH) $(PYTEST) -v -m slow
+
+.PHONY: test-all
+test-all: ## Run the entire suite including slow CI-only tests (~50 min)
+	$(PYTHONPATH) $(PYTEST) -v
 
 .PHONY: test-property
 test-property: ## Run property-based invariant tests (Hypothesis)
@@ -56,26 +68,32 @@ test-cross-language: ## Run cross-language consistency tests (Python ↔ Rust)
 
 .PHONY: test-rust
 test-rust: ## Run Rust proptest invariant tests
-	cd rust && cargo test --release -- --nocapture
+	@command -v cargo >/dev/null || { echo "error: cargo not found (install Rust toolchain)"; exit 1; }
+	$(CARGO) test --release -- --nocapture
 
 .PHONY: test-invariants
 test-invariants: test-property test-cross-language test-rust ## Run all invariant tests
 
 .PHONY: lint
-lint: ## Lint Python source with ruff
+lint: ## Lint Python (ruff) and Rust (clippy + fmt check)
 	$(RUFF) check src/ tests/ experiments/ tla/python/
+	@command -v cargo >/dev/null || { echo "error: cargo not found (install Rust toolchain)"; exit 1; }
+	$(CARGO) clippy --release -- -D warnings
+	$(CARGO) fmt --check
 
 .PHONY: format
-format: ## Auto-format Python source with ruff
+format: ## Auto-format Python (ruff) and Rust (cargo fmt)
 	$(RUFF) format src/ tests/ experiments/ tla/python/
 	$(RUFF) check --fix src/ tests/ experiments/ tla/python/
+	@command -v cargo >/dev/null || { echo "error: cargo not found (install Rust toolchain)"; exit 1; }
+	$(CARGO) fmt
 
 .PHONY: typecheck
 typecheck: ## Run mypy type checking
 	$(PYTHONPATH) $(MYPY) src/ --ignore-missing-imports
 
 .PHONY: check
-check: lint typecheck test test-rust ## Run all quality gates (lint + typecheck + test + rust)
+check: lint typecheck test test-rust lean-check tla-check ## Run all quality gates (4 languages: Python + Rust + Lean + TLA+)
 
 .PHONY: pre-commit
 pre-commit: ## Run pre-commit hooks on all files
@@ -127,11 +145,11 @@ harness-competition: ## Simulate competition evaluation format (LIVE)
 
 .PHONY: competition-sim
 competition-sim: ## Run end-to-end competition simulation (#24)
-	PYTHONPATH=src:tla/python $(PYTHON) scripts/competition_sim.py --n $${N:-50} --seed $${SEED:-0}
+	$(PYTHONPATH) $(PYTHON) scripts/competition_sim.py --n $${N:-50} --seed $${SEED:-0}
 
 .PHONY: accuracy-gate
 accuracy-gate: ## Enforce accuracy threshold (regression #23)
-	PYTHONPATH=src:tla/python $(PYTHON) scripts/check_accuracy_gate.py --threshold $${MIN_ACCURACY:-98.0}
+	$(PYTHONPATH) $(PYTHON) scripts/check_accuracy_gate.py --threshold $${MIN_ACCURACY:-98.0}
 
 .PHONY: test-harness
 test-harness: ## Run harness pytest suite (31 tests)
@@ -218,10 +236,12 @@ tla-setup: ## Download TLA+ tools (tla2tools.jar)
 
 .PHONY: tla-check
 tla-check: ## Run TLC model checker on all TLA+ modules
+	@command -v java >/dev/null || { echo "error: java not found (TLC requires a JRE; run 'make tla-setup')"; exit 1; }
 	$(PYTHON) scripts/run_tla_checks.py
 
 .PHONY: tla-check-verbose
 tla-check-verbose: ## Run TLC with verbose output
+	@command -v java >/dev/null || { echo "error: java not found (TLC requires a JRE; run 'make tla-setup')"; exit 1; }
 	$(PYTHON) scripts/run_tla_checks.py --verbose
 
 # ── Clean ───────────────────────────────────────────────────────
@@ -232,3 +252,4 @@ clean: ## Remove build artifacts and caches
 	find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name .mypy_cache -exec rm -rf {} + 2>/dev/null || true
 	rm -rf build/ dist/ *.egg-info/
+	rm -rf rust/target lean/.lake

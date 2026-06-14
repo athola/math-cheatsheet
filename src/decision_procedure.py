@@ -1,19 +1,31 @@
 """Multi-phase decision procedure for equational implications.
 
-Given (hypothesis_id, target_id), returns TRUE/FALSE prediction.
+Given (hypothesis_id, target_id), returns a binary TRUE/FALSE prediction.
 Each phase adds precision on top of the previous ones.
 
-Phases:
-  0: Self-implication (identical equations → TRUE)
-  1: Tautology target (E1: x=x → TRUE)
-  2: Collapse hypothesis (oracle-labeled → TRUE)
-  3: Tautology hypothesis + non-tautology target → FALSE
-  4: Variable analysis (new vars in target → FALSE)
-  5: Substitution detection (target is specialization → TRUE)
-  5a: Equivalence class lookup (same row profile → TRUE)
-  5b: Determined operation detection (e.g. left projection forces magma → TRUE/FALSE)
-  5c: Counterexample testing (canonical + exhaustive 2-element magmas → FALSE)
-  6: Default → FALSE
+Phases (evaluated in this order):
+  0:  Self-implication (identical equations → TRUE)            [sound]
+  1:  Tautology target (E1: x=x → TRUE)                        [sound]
+  2:  Collapse hypothesis (oracle-labeled → TRUE)              [sound]
+  3:  Tautology hypothesis + non-tautology target → FALSE      [sound]
+  5:  Substitution detection (target is specialization → TRUE) [sound]
+  5a: Equivalence class lookup (same row profile → TRUE)       [sound]
+  4:  New variable in target → FALSE                           [HEURISTIC]
+  5b: Determined operation (forces magma → TRUE/FALSE)         [sound]
+  5c: Counterexample testing (canonical + size-2 magmas → FALSE) [sound]
+  6:  Default → FALSE                                          [HEURISTIC]
+
+Soundness boundary (review M1): this is a *binary predictor* for a
+competition, not a complete decision procedure. A FALSE output is one of
+two distinct things, and the phase label distinguishes them:
+  * a PROVEN non-implication — P3, P5b/P5c when a real counterexample magma
+    exists; and
+  * a HEURISTIC default (P4 new-variable, P6 inconclusive) — the procedure
+    could not prove the implication and guesses FALSE.
+The procedure never claims to have *proven* a non-implication it only guessed.
+The underlying verdict engine (equation_analyzer) is three-valued and returns
+UNKNOWN — never a fabricated FALSE — for the new-variable, depth, and op-count
+cases (review H1/H2); those UNKNOWNs surface here as the labeled P6 default.
 
 Structural analysis (phases 5b, 5c) is delegated to equation_analyzer.py
 to avoid duplicating logic. See issue #21.
@@ -85,21 +97,31 @@ class DecisionProcedure:
 
     def _predict(self, h_id: int, t_id: int) -> PredictionResult:
         """Actual decision logic; public ``predict`` wraps with logging."""
+        # Order matters (review M1). The equivalence-class prover (P5a) is a
+        # cheap, SOUND TRUE-prover that can fire even when the target has a fresh
+        # variable, so it runs BEFORE the new-variable heuristic (P4) — the
+        # heuristic must not preempt a genuine proof. Substitution (P5) is also
+        # sound but can never yield a new target variable, so it is mutually
+        # exclusive with P4 and stays after it; that keeps the expensive
+        # substitution/structural work off the common new-variable fast path,
+        # preserving 22M-pair throughput.
         phases = [
             self._phase_0_self,
             self._phase_1_taut_target,
             self._phase_2_collapse,
             self._phase_3_taut_hyp,
+            self._phase_5a_equiv_class,
             self._phase_4_new_vars,
             self._phase_5_substitution,
-            self._phase_5a_equiv_class,
             self._phase_5bc_structural,
         ]
         for phase_fn in phases:
             result = phase_fn(h_id, t_id)
             if result is not None:
                 return result
-        return PredictionResult(False, "P6-default", "No rule matched, default FALSE")
+        return PredictionResult(
+            False, "P6-default", "Inconclusive — heuristic default FALSE (not a proof)"
+        )
 
     def _phase_0_self(self, h_id: int, t_id: int) -> PredictionResult | None:
         if h_id == t_id:
@@ -122,11 +144,20 @@ class DecisionProcedure:
         return None
 
     def _phase_4_new_vars(self, h_id: int, t_id: int) -> PredictionResult | None:
+        """Heuristic default: a fresh target variable usually means non-implication.
+
+        This is a PREDICTION POLICY, not a proof — congruence lets some H imply
+        targets with new variables (review H1/M1). It runs only after the sound
+        TRUE-provers (P5/P5a) have declined, and ahead of the expensive
+        structural analyzer purely for performance on the full matrix.
+        """
         if h_id in self.equations and t_id in self.equations:
             new_vars = self.equations.vars_in_target_not_in_hypothesis(h_id, t_id)
             if new_vars:
                 return PredictionResult(
-                    False, "P4-new-vars", f"Target has new variable(s): {new_vars}"
+                    False,
+                    "P4-new-vars",
+                    f"Target has new variable(s) {new_vars} — heuristic default FALSE, not a proof",
                 )
         return None
 
@@ -170,13 +201,16 @@ class DecisionProcedure:
                     False, f"P5c-structural({ea_result.phase})", ea_result.reason
                 )
         except (ValueError, KeyError) as exc:
+            # A parse failure proves nothing about the implication (review B8).
+            # Do not fabricate a structural FALSE; log and fall through so the
+            # honest heuristic default applies and the failure is visible.
             logger.warning(
                 "Structural analysis failed for E%d=>E%d — equation text may be malformed: %s",
                 h_id,
                 t_id,
                 exc,
             )
-            return PredictionResult(False, "P5bc-parse-error", f"Parser failed: {exc}")
+            return None
         return None
 
     def predict_bool(self, h_id: int, t_id: int) -> bool:

@@ -1,16 +1,17 @@
 ------------------------- MODULE InvariantCheck -------------------------
 (*
-  TLC model checking configuration for verifying magma invariants.
+  STATUS: ILLUSTRATIVE PSEUDO-SPEC -- NOT MACHINE-CHECKED.
+  This module does NOT check under SANY/TLC (SANY reports ~30 semantic
+  errors). Its assertions are written as THEOREM declarations, which TLC
+  does not verify -- THEOREMs require a proof system such as TLAPS, not
+  the model checker -- so despite the "verification" framing nothing here
+  is actually checked. It is retained only to sketch the intended size-2
+  enumeration. The executable, TLC-verified spec is Size2Check.tla, which
+  performs the real size-2 enumeration (counts and non-implication
+  witnesses). Do not cite this file as evidence of model checking.
 
-  This module instantiates Invariants.tla with concrete small magmas
-  and checks all invariants via TLC's exhaustive state exploration.
-
-  Usage:
-    java -jar tla2tools.jar -config InvariantCheck.cfg InvariantCheck.tla
-
-  BDD Scenarios:
-    Feature: Exhaustive invariant verification for size-2 magmas
-    Scenario: TLC checks ALL 16 operations on {0,1}
+  This module was intended to instantiate Invariants.tla with concrete
+  small magmas and check all invariants via TLC's state exploration.
 *)
 
 EXTENDS Naturals, FiniteSets, Invariants

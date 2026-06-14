@@ -39,23 +39,22 @@ RightIdentity(e) == \A a \in S : op[a, e] = a
 * Equation Satisfaction
 ******************************************************************************)
 
-\* Check if a specific equation holds in the magma
-\* Equations are encoded as pairs of term representations
-
-\* Example: Check associativity as equation ((x*y)*z) = (x*(y*z))
-\* We use a trick: evaluate for all possible values of variables
-
-EquationHolds(Eqn) ==
-    \* This would need equation-specific evaluation
-    \* Placeholder for equation checking
-    TRUE
+\* Equation satisfaction for concrete encoded equations is NOT defined in
+\* this module. The earlier `EquationHolds(Eqn) == TRUE` placeholder was a
+\* vacuous stub (it claimed every equation holds) and has been removed to
+\* avoid implying a capability the module does not have. For an actual
+\* executable check over size-2 magmas, see Size2Check.tla, which defines
+\* IsAssociative / IsCommutative / IsIdempotent directly and is verified
+\* by TLC.
 
 (******************************************************************************
 * Finite Magma Properties
 ******************************************************************************)
 
-\* A magma is finite if its carrier set is finite
-IsFiniteMagma == Cardinality(S) < Infinity
+\* A magma is finite if its carrier set is finite.
+\* (The previous version used an undefined `Infinity`; FiniteSets provides
+\* the proper predicate IsFiniteSet.)
+IsFiniteMagma == IsFiniteSet(S)
 
 \* Size of the magma
 MagmaSize == Cardinality(S)

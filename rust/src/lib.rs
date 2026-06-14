@@ -206,15 +206,20 @@ fn generate_all_magmas(size: u8) -> PyResult<Vec<Magma>> {
     let n = size as usize;
     let n64 = n as u64;
     let cells = n * n;
-    let total: u64 = n64.pow(cells as u32);
+    // F5: use checked_pow to avoid silent wrapping in release mode
+    let total: u64 = n64.checked_pow(cells as u32).ok_or_else(|| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "Magma enumeration overflows u64 for size {size}"
+        ))
+    })?;
 
     let mut magmas = Vec::with_capacity(total as usize);
 
     for i in 0..total {
         let mut table = vec![0u8; cells];
         let mut temp = i;
-        for cell in 0..cells {
-            table[cell] = (temp % n64) as u8;
+        for entry in table.iter_mut() {
+            *entry = (temp % n64) as u8;
             temp /= n64;
         }
         magmas.push(Magma { size, table });
@@ -228,7 +233,7 @@ fn generate_all_magmas(size: u8) -> PyResult<Vec<Magma>> {
 /// Returns a dict: {"total", "associative", "commutative", "has_identity", "idempotent",
 ///                   "assoc_and_comm", "monoid"}.
 #[pyfunction]
-fn count_properties(size: u8) -> PyResult<PropertyCounts> {
+fn count_properties(py: Python<'_>, size: u8) -> PyResult<PropertyCounts> {
     if size == 0 {
         return Err(pyo3::exceptions::PyValueError::new_err(
             "Magma size must be at least 1",
@@ -242,7 +247,12 @@ fn count_properties(size: u8) -> PyResult<PropertyCounts> {
     let n = size as usize;
     let n64 = n as u64;
     let cells = n * n;
-    let total: u64 = n64.pow(cells as u32);
+    // F5: use checked_pow to avoid silent wrapping in release mode
+    let total: u64 = n64.checked_pow(cells as u32).ok_or_else(|| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "Magma enumeration overflows u64 for size {size}"
+        ))
+    })?;
 
     let mut counts = PropertyCounts {
         total,
@@ -257,9 +267,14 @@ fn count_properties(size: u8) -> PyResult<PropertyCounts> {
     // Reuse a single table allocation across all iterations
     let mut table = vec![0u8; cells];
     for i in 0..total {
+        // F4: allow Ctrl-C to interrupt long-running loops
+        if i % 1_000_000 == 0 {
+            py.check_signals()?;
+        }
+
         let mut temp = i;
-        for cell in 0..cells {
-            table[cell] = (temp % n64) as u8;
+        for entry in table.iter_mut() {
+            *entry = (temp % n64) as u8;
             temp /= n64;
         }
 
@@ -299,6 +314,7 @@ fn count_properties(size: u8) -> PyResult<PropertyCounts> {
 #[pyfunction]
 #[pyo3(signature = (premise, conclusion, max_size=3, limit=100))]
 fn find_counterexamples(
+    py: Python<'_>,
     premise: &str,
     conclusion: &str,
     max_size: u8,
@@ -316,7 +332,12 @@ fn find_counterexamples(
         let n = size as usize;
         let n64 = n as u64;
         let cells = n * n;
-        let total: u64 = n64.pow(cells as u32);
+        // F5: use checked_pow to avoid silent wrapping in release mode
+        let total: u64 = n64.checked_pow(cells as u32).ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(format!(
+                "Magma enumeration overflows u64 for size {size}"
+            ))
+        })?;
 
         let mut table = vec![0u8; cells];
         for i in 0..total {
@@ -324,9 +345,14 @@ fn find_counterexamples(
                 return Ok(results);
             }
 
+            // F4: allow Ctrl-C to interrupt long-running loops
+            if i % 1_000_000 == 0 {
+                py.check_signals()?;
+            }
+
             let mut temp = i;
-            for cell in 0..cells {
-                table[cell] = (temp % n64) as u8;
+            for entry in table.iter_mut() {
+                *entry = (temp % n64) as u8;
                 temp /= n64;
             }
 
@@ -454,7 +480,12 @@ fn count_properties_parallel(py: Python<'_>, size: u8) -> PyResult<PropertyCount
     let n = size as usize;
     let n64 = n as u64;
     let cells = n * n;
-    let total: u64 = n64.pow(cells as u32);
+    // F5: use checked_pow to avoid silent wrapping in release mode
+    let total: u64 = n64.checked_pow(cells as u32).ok_or_else(|| {
+        pyo3::exceptions::PyValueError::new_err(format!(
+            "Magma enumeration overflows u64 for size {size}"
+        ))
+    })?;
 
     let a_assoc = AtomicU64::new(0);
     let a_comm = AtomicU64::new(0);
@@ -468,8 +499,8 @@ fn count_properties_parallel(py: Python<'_>, size: u8) -> PyResult<PropertyCount
             || vec![0u8; cells],
             |table, i| {
                 let mut temp = i;
-                for cell in 0..cells {
-                    table[cell] = (temp % n64) as u8;
+                for entry in table.iter_mut() {
+                    *entry = (temp % n64) as u8;
                     temp /= n64;
                 }
 
@@ -529,36 +560,69 @@ enum Term {
 }
 
 impl Term {
-    fn compute(&self, table: &[u8], n: usize, vars: &std::collections::HashMap<String, u8>) -> u8 {
+    /// Evaluate the term against a Cayley table.
+    ///
+    /// F1: returns `Err` instead of panicking when a variable is absent from `vars`.
+    /// F2: returns `Err` instead of asserting when a literal exceeds the magma size;
+    ///     after both checks pass, the index `table[lv*n+rv]` is provably in-bounds
+    ///     because table values produced by valid magmas are always in `[0, n)`.
+    fn compute(
+        &self,
+        table: &[u8],
+        n: usize,
+        vars: &std::collections::HashMap<String, u8>,
+    ) -> Result<u8, String> {
         match self {
-            Term::Var(name) => *vars.get(name).unwrap_or_else(|| {
-                panic!(
+            Term::Var(name) => vars.get(name).copied().ok_or_else(|| {
+                format!(
                     "Variable '{}' not in assignment — list all term variables in the 'variables' parameter",
                     name
                 )
             }),
             Term::Lit(v) => {
-                assert!(
-                    (*v as usize) < n,
-                    "Literal {} out of range for magma of size {}",
-                    v,
-                    n
-                );
-                *v
+                // F2: validate literal at evaluation time; no assert/panic
+                if (*v as usize) < n {
+                    Ok(*v)
+                } else {
+                    Err(format!(
+                        "Literal {} out of range for magma of size {}",
+                        v, n
+                    ))
+                }
             }
             Term::Op(l, r) => {
-                let lv = l.compute(table, n, vars) as usize;
-                let rv = r.compute(table, n, vars) as usize;
-                table[lv * n + rv]
+                let lv = l.compute(table, n, vars)? as usize;
+                let rv = r.compute(table, n, vars)? as usize;
+                // Both lv and rv are in [0, n); table has n*n entries — in-bounds.
+                Ok(table[lv * n + rv])
             }
         }
     }
 }
 
-/// Parse a term from a Python nested list.
+/// Maximum nesting depth accepted by `parse_term`.
+///
+/// F3: prevents deep Python lists from overflowing the Rust call stack.
+const MAX_TERM_DEPTH: usize = 256;
+
+/// Public entry point — delegates to the depth-tracked helper.
+fn parse_term(obj: &Bound<'_, pyo3::types::PyAny>) -> PyResult<Term> {
+    parse_term_depth(obj, 0)
+}
+
+/// Parse a term from a Python nested list, tracking recursion depth.
+///
+/// F3: returns `PyValueError` instead of overflowing the stack when the
+/// caller passes arbitrarily deep nested lists.
 ///
 /// Format: ["*", left, right] | ["x"] | ["0"]
-fn parse_term(obj: &Bound<'_, pyo3::types::PyAny>) -> PyResult<Term> {
+fn parse_term_depth(obj: &Bound<'_, pyo3::types::PyAny>, depth: usize) -> PyResult<Term> {
+    if depth >= MAX_TERM_DEPTH {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Term nesting exceeds maximum depth of {}",
+            MAX_TERM_DEPTH
+        )));
+    }
     let list: Vec<Bound<'_, pyo3::types::PyAny>> = obj.extract()?;
     if list.is_empty() {
         return Err(pyo3::exceptions::PyValueError::new_err("Empty term"));
@@ -570,8 +634,8 @@ fn parse_term(obj: &Bound<'_, pyo3::types::PyAny>) -> PyResult<Term> {
                 "Op term must be [\"*\", left, right]",
             ));
         }
-        let left = parse_term(&list[1])?;
-        let right = parse_term(&list[2])?;
+        let left = parse_term_depth(&list[1], depth + 1)?;
+        let right = parse_term_depth(&list[2], depth + 1)?;
         Ok(Term::Op(Box::new(left), Box::new(right)))
     } else if tag.len() == 1 && tag.chars().next().unwrap().is_ascii_lowercase() {
         Ok(Term::Var(tag))
@@ -600,13 +664,8 @@ fn check_equation(
     let rhs_term = parse_term(rhs)?;
     let n = magma.size as usize;
 
-    Ok(check_eq_all_assignments(
-        &magma.table,
-        n,
-        &lhs_term,
-        &rhs_term,
-        &variables,
-    ))
+    check_eq_all_assignments(&magma.table, n, &lhs_term, &rhs_term, &variables)
+        .map_err(pyo3::exceptions::PyValueError::new_err)
 }
 
 fn check_eq_all_assignments(
@@ -615,7 +674,7 @@ fn check_eq_all_assignments(
     lhs: &Term,
     rhs: &Term,
     variables: &[String],
-) -> bool {
+) -> Result<bool, String> {
     let mut assignment = std::collections::HashMap::new();
     check_eq_recurse(table, n, lhs, rhs, variables, 0, &mut assignment)
 }
@@ -628,17 +687,19 @@ fn check_eq_recurse(
     variables: &[String],
     depth: usize,
     assignment: &mut std::collections::HashMap<String, u8>,
-) -> bool {
+) -> Result<bool, String> {
     if depth == variables.len() {
-        return lhs.compute(table, n, assignment) == rhs.compute(table, n, assignment);
+        let l = lhs.compute(table, n, assignment)?;
+        let r = rhs.compute(table, n, assignment)?;
+        return Ok(l == r);
     }
     for val in 0..n as u8 {
         assignment.insert(variables[depth].clone(), val);
-        if !check_eq_recurse(table, n, lhs, rhs, variables, depth + 1, assignment) {
-            return false;
+        if !check_eq_recurse(table, n, lhs, rhs, variables, depth + 1, assignment)? {
+            return Ok(false);
         }
     }
-    true
+    Ok(true)
 }
 
 /// Search for a counterexample magma: one where equation `premise` holds
@@ -648,6 +709,7 @@ fn check_eq_recurse(
 /// Returns the first counterexample Magma found, or None.
 #[pyfunction]
 #[pyo3(signature = (premise_lhs, premise_rhs, premise_vars, conclusion_lhs, conclusion_rhs, conclusion_vars, max_size=3))]
+#[allow(clippy::too_many_arguments)]
 fn search_equation_counterexample(
     py: Python<'_>,
     premise_lhs: &Bound<'_, pyo3::types::PyAny>,
@@ -667,7 +729,12 @@ fn search_equation_counterexample(
         let n = size as usize;
         let n64 = n as u64;
         let cells = n * n;
-        let total: u64 = n64.pow(cells as u32);
+        // F5: use checked_pow to avoid silent wrapping in release mode
+        let total: u64 = n64.checked_pow(cells as u32).ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(format!(
+                "Magma enumeration overflows u64 for size {size}"
+            ))
+        })?;
 
         let mut table = vec![0u8; cells];
         for i in 0..total {
@@ -677,16 +744,18 @@ fn search_equation_counterexample(
             }
 
             let mut temp = i;
-            for cell in 0..cells {
-                table[cell] = (temp % n64) as u8;
+            for entry in table.iter_mut() {
+                *entry = (temp % n64) as u8;
                 temp /= n64;
             }
 
             let premise_holds =
-                check_eq_all_assignments(&table, n, &p_lhs, &p_rhs, &premise_vars);
+                check_eq_all_assignments(&table, n, &p_lhs, &p_rhs, &premise_vars)
+                    .map_err(pyo3::exceptions::PyValueError::new_err)?;
             if premise_holds {
                 let conclusion_holds =
-                    check_eq_all_assignments(&table, n, &c_lhs, &c_rhs, &conclusion_vars);
+                    check_eq_all_assignments(&table, n, &c_lhs, &c_rhs, &conclusion_vars)
+                        .map_err(pyo3::exceptions::PyValueError::new_err)?;
                 if !conclusion_holds {
                     return Ok(Some(Magma { size, table }));
                 }
@@ -707,6 +776,7 @@ fn search_equation_counterexample(
 #[pyfunction]
 #[pyo3(signature = (required, forbidden, max_size=3, limit=100))]
 fn filter_magmas(
+    py: Python<'_>,
     required: Vec<String>,
     forbidden: Vec<String>,
     max_size: u8,
@@ -727,7 +797,12 @@ fn filter_magmas(
         let n = size as usize;
         let n64 = n as u64;
         let cells = n * n;
-        let total: u64 = n64.pow(cells as u32);
+        // F5: use checked_pow to avoid silent wrapping in release mode
+        let total: u64 = n64.checked_pow(cells as u32).ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(format!(
+                "Magma enumeration overflows u64 for size {size}"
+            ))
+        })?;
 
         let mut table = vec![0u8; cells];
         for i in 0..total {
@@ -735,9 +810,14 @@ fn filter_magmas(
                 return Ok(results);
             }
 
+            // F4: allow Ctrl-C to interrupt long-running loops
+            if i % 1_000_000 == 0 {
+                py.check_signals()?;
+            }
+
             let mut temp = i;
-            for cell in 0..cells {
-                table[cell] = (temp % n64) as u8;
+            for entry in table.iter_mut() {
+                *entry = (temp % n64) as u8;
                 temp /= n64;
             }
 
@@ -1089,8 +1169,8 @@ mod tests {
         vars.insert("x".to_string(), 1u8);
         let term = Term::Var("x".to_string());
         let table = vec![0u8, 1, 1, 0]; // XOR on {0,1}
-        let r1 = term.compute(&table, 2, &vars);
-        let r2 = term.compute(&table, 2, &vars);
+        let r1 = term.compute(&table, 2, &vars).unwrap();
+        let r2 = term.compute(&table, 2, &vars).unwrap();
         assert_eq!(r1, r2);
     }
 
@@ -1104,8 +1184,8 @@ mod tests {
             Box::new(Term::Var("y".to_string())),
         );
         let table = vec![0u8, 1, 1, 0]; // XOR
-        let r1 = term.compute(&table, 2, &vars);
-        let r2 = term.compute(&table, 2, &vars);
+        let r1 = term.compute(&table, 2, &vars).unwrap();
+        let r2 = term.compute(&table, 2, &vars).unwrap();
         assert_eq!(r1, r2);
     }
 
@@ -1201,7 +1281,7 @@ mod tests {
                 temp /= n as u64;
             }
 
-            let eq_result = check_eq_all_assignments(&table, n, &lhs, &rhs, &vars);
+            let eq_result = check_eq_all_assignments(&table, n, &lhs, &rhs, &vars).unwrap();
             let prop_result = is_assoc_raw(&table, n);
             assert_eq!(eq_result, prop_result,
                 "Equation vs property disagreement for table {:?}", table);
@@ -1235,10 +1315,110 @@ mod tests {
                 temp /= n as u64;
             }
 
-            let eq_result = check_eq_all_assignments(&table, n, &lhs, &rhs, &vars);
+            let eq_result = check_eq_all_assignments(&table, n, &lhs, &rhs, &vars).unwrap();
             let prop_result = is_comm_raw(&table, n);
             assert_eq!(eq_result, prop_result,
                 "Commutativity equation vs property disagreement for table {:?}", table);
         }
+    }
+
+    // ── Security fix tests ──────────────────────────────────────
+
+    // F1: compute returns Err (not panic) when a variable is absent from the assignment
+    #[test]
+    fn compute_missing_variable_returns_err() {
+        let table = vec![0u8, 1, 1, 0]; // XOR on {0,1}
+        let vars = std::collections::HashMap::new(); // intentionally empty
+        let term = Term::Var("x".to_string());
+        let result = term.compute(&table, 2, &vars);
+        assert!(result.is_err(), "expected Err for missing variable, got Ok");
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("Variable 'x'"),
+            "error message should name the variable; got: {msg}"
+        );
+    }
+
+    // F1: compute propagates Err through Op nodes
+    #[test]
+    fn compute_missing_variable_propagates_through_op() {
+        let table = vec![0u8, 1, 1, 0];
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("x".to_string(), 0u8);
+        // y is absent
+        let term = Term::Op(
+            Box::new(Term::Var("x".to_string())),
+            Box::new(Term::Var("y".to_string())),
+        );
+        let result = term.compute(&table, 2, &vars);
+        assert!(result.is_err(), "expected Err propagating through Op");
+    }
+
+    // F2: compute returns Err (not assert-panic) when a literal exceeds magma size
+    #[test]
+    fn compute_literal_out_of_range_returns_err() {
+        let table = vec![0u8, 1, 1, 0]; // size-2 table
+        let vars = std::collections::HashMap::new();
+        let term = Term::Lit(5u8); // 5 >= 2 — out of range
+        let result = term.compute(&table, 2, &vars);
+        assert!(result.is_err(), "expected Err for literal out of range, got Ok");
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("out of range"),
+            "error message should mention 'out of range'; got: {msg}"
+        );
+    }
+
+    // F2: in-range literals produce Ok
+    #[test]
+    fn compute_literal_in_range_returns_ok() {
+        let table = vec![0u8, 1, 1, 0];
+        let vars = std::collections::HashMap::new();
+        let term = Term::Lit(1u8); // 1 < 2 — valid
+        assert_eq!(term.compute(&table, 2, &vars).unwrap(), 1u8);
+    }
+
+    // F3: parse_term_depth enforces MAX_TERM_DEPTH (unit-level check on the constant)
+    #[test]
+    fn max_term_depth_constant_is_reasonable() {
+        // MAX_TERM_DEPTH must be at least 10 (practical minimum) and at most 1024 (stack safety).
+        assert!(MAX_TERM_DEPTH >= 10, "MAX_TERM_DEPTH too small: {MAX_TERM_DEPTH}");
+        assert!(MAX_TERM_DEPTH <= 1024, "MAX_TERM_DEPTH too large: {MAX_TERM_DEPTH}");
+    }
+
+    // F3: a term at exactly the depth limit is parseable via the in-memory Term type
+    //     (parse_term_depth requires Python runtime; test compute on a hand-built deep term)
+    #[test]
+    fn deeply_nested_term_compute_ok() {
+        // Build a left-leaning chain: ((x * x) * x) * x ... 10 levels deep
+        let table = vec![0u8, 1, 1, 0]; // XOR on {0,1}
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("x".to_string(), 1u8);
+
+        let mut term: Term = Term::Var("x".to_string());
+        for _ in 0..10 {
+            term = Term::Op(Box::new(term), Box::new(Term::Var("x".to_string())));
+        }
+        // XOR of 1 eleven times: 1 (odd number)
+        let result = term.compute(&table, 2, &vars).unwrap();
+        assert_eq!(result, 1u8);
+    }
+
+    // F5: checked_pow detects overflow that plain pow would wrap
+    #[test]
+    fn checked_pow_overflow_guard() {
+        // 10^100 far exceeds u64::MAX — checked_pow must return None
+        let result = 10u64.checked_pow(100u32);
+        assert!(result.is_none(), "10^100 should overflow u64");
+    }
+
+    // F5: checked_pow succeeds for the largest valid input (size 4: 4^16)
+    #[test]
+    fn checked_pow_valid_size_4() {
+        let n64: u64 = 4;
+        let cells: u32 = 16; // 4*4
+        let result = n64.checked_pow(cells);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), 4_294_967_296u64); // 4^16
     }
 }
