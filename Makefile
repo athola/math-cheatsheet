@@ -225,8 +225,17 @@ demo-cheatsheet: ## Show cheatsheet stats and byte count (LIVE)
 		echo "  $$f: $$bytes bytes, $$lines lines (limit: 10240 bytes)"; \
 	done
 
+.PHONY: dogfood
+dogfood: ## Run BDD behaviour dogfood: decision-stack scenarios on real code (LIVE)
+	@echo "=== Decision-Stack Behaviour Dogfood (LIVE) ==="
+	$(PYTHONPATH) $(PYTHON) scripts/demo_behavior.py
+
+.PHONY: dogfood-quick
+dogfood-quick: ## Truncated dogfood (fast subset for pre-commit) (LIVE)
+	@$(PYTHONPATH) $(PYTHON) scripts/demo_behavior.py --quick
+
 .PHONY: demo
-demo: demo-magmas demo-properties demo-counterexamples demo-cheatsheet ## Run all demos (LIVE)
+demo: demo-magmas demo-properties demo-counterexamples demo-cheatsheet dogfood ## Run all demos (LIVE)
 
 # ── TLA+ Model Checking ───────────────────────────────────────────
 

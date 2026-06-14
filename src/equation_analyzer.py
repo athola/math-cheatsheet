@@ -350,6 +350,13 @@ def _check_simple_substitutions(h: Equation, t: Equation) -> AnalysisResult | No
 # Depth 8 is generous for single-rule systems (idempotence closes in 2 steps on
 # depth-3 terms; associativity normalisation is bounded by term size) and keeps
 # the worst case on a 10-token target well under a millisecond.
+#
+# This bound is a coverage/performance knob, NOT a soundness knob (math-review
+# finding 3). Phase 6 only ever returns TRUE when both sides of T genuinely
+# reach a common normal form; if a proof needs more than _PHASE6_MAX_STEPS
+# steps, the normal forms simply differ and the pair falls through to the
+# Phase 8 UNKNOWN verdict. Raising the cap can only turn UNKNOWNs into TRUEs —
+# it can never produce a false TRUE or a false FALSE.
 _PHASE6_MAX_STEPS = 8
 
 

@@ -187,6 +187,27 @@ class TestAccuracyOf:
         assert result["fn"] == 9
         assert result["precision"] == 0.0
 
+    def test_proven_only_accuracy_excludes_conjectures(self, tmp_path: Path):
+        """accuracy_proven counts only proven (±3) entries, not conjectures (±4).
+
+        Math-finding 2: the blended accuracy mixes proven and conjectured
+        ground truth. The proven-only metric isolates the part backed by proof.
+        """
+        csv_path = tmp_path / "mixed.csv"
+        # Diagonal proven TRUE; off-diagonal conjectured (4 = conj TRUE, -4 = conj FALSE).
+        matrix = [[3, 4], [-4, 3]]
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            for row in matrix:
+                writer.writerow(row)
+        oracle = ImplicationOracle(csv_path)
+        result = oracle.accuracy_of(lambda _h, _t: True)
+        # Blended: 3 TRUE entries (TP) + 1 conj-FALSE (FP) = 3/4.
+        assert result["accuracy"] == 0.75
+        # Proven-only: just the two diagonal TRUEs, both predicted TRUE = 2/2.
+        assert result["proven_total"] == 2
+        assert result["accuracy_proven"] == 1.0
+
 
 class TestConjValueHandling:
     """Test that conjectured values (4, -4) are treated like proven."""
@@ -315,3 +336,37 @@ class TestShapeValidation:
         """A missing CSV must raise FileNotFoundError with remediation hint."""
         with pytest.raises(FileNotFoundError, match="download|make"):
             ImplicationOracle(tmp_path / "nope.csv")
+
+
+class TestDiagonalValidation:
+    """Feature: the diagonal must decode TRUE (every equation implies itself).
+
+    P5a's TRUE proof reads ``matrix[h][t] == matrix[t][t]`` and assumes the
+    diagonal is TRUE (review math-finding 1). A FALSE diagonal entry is a
+    mathematically impossible data corruption that would silently make P5a
+    unsound, so the oracle must reject it at construction.
+    """
+
+    def test_false_diagonal_entry_raises(self, tmp_path: Path):
+        """A diagonal entry that decodes FALSE must be rejected."""
+        csv_path = tmp_path / "bad_diag.csv"
+        # matrix[2][2] = -3: eq2 does not imply itself — impossible.
+        matrix = [[3, -3], [-3, -3]]
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            for row in matrix:
+                writer.writerow(row)
+        with pytest.raises(ValueError, match="diagonal"):
+            ImplicationOracle(csv_path)
+
+    def test_conjectured_true_diagonal_accepted(self, tmp_path: Path):
+        """A diagonal of 4 (conjectured TRUE) decodes TRUE and is accepted."""
+        csv_path = tmp_path / "conj_diag.csv"
+        matrix = [[4, -4], [-4, 4]]
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            for row in matrix:
+                writer.writerow(row)
+        # Must not raise.
+        oracle = ImplicationOracle(csv_path)
+        assert oracle.query(1, 1) is True

@@ -144,6 +144,24 @@ class ImplicationOracle:
                 f" expected one of {self._VALID_VALUES}."
             )
 
+        # Every equation implies itself, so the diagonal must decode TRUE
+        # (3 or 4). The equivalence-class prover (decision_procedure P5a) proves
+        # ``h ⇒ t`` from ``matrix[h][t] == matrix[t][t]`` and the TRUE diagonal;
+        # a FALSE diagonal entry is an impossible corruption that would make that
+        # proof unsound, so reject it here rather than trust it downstream
+        # (math-review finding 1).
+        diagonal = np.diagonal(self._matrix)
+        bad_diag = [i for i, v in enumerate(diagonal) if self.decode_truth(int(v)) is not True]
+        if bad_diag:
+            first = bad_diag[0]
+            raise ValueError(
+                f"Implication matrix diagonal must be all TRUE (every equation implies"
+                f" itself); {len(bad_diag)} diagonal entr{'y' if len(bad_diag) == 1 else 'ies'}"
+                f" decode FALSE (first: value {int(diagonal[first])} at ({first}, {first})"
+                f" = equation {first + 1}). A corrupt or mismatched file is the likely"
+                " cause — try `make download-etp` to refetch."
+            )
+
         # Matrix is 4694x4694. Row i = Col i = Equation (i+1).
         # Verified: diagonal is all TRUE (self-implication),
         # row 0 implies only 1 (tautology x=x), row 1 implies all (collapse x=y).
@@ -291,32 +309,47 @@ class ImplicationOracle:
 
         predict_fn(hypothesis_id, target_id) -> bool
 
-        Returns accuracy metrics.
+        Returns accuracy metrics. The headline ``accuracy`` is *blended*: it
+        scores predictions against both proven (±3) and conjectured (±4) ground
+        truth, since ``decode_truth`` treats them alike. ``accuracy_proven``
+        (over ``proven_total`` cells) isolates the portion backed by proof, so
+        callers can tell how much of the score rests on conjecture
+        (math-review finding 2).
         """
         tp = fp = tn = fn = 0
+        # Proven-only confusion counts (entries with raw value ±3).
+        tp_p = fp_p = tn_p = fn_p = 0
 
         for i, h_id in enumerate(self._eq_ids):
             for j, t_id in enumerate(self._col_eq_ids):
-                actual = self.decode_truth(int(self._matrix[i, j]))
+                raw = int(self._matrix[i, j])
+                actual = self.decode_truth(raw)
                 if actual is None:
                     continue
+                proven = raw in (3, -3)
 
                 predicted = predict_fn(h_id, t_id)
 
                 if predicted and actual:
                     tp += 1
+                    tp_p += proven
                 elif predicted and not actual:
                     fp += 1
+                    fp_p += proven
                 elif not predicted and actual:
                     fn += 1
+                    fn_p += proven
                 else:
                     tn += 1
+                    tn_p += proven
 
         # Matrix is now 4694x4694 with all equations including eq 1,
         # so the loop above covers everything.
 
         total = tp + fp + tn + fn
         accuracy = (tp + tn) / total if total > 0 else 0.0
+        proven_total = tp_p + fp_p + tn_p + fn_p
+        accuracy_proven = (tp_p + tn_p) / proven_total if proven_total > 0 else 0.0
 
         return {
             "accuracy": accuracy,
@@ -327,6 +360,8 @@ class ImplicationOracle:
             "precision": tp / (tp + fp) if (tp + fp) > 0 else 0.0,
             "recall": tp / (tp + fn) if (tp + fn) > 0 else 0.0,
             "total": total,
+            "accuracy_proven": accuracy_proven,
+            "proven_total": proven_total,
         }
 
     def stats(self) -> dict:

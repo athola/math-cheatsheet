@@ -47,6 +47,13 @@ repos:
         files: ^rust/
         types: [rust]
 
+      - id: dogfood-behavior
+        name: dogfood (truncated BDD behaviour demo)
+        entry: bash -c 'PYTHONPATH=src:tla/python venv/bin/python scripts/demo_behavior.py --quick 2>&1 | tail -6'
+        language: system
+        pass_filenames: false
+        files: ^(src|scripts|tla/python)/
+
       - id: cheatsheet-size
         name: cheatsheet size limit (10KB)
         entry: bash scripts/check_cheatsheet_size.sh
