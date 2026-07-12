@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -95,8 +96,6 @@ class TestRunHarness:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ):
         """A zero-status subprocess returns its stdout+stderr concatenated."""
-        from types import SimpleNamespace
-
         captured: dict = {}
 
         def fake_run(cmd, **kwargs):
@@ -119,7 +118,6 @@ class TestRunHarness:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ):
         """A non-zero subprocess return must surface as SystemExit (not return)."""
-        from types import SimpleNamespace
 
         def fake_run(cmd, **kwargs):
             return SimpleNamespace(returncode=2, stdout="boom\n", stderr="traceback\n")

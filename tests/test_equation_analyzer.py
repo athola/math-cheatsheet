@@ -13,6 +13,8 @@ import pytest
 from src.equation_analyzer import (
     ALL_SIZE_2_MAGMAS,
     CANONICAL_MAGMAS,
+    AnalysisResult,
+    CounterexampleMagma,
     ImplicationVerdict,
     NodeType,
     Term,
@@ -726,8 +728,6 @@ class TestFrozenAnalysisRecords:
 
     @pytest.mark.unit
     def test_analysis_result_is_frozen(self):
-        from src.equation_analyzer import AnalysisResult
-
         r = AnalysisResult(ImplicationVerdict.TRUE, "Phase 1a", "x=x")
         with pytest.raises(Exception):  # FrozenInstanceError
             r.phase = "Phase 99"  # type: ignore[misc]
@@ -758,7 +758,6 @@ class TestFrozenAnalysisRecords:
     def test_counterexample_magma_accepts_list_input_for_back_compat(self):
         # Existing callers wrote literal list-of-list tables; the
         # __post_init__ normaliser must convert without error.
-        from src.equation_analyzer import CounterexampleMagma
 
         m = CounterexampleMagma("L", 2, [[0, 1], [1, 0]], ["test"])  # type: ignore[arg-type]
         assert m.table == ((0, 1), (1, 0))

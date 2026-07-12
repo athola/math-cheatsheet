@@ -18,7 +18,7 @@ import pytest
 import equation_analyzer
 import etp_equations
 import term
-from term import NodeType, Term, op, parse_equation_terms, var
+from term import NodeType, Term, op, parse_equation_terms, parse_term, var
 
 
 class TestCanonicalTerm:
@@ -149,16 +149,12 @@ class TestParseTermStandalone:
 
     @pytest.mark.unit
     def test_parse_term_round_trip(self):
-        from term import parse_term
-
         result = parse_term("(x * y) * z")
         # str() round-trip preserves the parenthesised form.
         assert str(result) == "((x * y) * z)"
 
     @pytest.mark.unit
     def test_parse_term_rejects_trailing_tokens(self):
-        from term import parse_term
-
         # 'x y' tokenises to ['x', 'y']; _parse_expr consumes 'x' and
         # leaves 'y' unconsumed — parse_term must reject.
         with pytest.raises(ValueError, match="trailing tokens"):

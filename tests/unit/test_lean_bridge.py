@@ -16,6 +16,8 @@ Acceptance criteria (from #32):
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
 
 import pytest
 
@@ -376,9 +378,6 @@ class TestLeanE2EVerification:
         table: list[list[int]],
         tmp_path,
     ):
-        import shutil
-        import subprocess
-
         if shutil.which("lean") is None:
             pytest.skip("lean toolchain not installed; skipping cross-language e2e")
 

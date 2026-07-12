@@ -14,11 +14,12 @@ Acceptance criteria (from #25):
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
-from lean_coverage import compute_coverage, scan_lean_declarations
+from lean_coverage import _format_report, compute_coverage, main, scan_lean_declarations
 
 
 class TestLeanScanner:
@@ -231,8 +232,6 @@ class TestFormatReportAndMain:
 
     @pytest.mark.unit
     def test_format_report_includes_summary_and_unfinished_listing(self, tmp_path: Path, capsys):
-        from lean_coverage import _format_report, compute_coverage
-
         (tmp_path / "Mixed.lean").write_text(
             "theorem done : True := by trivial\n"
             "theorem todo : True := by sorry\n"
@@ -250,8 +249,6 @@ class TestFormatReportAndMain:
 
     @pytest.mark.unit
     def test_format_report_omits_unfinished_section_when_all_done(self, tmp_path: Path):
-        from lean_coverage import _format_report, compute_coverage
-
         (tmp_path / "Done.lean").write_text("theorem done : True := by trivial\n", encoding="utf-8")
         decls = scan_lean_declarations(tmp_path)
         report = _format_report(compute_coverage(decls), decls)
@@ -259,8 +256,6 @@ class TestFormatReportAndMain:
 
     @pytest.mark.unit
     def test_main_exits_2_when_path_missing(self, tmp_path: Path, capsys):
-        from lean_coverage import main
-
         missing = tmp_path / "no-such-dir"
         rc = main([str(missing)])
         assert rc == 2
@@ -269,8 +264,6 @@ class TestFormatReportAndMain:
 
     @pytest.mark.unit
     def test_main_returns_zero_on_existing_path(self, tmp_path: Path, capsys):
-        from lean_coverage import main
-
         (tmp_path / "Sample.lean").write_text(
             "theorem sample : True := by trivial\n", encoding="utf-8"
         )
@@ -304,8 +297,6 @@ class TestScannerSkipsUnreadableFiles:
 
     @pytest.mark.unit
     def test_unreadable_file_is_skipped_with_warning(self, tmp_path: Path, caplog):
-        import os
-
         good = tmp_path / "Visible.lean"
         good.write_text("theorem visible : True := by trivial\n", encoding="utf-8")
         forbidden = tmp_path / "NoRead.lean"

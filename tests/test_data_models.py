@@ -1,5 +1,7 @@
 """Tests for data_models module."""
 
+import dataclasses
+
 import pytest
 
 from data_models import (
@@ -209,8 +211,6 @@ class TestMagmaImmutability:
     """
 
     def test_magma_field_assignment_rejected(self):
-        import dataclasses
-
         m = Magma(size=2, operation=[[0, 1], [1, 0]])
         # Narrow the expected exception so a typo elsewhere in the test body
         # cannot be silently swallowed by ``Exception``.

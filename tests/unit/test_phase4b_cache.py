@@ -106,8 +106,6 @@ class TestSize2SatisfactionsCacheBound:
 
     @pytest.mark.unit
     def test_cache_is_lru_bounded(self):
-        from equation_analyzer import _size_2_satisfactions
-
         # functools.lru_cache exposes cache_info().maxsize; functools.cache
         # would expose maxsize=None (unbounded). 8192 protects against
         # leaks while remaining ample for the 4.7K-equation corpus.

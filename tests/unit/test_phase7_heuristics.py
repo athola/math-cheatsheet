@@ -24,6 +24,7 @@ import pytest
 
 from equation_analyzer import (
     ImplicationVerdict,
+    _detect_determined_operation,
     _h_vars_unique,
     analyze_implication,
     parse_equation,
@@ -180,8 +181,6 @@ class TestPhase7cFalseDeadByDesign:
 
     @pytest.mark.unit
     def test_phase5_always_catches_disjoint_var_h_before_phase7c(self):
-        from equation_analyzer import _detect_determined_operation, _h_vars_unique
-
         # The witness: any H with all-unique vars must have either disjoint
         # OR overlapping var sets between LHS and RHS. Disjoint → Phase 5;
         # overlapping → at least one repetition → not _h_vars_unique.
@@ -192,8 +191,6 @@ class TestPhase7cFalseDeadByDesign:
 
     @pytest.mark.unit
     def test_overlapping_var_h_loses_uniqueness(self):
-        from equation_analyzer import _h_vars_unique
-
         # Any single shared variable between LHS and RHS produces a
         # repetition, so _h_vars_unique returns False and Phase 7c is
         # gated off — even before reaching the bound.

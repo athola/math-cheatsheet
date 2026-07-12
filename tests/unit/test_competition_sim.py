@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import json
 import random
 import sys
 from pathlib import Path
@@ -123,8 +125,6 @@ class TestMainIntegration:
     @pytest.fixture
     def synthetic_oracle_csv(self, tmp_path):
         """A 5x5 ETP-encoded matrix with a tautology, collapse, and three weak rows."""
-        import csv as _csv
-
         csv_path = tmp_path / "implications.csv"
         matrix = [
             [3, -3, -3, -3, -3],
@@ -134,7 +134,7 @@ class TestMainIntegration:
             [3, -3, -3, -3, 3],
         ]
         with open(csv_path, "w", newline="", encoding="utf-8") as f:
-            writer = _csv.writer(f)
+            writer = csv.writer(f)
             for row in matrix:
                 writer.writerow(row)
         return csv_path
@@ -175,9 +175,7 @@ class TestMainIntegration:
         assert rc == 0
         assert out_path.exists()
 
-        import json as _json
-
-        result = _json.loads(out_path.read_text(encoding="utf-8"))
+        result = json.loads(out_path.read_text(encoding="utf-8"))
         assert result["n"] == 3
         assert result["seed"] == 1
         assert 0 <= result["accuracy"] <= 1.0
@@ -212,8 +210,6 @@ class TestMainIntegration:
         sim.main([*common, "--out", str(out_a)])
         sim.main([*common, "--out", str(out_b)])
 
-        import json as _json
-
-        a = _json.loads(out_a.read_text(encoding="utf-8"))
-        b = _json.loads(out_b.read_text(encoding="utf-8"))
+        a = json.loads(out_a.read_text(encoding="utf-8"))
+        b = json.loads(out_b.read_text(encoding="utf-8"))
         assert a["per_problem"] == b["per_problem"]

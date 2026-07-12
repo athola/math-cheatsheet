@@ -24,6 +24,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+from decision_procedure import DecisionProcedure  # noqa: E402
+from etp_equations import ETPEquations  # noqa: E402
+from implication_oracle import ImplicationOracle  # noqa: E402
+
 
 def wilson_ci(successes: int, total: int, z: float = 1.96) -> tuple[float, float]:
     """Wilson 95% confidence interval for a binomial proportion.
@@ -123,10 +127,6 @@ def main(argv: list[str] | None = None) -> int:
         default=PROJECT_ROOT / "research" / "data" / "etp" / "equations.txt",
     )
     args = parser.parse_args(argv)
-
-    from decision_procedure import DecisionProcedure
-    from etp_equations import ETPEquations
-    from implication_oracle import ImplicationOracle
 
     oracle = ImplicationOracle(args.oracle)
     equations = ETPEquations(args.equations)

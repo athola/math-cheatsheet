@@ -1,5 +1,6 @@
 """Tests for the ETP equation parser, classifier, and unified query interface."""
 
+import csv
 import pathlib
 import time
 from collections import Counter
@@ -248,10 +249,6 @@ class TestETPDatasetUnifiedQueries:
 
     @pytest.fixture
     def dataset(self, tmp_path):
-        import csv as _csv
-
-        from etp_equations import ETPDataset
-
         eq_path = tmp_path / "equations.txt"
         eq_path.write_text(
             "x = x\nx = y\nx ◇ y = y ◇ x\nx ◇ y = x\nx ◇ y = z\n",
@@ -266,7 +263,7 @@ class TestETPDatasetUnifiedQueries:
             [3, 3, -3, -3, 3],
         ]
         with open(csv_path, "w", newline="", encoding="utf-8") as f:
-            writer = _csv.writer(f)
+            writer = csv.writer(f)
             for row in matrix:
                 writer.writerow(row)
         return ETPDataset(eq_path, csv_path)

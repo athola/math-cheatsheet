@@ -9,10 +9,12 @@ import csv
 import json
 import logging
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
 from decision_procedure import DecisionProcedure, PredictionResult
+from equation_analyzer import AnalysisResult, ImplicationVerdict
 from etp_equations import ETPEquations
 from implication_oracle import ImplicationOracle
 
@@ -232,8 +234,6 @@ class TestStructuralParseErrorFallback:
     """
 
     def test_analyzer_parse_failure_becomes_p5bc_parse_error(self, proc: DecisionProcedure):
-        from unittest import mock
-
         with mock.patch(
             "decision_procedure.ea_parse_equation",
             side_effect=ValueError("synthetic parse failure"),
@@ -253,10 +253,6 @@ class TestStructuralUnknownFallthrough:
     """
 
     def test_unknown_structural_verdict_falls_through_to_default(self, proc: DecisionProcedure):
-        from unittest import mock
-
-        from equation_analyzer import AnalysisResult, ImplicationVerdict
-
         unknown_result = AnalysisResult(
             ImplicationVerdict.UNKNOWN, "Phase 8", "Inconclusive — no rule fired"
         )

@@ -20,8 +20,15 @@ import pytest
 
 from equation_analyzer import (
     ImplicationVerdict,
+    _match_pattern,
+    _phase6_rewrite,
+    _rewrite_once,
+    _rewrite_to_normal_form,
+    _rule_is_sound,
     analyze_implication,
+    op,
     parse_equation,
+    var,
 )
 
 
@@ -118,8 +125,6 @@ class TestRewriteOnceRightChildPath:
 
     @pytest.mark.unit
     def test_right_only_rewrite_descends_correctly(self):
-        from equation_analyzer import _rewrite_once, op, parse_equation, var
-
         # Rule: y * y → y. Term: a * (y * y). Pattern doesn't match the
         # whole term (root is a*..., not y*y). Doesn't match left (a is
         # a leaf). Matches the right subtree (y * y) → y. Result: a * y.
@@ -137,8 +142,6 @@ class TestRewriteStatusObservability:
 
     @pytest.mark.unit
     def test_returns_normal_form_when_no_match(self):
-        from equation_analyzer import _rewrite_to_normal_form, parse_equation
-
         h = parse_equation("x = x * x")
         # Pattern x*x never matches a bare variable, so we land in normal form
         # immediately on the first iteration.
@@ -149,8 +152,6 @@ class TestRewriteStatusObservability:
 
     @pytest.mark.unit
     def test_returns_cycle_or_budget_on_growing_orientation(self):
-        from equation_analyzer import _rewrite_to_normal_form, parse_equation
-
         # x → x*x grows the term every step. With max_steps=4 the rewriter
         # must terminate via either the budget guard or (less likely here)
         # cycle detection — but never silently return the original term.
@@ -169,8 +170,6 @@ class TestMatchPatternRollsBackBindings:
 
     @pytest.mark.unit
     def test_failed_match_does_not_pollute_caller_bindings(self):
-        from equation_analyzer import _match_pattern, parse_equation
-
         # Pattern: x * x ; Target: a * b. The left sub-match binds x→a,
         # the right sub-match (x must equal b) fails because b ≠ a.
         # The caller's bindings dict must be empty after the failure.
@@ -202,8 +201,6 @@ class TestRuleSoundnessGuard:
         the rewriter from emitting a proof that introduces fresh
         variables — exactly the bug-class issue #60 NEW-I8 calls out.
         """
-        from equation_analyzer import _rule_is_sound, parse_equation
-
         h = parse_equation("x = x * y")
         # LHS→RHS: lhs vars {x}, rhs vars {x, y} — y is fresh, unsound.
         assert _rule_is_sound(h.lhs, h.rhs) is False
@@ -235,8 +232,6 @@ class TestRuleSoundnessGuard:
         returns TRUE, otherwise None. The point is exercising the
         `continue` branch, not the verdict.
         """
-        from equation_analyzer import _phase6_rewrite, _rule_is_sound
-
         h = parse_equation("x * x = x * y")
         # Confirm one orientation is unsound (forces the continue) and
         # the other is sound (so the loop has a second iteration to run).

@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from implication_oracle import ImplicationOracle
+from implication_oracle import _ENCODING, ImplicationOracle, _EquivData
 
 
 def _sha256_of(path: Path) -> str:
@@ -354,8 +354,6 @@ class TestEquivDataNamedAccess:
     """
 
     def test_equiv_data_has_named_fields(self, oracle: ImplicationOracle):
-        from implication_oracle import _EquivData
-
         data = oracle._equiv_data  # cached_property
         assert isinstance(data, _EquivData)
         # Both names must be addressable; a transposition would surface
@@ -374,8 +372,6 @@ class TestEncodingSingleSourceOfTruth:
     """Feature: _ENCODING drives both decode_truth and _VALID_VALUES (S4 / #53)."""
 
     def test_decode_truth_consistent_with_valid_values(self):
-        from implication_oracle import _ENCODING
-
         for raw, expected in _ENCODING.items():
             assert ImplicationOracle.decode_truth(raw) is expected
         # Anything outside the encoding decodes to None.
@@ -383,8 +379,6 @@ class TestEncodingSingleSourceOfTruth:
         assert ImplicationOracle.decode_truth(99) is None
 
     def test_valid_values_subset_of_encoding(self):
-        from implication_oracle import _ENCODING
-
         # Every value the validator accepts must have a known truth-mapping.
         for v in ImplicationOracle._VALID_VALUES:
             assert v in _ENCODING

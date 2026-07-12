@@ -14,10 +14,16 @@ pins that decision so a future refactor cannot silently undo it.
 
 from __future__ import annotations
 
+from itertools import product
+from unittest import mock
+
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from equation_analyzer import (
     ImplicationVerdict,
+    _size_2_satisfactions,
     analyze_implication,
     parse_equation,
 )
@@ -142,10 +148,6 @@ class TestPhase4bCacheCallReduction:
 
     @pytest.mark.unit
     def test_size_2_satisfactions_caches_per_equation(self):
-        from unittest import mock
-
-        from equation_analyzer import _size_2_satisfactions
-
         # Clear any prior cache entries so the call count is deterministic.
         _size_2_satisfactions.cache_clear()
         h = parse_equation("x * y = y * x")
@@ -178,11 +180,6 @@ class TestSoundnessOnRandomEquations:
 
     @pytest.mark.slow
     def test_true_verdict_holds_in_every_h_satisfying_magma_size_3(self):
-        from itertools import product
-
-        from hypothesis import HealthCheck, given, settings
-        from hypothesis import strategies as st
-
         equation_strs = st.sampled_from(
             [
                 "x = x",
