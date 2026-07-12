@@ -11,6 +11,29 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+# Machine-checked artifacts, keyed by (claim_type, e1_property, e2_property).
+# Source of truth: the status tables in docs/formal-verification-summary.md.
+# Do NOT add entries here without an actual theorem/TLC run backing them.
+#
+# Lean entries map to (theorem_name, proof_file); check_lean_proofs verifies
+# the theorem is really declared in that file before trusting the entry.
+_LEAN_PROVEN: dict[tuple[str, str | None, str | None], tuple[str, str]] = {
+    ("false_implication", "idempotence", "commutativity"): (
+        "idemp_not_implies_comm",
+        "lean/EquationalTheories/Invariants.lean",
+    ),
+}
+
+# Pairs exhaustively witnessed at size 2 by TLC via Size2Check.tla.
+_TLC_WITNESSED: dict[tuple[str, str | None, str | None], str] = {
+    ("false_implication", "idempotence", "commutativity"): (
+        "tla/MagmaSpecifications/Size2Check.tla"
+    ),
+    ("false_implication", "associativity", "commutativity"): (
+        "tla/MagmaSpecifications/Size2Check.tla"
+    ),
+}
+
 
 @dataclass
 class FormalClaim:
@@ -44,8 +67,6 @@ class FormalValidator:
     def __init__(self, project_root: Path):
         """Initialize validator with project paths."""
         self.project_root = project_root
-        self.lean_dir = project_root / "lean" / "EquationalTheories"
-        self.tla_dir = project_root / "tla"
         self.cheatsheet_path = project_root / "cheatsheet" / "v1.txt"
 
     def scan_cheatsheet_claims(self) -> list[FormalClaim]:
@@ -92,54 +113,69 @@ class FormalValidator:
         return claims
 
     def check_lean_proofs(self, claims: list[FormalClaim]) -> list[FormalClaim]:
-        """Check which claims have Lean formal proofs."""
-        lean_files = list(self.lean_dir.rglob("*.lean"))
+        """Check which claims are covered by an actually-proven Lean theorem.
 
+        Earlier versions matched keywords against raw ``.lean`` text, which
+        misread the catalog data records in ``Implication.lean`` (plain
+        String fields, not theorems) as proofs and contradicted the status
+        tables in ``docs/formal-verification-summary.md``. Verification now
+        requires the claim's property pair to be in the explicit allow-list
+        AND the named theorem to be declared in the cited file.
+        """
         for claim in claims:
-            # Check if there's a Lean file that might verify this claim
-            for lean_file in lean_files:
-                content = lean_file.read_text()
-                # Simple keyword matching
-                e1_keywords = self._extract_keywords(claim.equation_e1)
-                e2_keywords = self._extract_keywords(claim.equation_e2 or "")
-                all_keywords = e1_keywords + e2_keywords
-
-                if all_keywords and all(kw in content.lower() for kw in all_keywords):
-                    claim.lean_verified = True
-                    claim.proof_path = str(lean_file.relative_to(self.project_root))
-                    break
+            key = self._claim_key(claim)
+            entry = _LEAN_PROVEN.get(key)
+            if entry is None:
+                continue
+            theorem_name, rel_path = entry
+            proof_file = self.project_root / rel_path
+            if proof_file.exists() and f"theorem {theorem_name}" in proof_file.read_text():
+                claim.lean_verified = True
+                claim.proof_path = rel_path
 
         return claims
 
     def check_tla_specs(self, claims: list[FormalClaim]) -> list[FormalClaim]:
-        """Check which claims have TLA+ specifications."""
-        tla_files = list(self.tla_dir.rglob("*.tla"))
+        """Check which claims have a machine-checked TLC witness.
 
+        Only ``Size2Check.tla`` is TLC-verified (see the honesty note in
+        ``docs/formal-verification-summary.md``); the other ``.tla`` files
+        are illustrative pseudo-specs. A claim is TLA-verified only if its
+        property pair is in the Size2Check witness allow-list.
+        """
         for claim in claims:
-            if claim.claim_type == "false_implication":
-                # Counterexample claims should have TLA+ models
-                for tla_file in tla_files:
-                    content = tla_file.read_text().lower()
-                    if "counterexample" in content or "model" in content:
-                        claim.tla_verified = True
-                        claim.counterexample_path = str(tla_file.relative_to(self.project_root))
-                        break
+            rel_path = _TLC_WITNESSED.get(self._claim_key(claim))
+            if rel_path is not None and (self.project_root / rel_path).exists():
+                claim.tla_verified = True
+                claim.counterexample_path = rel_path
 
         return claims
 
-    def _extract_keywords(self, text: str) -> list[str]:
-        """Extract searchable keywords from an equation."""
-        keywords = []
+    def _claim_key(self, claim: FormalClaim) -> tuple[str, str | None, str | None]:
+        """Normalize a claim to (claim_type, e1_property, e2_property)."""
+        return (
+            claim.claim_type,
+            self._property_of(claim.equation_e1),
+            self._property_of(claim.equation_e2 or ""),
+        )
+
+    @staticmethod
+    def _property_of(text: str) -> str | None:
+        """Map free-form cheatsheet claim text to a canonical property name."""
         text = text.lower()
         if "assoc" in text:
-            keywords.append("associative")
+            return "associativity"
         if "commut" in text:
-            keywords.append("commutative")
+            return "commutativity"
+        if "idempot" in text:
+            return "idempotence"
+        if "left identity" in text:
+            return "left_identity"
+        if "right identity" in text:
+            return "right_identity"
         if "identity" in text or "e*x" in text:
-            keywords.append("identity")
-        if "idempotent" in text or "x*x" in text:
-            keywords.append("idempotent")
-        return keywords
+            return "identity"
+        return None
 
     def generate_report(self, claims: list[FormalClaim]) -> FormalValidationReport:
         """Generate formal validation report."""
@@ -177,6 +213,7 @@ class FormalValidator:
 
         with open(output_path, "w") as f:
             json.dump(data, f, indent=2)
+            f.write("\n")  # keep the committed report end-of-file-fixer clean
 
 
 def main():

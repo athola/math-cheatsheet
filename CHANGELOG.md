@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- BDD behaviour dogfood harness (`scripts/demo_behavior.py`) with `dogfood`/
+  `dogfood-quick` Makefile targets, a pre-commit hook (`--quick`), and a CI
+  `dogfood` job; hardened `ImplicationOracle` invariants alongside it.
+
+### Fixed
+- `src/term.py` parser now accepts the alphanumeric variable tokens
+  (e.g. `x1`) that `tokenize_equation` was already fixed to emit; the
+  previous `isalpha()` guard rejected them at every parsing entry point.
+- `magma_core` (Rust): `check_equation` / `search_equation_counterexample`
+  now reject variable lists longer than 16 with `ValueError` instead of
+  recursing unboundedly — an oversized list from Python previously
+  overflowed the native stack and aborted the interpreter.
+- `scripts/check_no_ai_attribution.sh` now checks the in-progress commit
+  message file passed by pre-commit (`$1`) instead of the previous commit's
+  message, so the commit-msg gate actually blocks what it is meant to block.
+- `experiments/validation/formal_validation.py` no longer infers "Lean
+  verified" / "TLA verified" from keyword matching over raw file text; both
+  checks now consult explicit allow-lists mirroring the status tables in
+  `docs/formal-verification-summary.md`, and the committed
+  `formal_validation_report.json` was regenerated (Lean-verified claims:
+  7 → 1, matching what is actually proven).
+
 ### Changed
 - Corrected formal-verification claims to match what is actually proven.
   The cheatsheet is validated empirically, not formally verified. Lean

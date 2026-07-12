@@ -38,9 +38,10 @@ impl Magma {
             }
             for &v in row {
                 if v >= size {
-                    return Err(pyo3::exceptions::PyValueError::new_err(
-                        format!("Table entry {} out of range [0, {})", v, size),
-                    ));
+                    return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                        "Table entry {} out of range [0, {})",
+                        v, size
+                    )));
                 }
             }
             table.extend_from_slice(row);
@@ -51,9 +52,10 @@ impl Magma {
     /// Get op(a, b).
     fn op(&self, a: u8, b: u8) -> PyResult<u8> {
         if a >= self.size || b >= self.size {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                format!("Indices ({}, {}) out of range for magma of size {}", a, b, self.size)
-            ));
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Indices ({}, {}) out of range for magma of size {}",
+                a, b, self.size
+            )));
         }
         Ok(self.table[a as usize * self.size as usize + b as usize])
     }
@@ -173,10 +175,7 @@ impl Magma {
         let mut parts = Vec::new();
         for a in 0..n {
             for b in 0..n {
-                parts.push(format!(
-                    "<<{a}, {b}>> |-> {}",
-                    self.table[a * n + b]
-                ));
+                parts.push(format!("<<{a}, {b}>> |-> {}", self.table[a * n + b]));
             }
         }
         format!("[{}]", parts.join(", "))
@@ -357,7 +356,10 @@ fn find_counterexamples(
             }
 
             if check_premise(&table, n) && !check_conclusion(&table, n) {
-                results.push(Magma { size, table: table.clone() });
+                results.push(Magma {
+                    size,
+                    table: table.clone(),
+                });
             }
         }
     }
@@ -668,6 +670,15 @@ fn check_equation(
         .map_err(pyo3::exceptions::PyValueError::new_err)
 }
 
+/// Maximum number of quantified variables accepted per equation.
+///
+/// check_eq_recurse recurses once per variable, so an unbounded
+/// caller-supplied list overflows the native stack — a process abort
+/// pyo3 cannot convert to an exception (unlike an ordinary panic).
+/// Real equations use a handful of variables; 16 already allows a
+/// 4^16 ≈ 4.3e9-assignment sweep at the size-4 cap.
+const MAX_VARIABLES: usize = 16;
+
 fn check_eq_all_assignments(
     table: &[u8],
     n: usize,
@@ -675,6 +686,13 @@ fn check_eq_all_assignments(
     rhs: &Term,
     variables: &[String],
 ) -> Result<bool, String> {
+    if variables.len() > MAX_VARIABLES {
+        return Err(format!(
+            "Too many variables: {} exceeds maximum of {}",
+            variables.len(),
+            MAX_VARIABLES
+        ));
+    }
     let mut assignment = std::collections::HashMap::new();
     check_eq_recurse(table, n, lhs, rhs, variables, 0, &mut assignment)
 }
@@ -749,9 +767,8 @@ fn search_equation_counterexample(
                 temp /= n64;
             }
 
-            let premise_holds =
-                check_eq_all_assignments(&table, n, &p_lhs, &p_rhs, &premise_vars)
-                    .map_err(pyo3::exceptions::PyValueError::new_err)?;
+            let premise_holds = check_eq_all_assignments(&table, n, &p_lhs, &p_rhs, &premise_vars)
+                .map_err(pyo3::exceptions::PyValueError::new_err)?;
             if premise_holds {
                 let conclusion_holds =
                     check_eq_all_assignments(&table, n, &c_lhs, &c_rhs, &conclusion_vars)
@@ -827,7 +844,10 @@ fn filter_magmas(
             }
             let no_forb = forb_checks.iter().all(|check| !check(&table, n));
             if no_forb {
-                results.push(Magma { size, table: table.clone() });
+                results.push(Magma {
+                    size,
+                    table: table.clone(),
+                });
             }
         }
     }
@@ -1111,10 +1131,18 @@ mod tests {
                 table[cell] = (temp % n as u64) as u8;
                 temp /= n as u64;
             }
-            if is_assoc_raw(&table, n) { assoc += 1; }
-            if is_comm_raw(&table, n) { comm += 1; }
-            if has_identity_raw(&table, n) { has_id += 1; }
-            if is_idemp_raw(&table, n) { idemp += 1; }
+            if is_assoc_raw(&table, n) {
+                assoc += 1;
+            }
+            if is_comm_raw(&table, n) {
+                comm += 1;
+            }
+            if has_identity_raw(&table, n) {
+                has_id += 1;
+            }
+            if is_idemp_raw(&table, n) {
+                idemp += 1;
+            }
         }
 
         assert_eq!(assoc, 8, "Expected 8 associative magmas");
@@ -1283,8 +1311,11 @@ mod tests {
 
             let eq_result = check_eq_all_assignments(&table, n, &lhs, &rhs, &vars).unwrap();
             let prop_result = is_assoc_raw(&table, n);
-            assert_eq!(eq_result, prop_result,
-                "Equation vs property disagreement for table {:?}", table);
+            assert_eq!(
+                eq_result, prop_result,
+                "Equation vs property disagreement for table {:?}",
+                table
+            );
         }
     }
 
@@ -1317,8 +1348,11 @@ mod tests {
 
             let eq_result = check_eq_all_assignments(&table, n, &lhs, &rhs, &vars).unwrap();
             let prop_result = is_comm_raw(&table, n);
-            assert_eq!(eq_result, prop_result,
-                "Commutativity equation vs property disagreement for table {:?}", table);
+            assert_eq!(
+                eq_result, prop_result,
+                "Commutativity equation vs property disagreement for table {:?}",
+                table
+            );
         }
     }
 
@@ -1336,6 +1370,38 @@ mod tests {
         assert!(
             msg.contains("Variable 'x'"),
             "error message should name the variable; got: {msg}"
+        );
+    }
+
+    // Full-review 2026-07-12 blocker B2: check_eq_recurse recursion depth
+    // equals variables.len(); an unbounded list from Python overflows the
+    // native stack (process abort — pyo3 cannot catch it). The variables
+    // list must be rejected with Err before recursing.
+    #[test]
+    fn check_equation_too_many_variables_returns_err() {
+        let table = vec![0u8]; // size-1 magma
+        let vars: Vec<String> = (0..100_000).map(|i| format!("v{i}")).collect();
+        let lhs = Term::Var("v0".to_string());
+        let rhs = Term::Var("v0".to_string());
+        let result = check_eq_all_assignments(&table, 1, &lhs, &rhs, &vars);
+        assert!(result.is_err(), "expected Err for oversized variables list");
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("variables"),
+            "error should name the variables limit; got: {msg}"
+        );
+    }
+
+    // Positive control: exactly MAX_VARIABLES still evaluates normally.
+    #[test]
+    fn check_equation_at_max_variables_still_works() {
+        let table = vec![0u8]; // size-1 magma: x = x holds trivially
+        let vars: Vec<String> = (0..MAX_VARIABLES).map(|i| format!("v{i}")).collect();
+        let lhs = Term::Var("v0".to_string());
+        let rhs = Term::Var("v0".to_string());
+        assert_eq!(
+            check_eq_all_assignments(&table, 1, &lhs, &rhs, &vars),
+            Ok(true)
         );
     }
 
@@ -1361,7 +1427,10 @@ mod tests {
         let vars = std::collections::HashMap::new();
         let term = Term::Lit(5u8); // 5 >= 2 — out of range
         let result = term.compute(&table, 2, &vars);
-        assert!(result.is_err(), "expected Err for literal out of range, got Ok");
+        assert!(
+            result.is_err(),
+            "expected Err for literal out of range, got Ok"
+        );
         let msg = result.unwrap_err();
         assert!(
             msg.contains("out of range"),
@@ -1382,8 +1451,14 @@ mod tests {
     #[test]
     fn max_term_depth_constant_is_reasonable() {
         // MAX_TERM_DEPTH must be at least 10 (practical minimum) and at most 1024 (stack safety).
-        assert!(MAX_TERM_DEPTH >= 10, "MAX_TERM_DEPTH too small: {MAX_TERM_DEPTH}");
-        assert!(MAX_TERM_DEPTH <= 1024, "MAX_TERM_DEPTH too large: {MAX_TERM_DEPTH}");
+        assert!(
+            MAX_TERM_DEPTH >= 10,
+            "MAX_TERM_DEPTH too small: {MAX_TERM_DEPTH}"
+        );
+        assert!(
+            MAX_TERM_DEPTH <= 1024,
+            "MAX_TERM_DEPTH too large: {MAX_TERM_DEPTH}"
+        );
     }
 
     // F3: a term at exactly the depth limit is parseable via the in-memory Term type

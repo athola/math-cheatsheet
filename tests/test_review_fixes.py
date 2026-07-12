@@ -20,6 +20,7 @@ from equation_parser_utils import tokenize_equation
 from etp_equations import ETPEquations, parse_equation
 from implication_oracle import ImplicationOracle
 from llm_evaluator import parse_verdict
+from term import parse_equation_terms, parse_term
 
 
 def _equations(tmp_path: Path, lines: list[str]) -> ETPEquations:
@@ -95,6 +96,25 @@ class TestB7Tokenizer:
     def test_unexpected_char_raises(self):
         with pytest.raises(ValueError):
             tokenize_equation("x $ y")
+
+
+class TestB7ParserAlphanumericVars:
+    """The parser must accept the alphanumeric variable tokens the tokenizer
+    emits (full-review 2026-07-12 blocker B1: _parse_primary still gated on
+    str.isalpha, rejecting tokens like 'x1' that tokenize_equation produces).
+    """
+
+    def test_parse_term_accepts_alphanumeric_variable(self):
+        term = parse_term("x1 ◇ y")
+        assert "x1" in term.variables()
+
+    def test_parse_equation_terms_accepts_alphanumeric_variable(self):
+        lhs, rhs = parse_equation_terms("x1 ◇ y = y ◇ x1")
+        assert lhs.variables() == rhs.variables() == {"x1", "y"}
+
+    def test_etp_equations_parse_alphanumeric_variable(self, tmp_path: Path):
+        eqs = _equations(tmp_path, ["x1 ◇ y = y ◇ x1"])
+        assert eqs.classify_structural(1) == "balanced"
 
 
 class TestB3LoadProblems:

@@ -124,7 +124,7 @@ def _parse_primary(tokens: list[str], pos: int) -> tuple[Term, int]:
         if pos >= len(tokens) or tokens[pos] != ")":
             raise ValueError(f"Expected ')' at position {pos}")
         return expr, pos + 1
-    if tokens[pos].isalpha() and tokens[pos] != "*":
+    if tokens[pos][0].isalpha() and tokens[pos].isalnum() and tokens[pos] != "*":
         return var(tokens[pos]), pos + 1
     raise ValueError(f"Unexpected token '{tokens[pos]}' at position {pos}")
 
