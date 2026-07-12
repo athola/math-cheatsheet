@@ -7,11 +7,14 @@ Includes slow integration tests for accuracy on the full 22M matrix.
 
 import csv
 import json
+import logging
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
 from decision_procedure import DecisionProcedure, PredictionResult
+from equation_analyzer import AnalysisResult, ImplicationVerdict
 from etp_equations import ETPEquations
 from implication_oracle import ImplicationOracle
 
@@ -85,6 +88,22 @@ class TestPredictionResult:
         assert r.phase == "P0-self"
         assert r.reason == "Identical equations"
 
+    def test_phase_with_structural_suffix_accepted(self):
+        # P5b/P5c-structural carry a parenthesised internal-phase suffix
+        # (e.g. "P5b-structural(Phase 4)") that the validator must allow.
+        r = PredictionResult(True, "P5b-structural(Phase 4)", "x")
+        assert r.phase.startswith("P5b-structural")
+
+    def test_typoed_phase_rejected(self):
+        # S3 / #53: a typo like "P6-defualt" must fail at construction time
+        # rather than slip through string comparisons in tests/reporters.
+        with pytest.raises(ValueError, match="not in the closed taxonomy"):
+            PredictionResult(False, "P6-defualt", "typo")
+
+    def test_unknown_phase_prefix_rejected(self):
+        with pytest.raises(ValueError, match="not in the closed taxonomy"):
+            PredictionResult(True, "P99-magical", "ought to be impossible")
+
 
 class TestCollapsePrecomputation:
     def test_collapse_ids_detected(self, proc: DecisionProcedure):
@@ -143,25 +162,130 @@ class TestPhase4NewVariables:
 
 class TestPhase5Substitution:
     def test_substitution_instance_returns_true(self, proc: DecisionProcedure):
-        """Eq3 (x*y=y*x) specialized by y->x gives x*x=x*x (Eq1).
+        """Eq3 (x◇y=y◇x) does not specialize to Eq4 (x◇y=x).
 
-        But Eq1 is caught earlier by P1 (tautology target).
-        Test with a case where substitution applies after all earlier phases.
+        Phase pipeline (S10 / #56 — exact assertion):
+        - P0..P4 do not fire (vars match, not collapse, not tautology).
+        - P5 substitution returns False (no merge of {x,y} produces x*y=x).
+        - P5a equiv-class differs in this fixture.
+        - P5bc structural delegation finds C0 satisfies Eq3 but not Eq4 →
+          counterexample at Phase 4 of equation_analyzer.
+
+        Previous test accepted three different phases — a revert of the
+        P5bc-structural dispatch would still pass via P6-default.
         """
-        # Eq3 x*y=y*x, Eq4 x*y=x: not a substitution instance
         result = proc.predict(3, 4)
-        # Falls through P5, then structural analysis may catch it via counterexample
         assert result.prediction is False
-        assert result.phase in ("P5-substitution", "P5c-structural(Phase 4)", "P6-default")
+        assert result.phase == "P5c-structural(Phase 4)", (
+            f"P5c structural counterexample expected; got {result.phase!r}."
+            " A revert of P5bc-structural dispatch would silently pass under"
+            " the previous OR-over-three-phases assertion."
+        )
+        assert "Counterexample" in result.reason
 
 
 class TestPhase6Default:
     def test_default_false(self, proc: DecisionProcedure):
-        """When no structural rule matches, prediction is FALSE."""
+        """When structural fires, the verdict comes from P5c — not P6 default.
+
+        S10 (#56): tightened from `"P5c" in result.phase or "P6" in result.phase"`
+        which was nearly tautological. The exact P5c-structural path is what
+        we want to anchor.
+        """
         result = proc.predict(3, 4)
         assert result.prediction is False
-        # May be caught by structural analysis (counterexample) or fall to default
-        assert "P5c" in result.phase or "P6" in result.phase
+        assert result.phase == "P5c-structural(Phase 4)"
+
+
+class TestOutOfRangeIdsAndDefault:
+    """Coverage: out-of-range ids fall through every phase and land on
+    P6-default. Hits the line 209 short-circuit in _phase_5bc_structural
+    plus the line 152 "no rule matched" fallthrough.
+    """
+
+    def test_out_of_range_pair_falls_to_p6_default(self, proc: DecisionProcedure):
+        # 99/100 are not in the synthetic 5-equation fixture; every phase
+        # returns None and the predict() loop falls through to P6-default.
+        result = proc.predict(99, 100)
+        assert result.prediction is False
+        assert result.phase == "P6-default"
+        assert "No rule matched" in result.reason
+
+    def test_p5bc_short_circuits_on_missing_id(self, proc: DecisionProcedure):
+        """Specifically exercise the line-209 early return: h or t not in
+        self.equations means the structural delegation cannot run.
+
+        Pin a specific phase rather than ``in (True, False)`` (which is
+        tautological for a bool) — a regression that turned the early
+        return into a raise would now fail this test instead of silently
+        passing.
+        """
+        # In-range h, out-of-range t: phase_5bc must early-return to None
+        # and the phase loop must fall through to P6-default.
+        result = proc.predict(3, 99)
+        assert result.prediction is False
+        assert result.phase == "P6-default"
+
+
+class TestStructuralParseErrorFallback:
+    """Coverage: the try/except wrapper at lines 222-230 of P5bc converts
+    an analyzer-side parse failure into a P5bc-parse-error verdict instead
+    of bubbling up. Construct via mocking the analyzer's parser.
+    """
+
+    def test_analyzer_parse_failure_becomes_p5bc_parse_error(self, proc: DecisionProcedure):
+        with mock.patch(
+            "decision_procedure.ea_parse_equation",
+            side_effect=ValueError("synthetic parse failure"),
+        ):
+            # Pick a pair that would otherwise reach P5bc (no earlier match).
+            result = proc.predict(3, 4)
+        assert result.prediction is False
+        assert result.phase == "P5bc-parse-error"
+        assert "synthetic parse failure" in result.reason
+
+
+class TestStructuralUnknownFallthrough:
+    """Coverage: line 230 — when the analyzer's structural verdict is
+    UNKNOWN (Phase 8 inconclusive), _phase_5bc_structural returns None
+    instead of building a P5b/P5c result. Mock the analyzer to force
+    UNKNOWN and verify the fall-through to P6-default.
+    """
+
+    def test_unknown_structural_verdict_falls_through_to_default(self, proc: DecisionProcedure):
+        unknown_result = AnalysisResult(
+            ImplicationVerdict.UNKNOWN, "Phase 8", "Inconclusive — no rule fired"
+        )
+        with mock.patch("decision_procedure.analyze_implication", return_value=unknown_result):
+            # (3, 4) reaches P5bc only if no earlier phase fires; with the
+            # synthetic fixture this is the case.
+            result = proc.predict(3, 4)
+        # Earlier phases may still fire, but if P5bc returns None the
+        # default P6-default must produce the verdict.
+        assert result.prediction is False
+        assert result.phase == "P6-default"
+
+
+class TestPredictBoolAndEvaluate:
+    """Coverage: predict_bool one-liner and evaluate() oracle dispatch."""
+
+    def test_predict_bool_returns_only_the_prediction(self, proc: DecisionProcedure):
+        # P0-self for (1, 1) returns True regardless of phase metadata.
+        assert proc.predict_bool(1, 1) is True
+        # (3, 4) is FALSE per the synthetic oracle.
+        assert proc.predict_bool(3, 4) is False
+
+    def test_evaluate_returns_oracle_metrics_when_oracle_present(self, proc: DecisionProcedure):
+        result = proc.evaluate()
+        # Oracle.accuracy_of returns a dict with the standard keys.
+        assert {"accuracy", "tp", "fp", "tn", "fn", "precision", "recall"} <= result.keys()
+        # Synthetic 5x5 matrix is fully decidable; total must equal 25.
+        assert result["total"] == 25
+
+    def test_evaluate_without_oracle_raises(self, eqs: ETPEquations):
+        proc_no_oracle = DecisionProcedure(eqs, oracle=None)
+        with pytest.raises(ValueError, match="Need oracle for evaluation"):
+            proc_no_oracle.evaluate()
 
 
 class TestPhase5cStructuralFalse:
@@ -169,23 +293,30 @@ class TestPhase5cStructuralFalse:
 
     def test_determined_op_disproves(self, proc: DecisionProcedure):
         """
-        Eq4 (x*y=x) determines LP magma; Eq3 (comm) fails in LP → FALSE.
+        Eq4 (x◇y=x) determines LP magma; Eq3 (comm) fails in LP → FALSE.
         This tests the structural delegation path (P5b/P5c) specifically.
+
+        S10 (#56): assert the exact phase string; the previous OR-over-P5b/P5c
+        accepted either branch even though only one is sound here.
         """
         result = proc.predict(4, 3)
         assert result.prediction is False
-        # Should be caught by structural analysis, not default
-        assert "P5c" in result.phase or "P5b" in result.phase, (
-            f"Expected structural phase, got: {result.phase}"
+        assert result.phase == "P5c-structural(Phase 5)", (
+            f"P5c with Phase-5 sub-classification (determined operation) expected;"
+            f" got {result.phase!r}."
         )
 
     def test_structural_phase_provides_reason(self, proc: DecisionProcedure):
-        """Structural analysis should explain WHY the implication fails."""
+        """Structural analysis names the determined magma in the reason.
+
+        S10 (#56): the previous OR (`'left projection' in reason or 'counterexample'`)
+        was nearly always true because every structural failure mentions one or
+        the other. Pin the reason to the LP-determined-operation narrative
+        which is what Phase 5 of equation_analyzer actually emits here.
+        """
         result = proc.predict(4, 3)
-        assert result.reason != ""
-        assert (
-            "left projection" in result.reason.lower() or "counterexample" in result.reason.lower()
-        )
+        assert "left projection" in result.reason.lower()
+        assert "T fails in that magma" in result.reason
 
 
 class TestStructuralFallthrough:
@@ -203,6 +334,43 @@ class TestPredictBool:
     def test_returns_bool(self, proc: DecisionProcedure):
         assert proc.predict_bool(2, 2) is True
         assert proc.predict_bool(1, 3) is False
+
+
+class TestPredictLogging:
+    """Pin DEBUG-level logging emission in DecisionProcedure.predict (#50/H7).
+
+    Regression #30 added ``logger.debug`` emission of the deciding phase
+    for every predict call so that error analysis can replay decisions.
+    Without an explicit caplog assertion, a revert of the ``logger.debug``
+    line passes every other test — these tests block that revert.
+    """
+
+    def test_predict_emits_debug_log_with_phase(self, proc: DecisionProcedure, caplog):
+        caplog.set_level(logging.DEBUG, logger="decision_procedure")
+        proc.predict(1, 1)
+        # Pattern: "E1 => E1 : True (P0-self)"
+        assert any(
+            "E1 => E1" in record.message and "P0-self" in record.message
+            for record in caplog.records
+        ), f"Expected debug log mentioning E1 => E1 and P0-self; got: {caplog.text}"
+        debug_records = [r for r in caplog.records if r.levelno == logging.DEBUG]
+        assert len(debug_records) >= 1
+
+    def test_predict_logs_phase_for_each_call(self, proc: DecisionProcedure, caplog):
+        """Every predict call should emit one debug record."""
+        caplog.set_level(logging.DEBUG, logger="decision_procedure")
+        proc.predict(1, 2)
+        proc.predict(2, 3)
+        proc.predict(3, 4)
+        debug_records = [r for r in caplog.records if r.name == "decision_procedure"]
+        assert len(debug_records) == 3
+
+    def test_predict_default_level_does_not_log(self, proc: DecisionProcedure, caplog):
+        """At default WARNING level, debug records are suppressed."""
+        # Default caplog level is WARNING; do not raise it.
+        proc.predict(1, 1)
+        debug_records = [r for r in caplog.records if r.levelno == logging.DEBUG]
+        assert len(debug_records) == 0
 
 
 class TestWithoutOracle:

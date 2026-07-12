@@ -55,6 +55,13 @@ Thumbs.db
 # Egregore ephemeral state
 .egregore/
 
+# Claude Code & related agent tooling (per-clone, not project state)
+CLAUDE.md
+.claude/state/
+.clawhub/
+reviews/
+skills/
+
 # Ephemeral planning docs
 docs/plans/
 

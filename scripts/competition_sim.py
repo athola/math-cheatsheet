@@ -24,6 +24,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+from decision_procedure import DecisionProcedure  # noqa: E402
+from etp_equations import ETPEquations  # noqa: E402
+from implication_oracle import ImplicationOracle  # noqa: E402
+
 
 def wilson_ci(successes: int, total: int, z: float = 1.96) -> tuple[float, float]:
     """Wilson 95% confidence interval for a binomial proportion.
@@ -31,9 +35,41 @@ def wilson_ci(successes: int, total: int, z: float = 1.96) -> tuple[float, float
     Returns ``(lower, upper)`` in ``[0, 1]``. The Wilson form is preferred over
     the normal approximation because it behaves sensibly when the empirical
     proportion is at or near the 0/1 boundaries.
+
+    Raises:
+        ValueError: if ``successes`` or ``total`` is not an ``int`` (``bool``
+            also rejected since ``bool`` subclasses ``int``), if ``total < 0``,
+            or if ``successes`` is not in ``[0, total]``. Previously such
+            inputs were silently clamp-masked into a meaningless interval
+            (S7 / regression #54), hiding caller bugs such as accuracy
+            passed as a float instead of a count.
     """
-    if total <= 0:
+    # Reject bool-or-non-int counts up front: passing a float
+    # (``wilson_ci(0.5, 1.0)``) silently produced a meaningless
+    # interval before #54; the int check below closes that hole.
+    if isinstance(successes, bool) or isinstance(total, bool):
+        raise ValueError(
+            f"wilson_ci: successes/total must be int, not bool;"
+            f" got successes={successes!r}, total={total!r}"
+        )
+    if not isinstance(successes, int) or not isinstance(total, int):
+        raise ValueError(
+            f"wilson_ci: successes/total must be int;"
+            f" got successes={type(successes).__name__}, total={type(total).__name__}"
+        )
+    if total < 0:
+        raise ValueError(f"wilson_ci: total must be non-negative, got {total}")
+    if total == 0:
+        if successes != 0:
+            raise ValueError(
+                f"wilson_ci: successes must be 0 when total=0, got {successes}"
+            )
         return (0.0, 0.0)
+    if not (0 <= successes <= total):
+        raise ValueError(
+            f"wilson_ci: successes must satisfy 0 <= successes <= total;"
+            f" got successes={successes}, total={total}"
+        )
     p = successes / total
     denom = 1 + z * z / total
     centre = (p + z * z / (2 * total)) / denom
@@ -91,10 +127,6 @@ def main(argv: list[str] | None = None) -> int:
         default=PROJECT_ROOT / "research" / "data" / "etp" / "equations.txt",
     )
     args = parser.parse_args(argv)
-
-    from decision_procedure import DecisionProcedure
-    from etp_equations import ETPEquations
-    from implication_oracle import ImplicationOracle
 
     oracle = ImplicationOracle(args.oracle)
     equations = ETPEquations(args.equations)

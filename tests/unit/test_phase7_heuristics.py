@@ -24,6 +24,7 @@ import pytest
 
 from equation_analyzer import (
     ImplicationVerdict,
+    _detect_determined_operation,
     _h_vars_unique,
     analyze_implication,
     parse_equation,
@@ -119,20 +120,82 @@ class TestPhase7SideSwapIdentity:
     law. If T is H with LHS/RHS swapped, return TRUE."""
 
     @pytest.mark.unit
-    def test_side_swap_of_commutativity(self):
-        """H: x*y = y*x, T: y*x = x*y. Same law, sides flipped."""
+    def test_side_swap_of_commutativity_fires_phase7a(self):
+        """H: x*y = y*x, T: y*x = x*y. Same law, sides flipped.
+
+        S10 (#59): tightened to assert ``phase == "Phase 7"`` so the test
+        is a true regression sentinel for the Phase 7a side-swap branch
+        and not for Phase 6 closing it incidentally. Commutativity's
+        bidirectional rule cycles under rewriting so Phase 6 hits its
+        budget without converging — Phase 7a is what proves TRUE here.
+        """
         h = parse_equation("x * y = y * x")
         t = parse_equation("y * x = x * y")
         result = analyze_implication(h, t)
         assert result.verdict == ImplicationVerdict.TRUE
+        assert result.phase == "Phase 7", (
+            f"Phase 7a side-swap branch should fire on commutativity flip;"
+            f" got {result.phase} ({result.reason}). Either Phase 6 was "
+            "reordered above Phase 7 or the side-swap shortcut was lost."
+        )
 
     @pytest.mark.unit
-    def test_side_swap_of_associativity(self):
-        """H: (x*y)*z = x*(y*z), T: x*(y*z) = (x*y)*z. Same law, sides flipped."""
+    def test_side_swap_of_associativity_actually_fires_phase6(self):
+        """S10 (#59): the previous test claimed to exercise Phase 7a but
+        Phase 6 closes the associativity side-swap first via the rule
+        ``(x*y)*z → x*(y*z)``. Renamed and re-asserted to acknowledge
+        that reality — anyone who wants Phase 7a coverage should look at
+        ``test_side_swap_of_commutativity_fires_phase7a`` above.
+
+        H: (x*y)*z = x*(y*z), T: x*(y*z) = (x*y)*z. Phase 6 LHS→RHS rule
+        rewrites T.RHS into T.LHS in one step.
+        """
         h = parse_equation("(x * y) * z = x * (y * z)")
         t = parse_equation("x * (y * z) = (x * y) * z")
         result = analyze_implication(h, t)
         assert result.verdict == ImplicationVerdict.TRUE
+        assert result.phase == "Phase 6", (
+            f"Associativity side-swap should be closed by Phase 6 rewrite;"
+            f" got {result.phase}. If Phase 6 stops firing here, the side-"
+            "swap pair is no longer under test for the rewrite path either."
+        )
+
+
+class TestPhase7cFalseDeadByDesign:
+    """Phase 7c's FALSE branch (line 348) is unreachable by construction
+    after the NEW-C1 gate. ``_h_vars_unique(h)`` requires every variable
+    occurrence in H to be distinct, which is strictly stricter than
+    Phase 5's constant-operation precondition (LHS and RHS are OP trees
+    with disjoint variable sets and no repeats). Any H that satisfies
+    ``_h_vars_unique`` either:
+
+    1. Has disjoint LHS/RHS variables → Phase 5 fires (constant-op).
+    2. Has a single variable shared between LHS and RHS → ``_h_vars_unique``
+       returns False because the shared variable appears at least twice.
+
+    There is no way to reach Phase 7c with a ``_h_vars_unique`` H, so
+    line 348 is dead defensive code. This test documents the
+    impossibility so a future refactor that loosens ``_h_vars_unique``
+    or moves Phase 5 below Phase 7 has to confront it.
+    """
+
+    @pytest.mark.unit
+    def test_phase5_always_catches_disjoint_var_h_before_phase7c(self):
+        # The witness: any H with all-unique vars must have either disjoint
+        # OR overlapping var sets between LHS and RHS. Disjoint → Phase 5;
+        # overlapping → at least one repetition → not _h_vars_unique.
+        h_disjoint = parse_equation("x * y = z * w")
+        assert _h_vars_unique(h_disjoint) is True
+        # Phase 5 fires for disjoint-var OP-OP equations:
+        assert _detect_determined_operation(h_disjoint) is not None
+
+    @pytest.mark.unit
+    def test_overlapping_var_h_loses_uniqueness(self):
+        # Any single shared variable between LHS and RHS produces a
+        # repetition, so _h_vars_unique returns False and Phase 7c is
+        # gated off — even before reaching the bound.
+        assert _h_vars_unique(parse_equation("x * y = x * z")) is False
+        assert _h_vars_unique(parse_equation("x * y = z * y")) is False
 
 
 class TestPhase7DoesNotRegress:

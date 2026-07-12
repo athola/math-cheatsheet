@@ -149,15 +149,33 @@ def load_cheatsheet(path: str = "cheatsheet/competition-v1.txt") -> str:
 
 
 def parse_verdict(response: str) -> bool | None:
-    """Extract TRUE/FALSE verdict from LLM response."""
+    """Extract TRUE/FALSE verdict from LLM response.
+
+    Returns ``None`` in two distinct failure modes (regression #52/M5):
+
+    * **No VERDICT line at all** — the LLM omitted the format. Silent: this
+      can occur when the function is called on the wrong section of a
+      response (e.g. cheatsheet body), so warning would be noisy.
+    * **VERDICT line present, value unparseable** — the LLM produced a
+      malformed verdict (e.g. "VERDICT: MAYBE" or "VERDICT:"). This is an
+      LLM compliance failure that should be visible in logs; emits a
+      ``logging.WARNING`` so debugging is possible without rerunning.
+    """
+    saw_verdict_line = False
     for line in response.split("\n"):
         line = line.strip()
         if line.upper().startswith("VERDICT:"):
+            saw_verdict_line = True
             verdict_str = line.split(":", 1)[1].strip().upper()
             if "TRUE" in verdict_str:
                 return True
             if "FALSE" in verdict_str:
                 return False
+    if saw_verdict_line:
+        logger.warning(
+            "parse_verdict: VERDICT line present but unparseable;"
+            " expected TRUE or FALSE in the value."
+        )
     return None
 
 
@@ -230,13 +248,17 @@ def evaluate_with_llm(
     """
     if client is None:
         if anthropic is None:
-            print("ERROR: pip install anthropic")
-            sys.exit(1)
+            raise OSError(
+                "anthropic SDK not installed. Run `pip install anthropic`"
+                " or pass a pre-configured client to evaluate_with_llm."
+            )
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key or api_key.startswith("your_"):
-            print("ERROR: Set ANTHROPIC_API_KEY environment variable")
-            print("  export ANTHROPIC_API_KEY=sk-ant-...")
-            sys.exit(1)
+            raise OSError(
+                "ANTHROPIC_API_KEY environment variable is not set."
+                " Run `export ANTHROPIC_API_KEY=sk-ant-...` before invoking,"
+                " or pass a pre-configured client to evaluate_with_llm."
+            )
         client = anthropic.Anthropic(api_key=api_key)
 
     if max_problems:
@@ -422,7 +444,12 @@ def main() -> None:
     print(f"Generated {len(problems)} problems")
 
     print(f"\nEvaluating with {args.model}...")
-    result = evaluate_with_llm(problems, cheatsheet, args.model, args.sample, cache=cache)
+    try:
+        result = evaluate_with_llm(problems, cheatsheet, args.model, args.sample, cache=cache)
+    except OSError as exc:
+        # Library raises; CLI translates to a process exit (#51).
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
 
     print(f"\n{'=' * 50}")
     print(f"RESULTS ({args.model})")

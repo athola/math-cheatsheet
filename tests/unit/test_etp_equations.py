@@ -1,5 +1,6 @@
 """Tests for the ETP equation parser, classifier, and unified query interface."""
 
+import csv
 import pathlib
 import time
 from collections import Counter
@@ -130,6 +131,170 @@ class TestETPEquations:
         """Scenario: Same variable set has no new vars."""
         new_vars = etp.vars_in_target_not_in_hypothesis(43, 43)
         assert len(new_vars) == 0
+
+
+class TestETPLoaderErrorAggregation:
+    """Feature: collect every parse failure (NEW-I9 / #61).
+
+    Previously the loader aborted on the first malformed line, so a user
+    with five typos saw one error and re-ran four times. The loader now
+    raises a single :class:`ExceptionGroup` containing every failure.
+    """
+
+    @pytest.mark.unit
+    def test_single_bad_line_still_raises_exception_group(self, tmp_path):
+        eq_path = tmp_path / "equations.txt"
+        eq_path.write_text("x = x\n@@@ bogus\n", encoding="utf-8")
+        with pytest.raises(ExceptionGroup) as excinfo:
+            ETPEquations(eq_path)
+        assert len(excinfo.value.exceptions) == 1
+
+    @pytest.mark.unit
+    def test_multiple_bad_lines_all_reported(self, tmp_path):
+        eq_path = tmp_path / "equations.txt"
+        # Line 1 ok, lines 2/3/4 broken, line 5 ok.
+        eq_path.write_text(
+            "x = x\n"
+            "(x * y\n"  # unbalanced
+            "* x = y\n"  # bare leading operator
+            "x = (y\n"  # unbalanced
+            "x ◇ y = y ◇ x\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ExceptionGroup) as excinfo:
+            ETPEquations(eq_path)
+        assert len(excinfo.value.exceptions) == 3
+        # Every reported error must mention the equation index that failed
+        # so a user can jump straight to it.
+        messages = [str(e) for e in excinfo.value.exceptions]
+        assert any("equation 2" in m for m in messages)
+        assert any("equation 3" in m for m in messages)
+        assert any("equation 4" in m for m in messages)
+
+    @pytest.mark.unit
+    def test_clean_file_loads_without_raising(self, tmp_path):
+        """Sanity check: a fully valid file does not trigger the error path."""
+        eq_path = tmp_path / "equations.txt"
+        eq_path.write_text("x = x\nx ◇ y = y ◇ x\n", encoding="utf-8")
+        loaded = ETPEquations(eq_path)
+        assert len(loaded) == 2
+
+    @pytest.mark.unit
+    def test_blank_lines_are_skipped(self, tmp_path):
+        """Coverage: line 98 ``continue`` for blank lines.
+
+        Two real equations with three blank lines interspersed should
+        produce exactly two parsed entries.
+        """
+        eq_path = tmp_path / "equations.txt"
+        eq_path.write_text("\nx = x\n\nx ◇ y = y ◇ x\n\n", encoding="utf-8")
+        loaded = ETPEquations(eq_path)
+        assert len(loaded) == 2
+
+
+class TestETPCanonicalVarOpSidesMirror:
+    """Coverage: ``term.canonical_var_op_sides`` second branch (rhs is var,
+    lhs is op). Exercised via ``is_collapse_structural`` on a ``op = var``
+    shaped equation. Pins the post-S1 (#63) consolidation that moved the
+    helper out of ``etp_equations``.
+    """
+
+    @pytest.mark.unit
+    def test_collapse_structural_detects_op_equals_var_form(self, tmp_path):
+        # "y ◇ z = x" — RHS is var x, LHS is op y◇z. The mirror branch
+        # in canonical_var_op_sides returns (rhs, lhs) so the collapse
+        # detection runs.
+        eq_path = tmp_path / "equations.txt"
+        eq_path.write_text("y ◇ z = x\n", encoding="utf-8")
+        loaded = ETPEquations(eq_path)
+        assert loaded.is_collapse_structural(1) is True
+
+
+class TestETPClassifyTrivialRhs:
+    """Coverage: line 187 ``return 'trivial_rhs'`` — needs an equation
+    where RHS is a bare variable but LHS is not (so trivial_lhs / tautology
+    don't fire first).
+    """
+
+    @pytest.mark.unit
+    def test_classify_op_equals_var_is_trivial_rhs(self, tmp_path):
+        # "x ◇ y = x" has lhs=op, rhs=x (var). It is NOT collapse (x is
+        # in lhs vars), NOT tautology, lhs is not var → trivial_rhs.
+        eq_path = tmp_path / "equations.txt"
+        eq_path.write_text("x ◇ y = x\n", encoding="utf-8")
+        loaded = ETPEquations(eq_path)
+        assert loaded.classify_structural(1) == "trivial_rhs"
+
+
+class TestETPSubstitutionInstanceSingleVar:
+    """Coverage: line 197 ``return False`` when h has only one variable."""
+
+    @pytest.mark.unit
+    def test_single_var_hypothesis_cannot_be_substitution_source(self, tmp_path):
+        # H has only {x}; is_substitution_instance must short-circuit
+        # to False since there are no pairs to merge.
+        eq_path = tmp_path / "equations.txt"
+        eq_path.write_text("x = x ◇ x\nx ◇ y = y\n", encoding="utf-8")
+        loaded = ETPEquations(eq_path)
+        assert loaded.is_substitution_instance(1, 2) is False
+
+
+class TestETPDatasetUnifiedQueries:
+    """Coverage: ETPDataset class wraps ETPEquations + ImplicationOracle.
+
+    The class was untouched by the issue cleanup but is in the same
+    module; its methods (``implies``, ``classify``, ``equation_info``,
+    ``summary``) cover lines that compose oracle and structural data.
+    """
+
+    @pytest.fixture
+    def dataset(self, tmp_path):
+        eq_path = tmp_path / "equations.txt"
+        eq_path.write_text(
+            "x = x\nx = y\nx ◇ y = y ◇ x\nx ◇ y = x\nx ◇ y = z\n",
+            encoding="utf-8",
+        )
+        csv_path = tmp_path / "implications.csv"
+        matrix = [
+            [3, -3, -3, -3, -3],
+            [3, 3, 3, 3, 3],
+            [3, -3, 3, -3, -3],
+            [3, -3, -3, 3, -3],
+            [3, 3, -3, -3, 3],
+        ]
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            for row in matrix:
+                writer.writerow(row)
+        return ETPDataset(eq_path, csv_path)
+
+    @pytest.mark.unit
+    def test_implies_delegates_to_oracle(self, dataset):
+        # E1 (tautology) implies only itself in the synthetic matrix.
+        assert dataset.implies(1, 1) is True
+        assert dataset.implies(1, 3) is False
+
+    @pytest.mark.unit
+    def test_classify_returns_oracle_class(self, dataset):
+        # E2 (collapse) implies all 5 → "collapse" classification.
+        assert dataset.classify(2) == "collapse"
+
+    @pytest.mark.unit
+    def test_equation_info_combines_structural_and_oracle(self, dataset):
+        info = dataset.equation_info(3)
+        # Combined record must contain both structural (var_count, depth)
+        # and oracle (oracle_class, implies_count) keys.
+        assert {"var_count", "max_depth", "structural_class", "oracle_class"} <= info.keys()
+        assert info["var_count"] == 2  # x, y
+
+    @pytest.mark.unit
+    def test_summary_returns_dataset_level_stats(self, dataset):
+        summary = dataset.summary()
+        assert summary["total_equations"] == 5
+        assert summary["matrix_shape"] == (5, 5)
+        # Both classification distributions must be present and tally to 5.
+        assert sum(summary["classification_counts"].values()) == 5
+        assert sum(summary["structural_counts"].values()) == 5
 
 
 # ---------------------------------------------------------------------------

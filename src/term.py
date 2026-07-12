@@ -16,6 +16,7 @@ here so that:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
 
@@ -34,12 +35,36 @@ class Term:
     Uses ``NodeType`` rather than a boolean flag so that new node kinds
     (e.g. constants for Phase 6 rewrite analysis) can be added without
     a boolean explosion.
+
+    Field invariants (validated in ``__post_init__`` per NEW-I4 / #58):
+
+    - VAR nodes must have a non-empty ``name`` and no children. A
+      ``Term(NodeType.VAR, name="", left=op(x,y))`` previously constructed
+      successfully and only raised at access time inside ``_lr()``.
+    - OP nodes must have both ``left`` and ``right`` children.
+
+    Validating at construction surfaces the malformed-term bug at the
+    construction site (where the caller can see the bug) instead of at
+    a downstream traversal that pays the runtime check on every access.
     """
 
     node_type: NodeType
     name: str = ""
     left: Term | None = None
     right: Term | None = None
+
+    def __post_init__(self) -> None:
+        if self.node_type == NodeType.VAR:
+            # Strip-then-check rejects whitespace-only names too — a
+            # tokenizer that ever emits " " or "\t" must not silently
+            # produce an ambiguous-looking variable here.
+            if not self.name or not self.name.strip():
+                raise ValueError("VAR node must have a non-empty, non-whitespace name")
+            if self.left is not None or self.right is not None:
+                raise ValueError("VAR node must not have children")
+        else:  # OP
+            if self.left is None or self.right is None:
+                raise ValueError("OP node must have both left and right children")
 
     @property
     def is_var(self) -> bool:
@@ -77,7 +102,7 @@ class Term:
         lt, rt = self._lr()
         return Term(NodeType.OP, left=lt.substitute(mapping), right=rt.substitute(mapping))
 
-    def evaluate(self, table: list[list[int]], assignment: dict[str, int]) -> int:
+    def evaluate(self, table: Sequence[Sequence[int]], assignment: dict[str, int]) -> int:
         """Evaluate this term in a finite magma given variable assignments."""
         if self.is_var:
             return assignment[self.name]
@@ -99,6 +124,25 @@ def var(name: str) -> Term:
 def op(left: Term, right: Term) -> Term:
     """Construct an application term. Preferred over ``Term(NodeType.OP, ...)``."""
     return Term(NodeType.OP, left=left, right=right)
+
+
+def canonical_var_op_sides(lhs: Term, rhs: Term) -> tuple[Term | None, Term | None]:
+    """Return ``(var_side, op_side)`` if exactly one side is a leaf variable.
+
+    Returns ``(None, None)`` when neither or both sides are variables. The
+    binary VAR/OP ADT means ``not is_var`` is equivalent to ``is_op``, so
+    the second slot is always an OP node when the result is non-None and
+    callers can safely invoke ``op_side._lr()``.
+
+    S1 (#63 follow-up): consolidates a helper that previously lived in
+    both ``equation_analyzer`` and ``etp_equations`` so the var/op
+    canonicalisation logic has one source of truth.
+    """
+    if lhs.is_var and not rhs.is_var:
+        return lhs, rhs
+    if rhs.is_var and not lhs.is_var:
+        return rhs, lhs
+    return None, None
 
 
 # --- Parsing ---
@@ -165,6 +209,7 @@ __all__ = [
     "Term",
     "var",
     "op",
+    "canonical_var_op_sides",
     "parse_term",
     "parse_equation_terms",
 ]

@@ -102,7 +102,11 @@ class CounterexampleFinder:
                     return CounterexampleMagma(
                         name=f"size-{size} magma #{i}",
                         size=size,
-                        table=table,
+                        # CounterexampleMagma is frozen with tuple-of-tuples
+                        # storage (#58); MagmaGenerator yields list-of-list, so
+                        # convert at the call site rather than weakening the
+                        # type contract.
+                        table=tuple(tuple(row) for row in table),
                     )
         return None
 
